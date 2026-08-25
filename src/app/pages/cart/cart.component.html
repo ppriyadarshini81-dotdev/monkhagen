@@ -1,0 +1,91 @@
+<section class="mh-cart mh-container">
+  <!-- Success state -->
+  <div class="mh-cart__success" *ngIf="orderId; else cartView">
+    <div class="mh-cart__check">✓</div>
+    <h1>Order Placed!</h1>
+    <p>Your order <strong>#{{ orderId }}</strong> has been received. We'll email you the tracking details shortly.</p>
+    <div class="mh-cart__success-cta">
+      <a class="mh-btn mh-btn--gold" routerLink="/products">Keep Shopping</a>
+      <a class="mh-btn mh-btn--ghost" routerLink="/">Home</a>
+    </div>
+  </div>
+
+  <ng-template #cartView>
+    <header class="mh-cart__head">
+      <span class="mh-eyebrow">Your Bag</span>
+      <h1>Cart</h1>
+    </header>
+
+    <!-- Empty -->
+    <div class="mh-cart__empty" *ngIf="cart.items.length === 0">
+      <p>Your bag is empty.</p>
+      <a class="mh-btn mh-btn--gold" routerLink="/products">Shop the Drop</a>
+    </div>
+
+    <!-- Items + summary -->
+    <div class="mh-cart__grid" *ngIf="cart.items.length > 0">
+      <div class="mh-cart__items">
+        <article class="mh-cart__item" *ngFor="let item of cart.items; let i = index">
+          <a [routerLink]="['/product', item.productSlug]" class="mh-cart__thumb">
+            <img [src]="item.imageUrl" [alt]="item.productName" />
+          </a>
+          <div class="mh-cart__detail">
+            <a [routerLink]="['/product', item.productSlug]" class="mh-cart__name">
+              {{ item.productName }}
+            </a>
+            <span class="mh-cart__opts">
+              <ng-container *ngIf="item.size">Size {{ item.size }}</ng-container>
+              <ng-container *ngIf="item.size && item.color"> · </ng-container>
+              <ng-container *ngIf="item.color">{{ item.color }}</ng-container>
+            </span>
+            <span class="mh-cart__price">₹{{ item.price | number }}</span>
+          </div>
+          <div class="mh-cart__controls">
+            <div class="mh-qty">
+              <button (click)="cart.updateQuantity(i, item.quantity - 1)">−</button>
+              <span>{{ item.quantity }}</span>
+              <button (click)="cart.updateQuantity(i, item.quantity + 1)">+</button>
+            </div>
+            <button class="mh-cart__remove" (click)="cart.remove(i)">Remove</button>
+          </div>
+          <div class="mh-cart__line">₹{{ (item.price ?? 0) * item.quantity | number }}</div>
+        </article>
+      </div>
+
+      <aside class="mh-cart__summary mh-card">
+        <h3>Order Summary</h3>
+        <div class="mh-cart__row">
+          <span>Subtotal</span><span>₹{{ cart.total | number }}</span>
+        </div>
+        <div class="mh-cart__row">
+          <span>Shipping</span>
+          <span>{{ shippingFee === 0 ? 'Free' : '₹' + shippingFee }}</span>
+        </div>
+        <div class="mh-cart__row mh-cart__row--total">
+          <span>Total</span><span>₹{{ grandTotal | number }}</span>
+        </div>
+
+        <div class="mh-cart__ship">
+          <h4>Shipping details</h4>
+          <input class="mh-input" placeholder="Full name" [(ngModel)]="shipping.name" />
+          <input class="mh-input" placeholder="Address" [(ngModel)]="shipping.address" />
+          <div class="mh-cart__row2">
+            <input class="mh-input" placeholder="City" [(ngModel)]="shipping.city" />
+            <input class="mh-input" placeholder="State" [(ngModel)]="shipping.state" />
+          </div>
+          <div class="mh-cart__row2">
+            <input class="mh-input" placeholder="ZIP / Postal code" [(ngModel)]="shipping.zip" />
+            <input class="mh-input" placeholder="Phone" [(ngModel)]="shipping.phone" />
+          </div>
+        </div>
+
+        <p class="mh-error" *ngIf="error">{{ error }}</p>
+        <p class="mh-cart__hint" *ngIf="!isLoggedIn">You'll be asked to sign in to checkout.</p>
+
+        <button class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing" (click)="checkout()">
+          {{ placing ? 'Placing…' : 'Checkout' }}
+        </button>
+      </aside>
+    </div>
+  </ng-template>
+</section>

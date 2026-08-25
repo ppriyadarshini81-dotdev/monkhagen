@@ -1,0 +1,534 @@
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  host: process.env.DB_HOST || 'localhost',
+  port: Number(process.env.DB_PORT) || 5432,
+  database: process.env.DB_NAME || 'monkhagen',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || '',
+  ssl:
+    process.env.NODE_ENV === 'production'
+      ? { rejectUnauthorized: false }
+      : false
+});
+
+async function initSchema() {
+  await pool.query(`
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+    /* =========================================================
+       ROLES
+       customer     -> phone + OTP
+       admin        -> email + password
+       super_admin  -> email + password
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS roles (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name        VARCHAR(50) UNIQUE NOT NULL,
+      description VARCHAR(255),
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    INSERT INTO roles (name, description)
+    VALUES
+      ('customer', 'Regular customer'),
+      ('admin', 'Administrator'),
+      ('super_admin', 'Super administrator')
+    ON CONFLICT (name) DO NOTHING;
+
+
+    /* =========================================================
+       USERS
+       Customers, admins and super admins all live here.
+
+       CUSTOMER:
+         phone required
+         password_hash normally NULL
+         login via OTP
+
+       ADMIN / SUPER ADMIN:
+         email required
+         password_hash required by application logic
+         login via email + password
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS users (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      role_id         UUID NOT NULL
+                      REFERENCES roles(id),
+
+      name            VARCHAR(255),
+
+      email           VARCHAR(255),
+      phone           VARCHAR(16),
+
+      password_hash   VARCHAR(255),
+
+      phone_verified  BOOLEAN NOT NULL DEFAULT FALSE,
+      email_verified  BOOLEAN NOT NULL DEFAULT FALSE,
+
+      is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+
+      last_login_at   TIMESTAMPTZ,
+
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+      CONSTRAINT chk_user_has_login_identifier
+      CHECK (phone IS NOT NULL OR email IS NOT NULL)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_users_email_lower
+      ON users (LOWER(email))
+      WHERE email IS NOT NULL;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_users_phone
+      ON users (phone)
+      WHERE phone IS NOT NULL;
+
+
+    /* =========================================================
+       CUSTOMER ADDRESSES
+       One customer can save multiple delivery addresses.
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS customer_addresses (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      user_id         UUID NOT NULL
+                      REFERENCES users(id)
+                      ON DELETE CASCADE,
+
+      full_name       VARCHAR(255) NOT NULL,
+      phone           VARCHAR(16) NOT NULL,
+
+      address_line1   VARCHAR(255) NOT NULL,
+      address_line2   VARCHAR(255),
+      landmark        VARCHAR(255),
+
+      city            VARCHAR(100) NOT NULL,
+      state           VARCHAR(100) NOT NULL,
+      postal_code     VARCHAR(10) NOT NULL,
+      country         VARCHAR(100) NOT NULL DEFAULT 'India',
+
+      address_type    VARCHAR(30) NOT NULL DEFAULT 'Home',
+      is_default      BOOLEAN NOT NULL DEFAULT FALSE,
+
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_customer_addresses_user
+      ON customer_addresses(user_id);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_one_default_address_per_user
+      ON customer_addresses(user_id)
+      WHERE is_default = TRUE;
+
+
+    /* =========================================================
+       CATEGORIES
+       One category -> many products.
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS categories (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      name            VARCHAR(255) UNIQUE NOT NULL,
+      slug            VARCHAR(255) UNIQUE NOT NULL,
+
+      image           TEXT NOT NULL DEFAULT '',
+      description     TEXT NOT NULL DEFAULT '',
+
+      is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+
+    /* =========================================================
+       PRODUCTS
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS products (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      category_id     UUID NOT NULL
+                      REFERENCES categories(id),
+
+      name            VARCHAR(255) NOT NULL,
+      slug            VARCHAR(255) UNIQUE NOT NULL,
+      description     TEXT NOT NULL DEFAULT '',
+
+      base_price      NUMERIC(10,2)
+                      NOT NULL
+                      CHECK (base_price >= 0),
+
+      featured        BOOLEAN NOT NULL DEFAULT FALSE,
+      badge           VARCHAR(100) NOT NULL DEFAULT '',
+      is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_products_category
+      ON products(category_id);
+
+
+    /* =========================================================
+       PRODUCT IMAGES
+       Cloudinary URLs / public IDs are stored here.
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS product_images (
+      id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      product_id            UUID NOT NULL
+                            REFERENCES products(id)
+                            ON DELETE CASCADE,
+
+      image_url             TEXT NOT NULL,
+      cloudinary_public_id  VARCHAR(255),
+
+      display_order         INTEGER NOT NULL DEFAULT 0,
+      is_primary            BOOLEAN NOT NULL DEFAULT FALSE,
+
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_product_images_product
+      ON product_images(product_id);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_one_primary_image_per_product
+      ON product_images(product_id)
+      WHERE is_primary = TRUE;
+
+
+    /* =========================================================
+       PRODUCT VARIANTS
+       Stock is maintained at size/color level.
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS product_variants (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      product_id      UUID NOT NULL
+                      REFERENCES products(id)
+                      ON DELETE CASCADE,
+
+      size            VARCHAR(50) NOT NULL,
+      color           VARCHAR(100) NOT NULL,
+
+      sku             VARCHAR(100) UNIQUE,
+
+      price           NUMERIC(10,2)
+                      CHECK (price >= 0),
+
+      stock           INTEGER NOT NULL DEFAULT 0
+                      CHECK (stock >= 0),
+
+      is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+      UNIQUE(product_id, size, color)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_product_variants_product
+      ON product_variants(product_id);
+
+
+    /* =========================================================
+       CARTS
+       Persistent cart so a logged-in customer sees it later.
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS carts (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      user_id         UUID NOT NULL
+                      REFERENCES users(id)
+                      ON DELETE CASCADE,
+
+      status          VARCHAR(30) NOT NULL DEFAULT 'active'
+                      CHECK (status IN ('active', 'converted', 'abandoned')),
+
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_carts_user
+      ON carts(user_id);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_one_active_cart_per_user
+      ON carts(user_id)
+      WHERE status = 'active';
+
+
+    /* =========================================================
+       CART ITEMS
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS cart_items (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      cart_id         UUID NOT NULL
+                      REFERENCES carts(id)
+                      ON DELETE CASCADE,
+
+      product_id      UUID NOT NULL
+                      REFERENCES products(id),
+
+      variant_id      UUID NOT NULL
+                      REFERENCES product_variants(id),
+
+      quantity        INTEGER NOT NULL DEFAULT 1
+                      CHECK (quantity > 0),
+
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+      UNIQUE(cart_id, variant_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cart_items_cart
+      ON cart_items(cart_id);
+
+
+    /* =========================================================
+       ORDERS
+       Never trust totals sent by Angular.
+       Node.js must calculate price/discount/total from DB data.
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS orders (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      user_id             UUID NOT NULL
+                          REFERENCES users(id),
+
+      order_number        VARCHAR(50) UNIQUE NOT NULL,
+
+      subtotal            NUMERIC(10,2) NOT NULL
+                          CHECK (subtotal >= 0),
+
+      discount_amount     NUMERIC(10,2) NOT NULL DEFAULT 0
+                          CHECK (discount_amount >= 0),
+
+      shipping_amount     NUMERIC(10,2) NOT NULL DEFAULT 0
+                          CHECK (shipping_amount >= 0),
+
+      total_amount        NUMERIC(10,2) NOT NULL
+                          CHECK (total_amount >= 0),
+
+      payment_method      VARCHAR(50),
+
+      payment_status      VARCHAR(50) NOT NULL DEFAULT 'pending'
+                          CHECK (
+                            payment_status IN
+                            ('pending', 'paid', 'failed', 'refunded', 'partially_refunded')
+                          ),
+
+      order_status        VARCHAR(50) NOT NULL DEFAULT 'placed'
+                          CHECK (
+                            order_status IN
+                            ('placed', 'confirmed', 'processing', 'shipped',
+                             'delivered', 'cancelled', 'return_requested',
+                             'returned')
+                          ),
+
+      razorpay_order_id   VARCHAR(255),
+      razorpay_payment_id VARCHAR(255),
+
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_orders_user
+      ON orders(user_id);
+
+    CREATE INDEX IF NOT EXISTS idx_orders_created_at
+      ON orders(created_at DESC);
+
+
+    /* =========================================================
+       ORDER ADDRESS SNAPSHOT
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS order_addresses (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      order_id        UUID NOT NULL UNIQUE
+                      REFERENCES orders(id)
+                      ON DELETE CASCADE,
+
+      full_name       VARCHAR(255) NOT NULL,
+      phone           VARCHAR(16) NOT NULL,
+
+      address_line1   VARCHAR(255) NOT NULL,
+      address_line2   VARCHAR(255),
+      landmark        VARCHAR(255),
+
+      city            VARCHAR(100) NOT NULL,
+      state           VARCHAR(100) NOT NULL,
+      postal_code     VARCHAR(10) NOT NULL,
+      country         VARCHAR(100) NOT NULL DEFAULT 'India',
+
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+
+    /* =========================================================
+       ORDER ITEMS
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS order_items (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      order_id        UUID NOT NULL
+                      REFERENCES orders(id)
+                      ON DELETE CASCADE,
+
+      product_id      UUID
+                      REFERENCES products(id),
+
+      variant_id      UUID
+                      REFERENCES product_variants(id),
+
+      product_name    VARCHAR(255) NOT NULL,
+      sku             VARCHAR(100),
+
+      size            VARCHAR(50),
+      color           VARCHAR(100),
+
+      quantity        INTEGER NOT NULL
+                      CHECK (quantity > 0),
+
+      unit_price      NUMERIC(10,2) NOT NULL
+                      CHECK (unit_price >= 0),
+
+      total_price     NUMERIC(10,2) NOT NULL
+                      CHECK (total_price >= 0),
+
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_order_items_order
+      ON order_items(order_id);
+
+
+    /* =========================================================
+       RETURN REQUESTS
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS return_requests (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      order_id          UUID NOT NULL
+                        REFERENCES orders(id),
+
+      user_id           UUID NOT NULL
+                        REFERENCES users(id),
+
+      return_number     VARCHAR(50) UNIQUE NOT NULL,
+
+      reason            TEXT,
+      comments          TEXT,
+
+      status            VARCHAR(50) NOT NULL DEFAULT 'requested'
+                        CHECK (
+                          status IN
+                          ('requested', 'approved', 'rejected',
+                           'pickup_scheduled', 'received', 'completed', 'cancelled')
+                        ),
+
+      refund_amount     NUMERIC(10,2) NOT NULL DEFAULT 0
+                        CHECK (refund_amount >= 0),
+
+      refund_status     VARCHAR(50) NOT NULL DEFAULT 'pending'
+                        CHECK (
+                          refund_status IN
+                          ('pending', 'processing', 'refunded', 'failed', 'not_applicable')
+                        ),
+
+      requested_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      approved_at       TIMESTAMPTZ,
+      completed_at      TIMESTAMPTZ,
+
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_return_requests_user
+      ON return_requests(user_id);
+
+    CREATE INDEX IF NOT EXISTS idx_return_requests_order
+      ON return_requests(order_id);
+
+
+    /* =========================================================
+       RETURN ITEMS
+    ========================================================== */
+
+    CREATE TABLE IF NOT EXISTS return_items (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+      return_request_id   UUID NOT NULL
+                          REFERENCES return_requests(id)
+                          ON DELETE CASCADE,
+
+      order_item_id       UUID NOT NULL
+                          REFERENCES order_items(id),
+
+      quantity            INTEGER NOT NULL
+                          CHECK (quantity > 0),
+
+      reason              TEXT,
+
+      refund_amount       NUMERIC(10,2) NOT NULL DEFAULT 0
+                          CHECK (refund_amount >= 0),
+
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+      UNIQUE(return_request_id, order_item_id)
+    );
+
+  `);
+}
+
+async function connectDB() {
+  try {
+    await pool.query('SELECT 1');
+
+    console.log(
+      `PostgreSQL connected: ${
+        process.env.DB_HOST || 'localhost'
+      }/${
+        process.env.DB_NAME || 'monkhagen'
+      }`
+    );
+
+    await initSchema();
+
+    console.log('Database schema initialized successfully');
+  } catch (err) {
+    console.error(
+      'PostgreSQL connection error:',
+      err.message
+    );
+
+    process.exit(1);
+  }
+}
+
+module.exports = {
+  pool,
+  connectDB,
+  initSchema
+};

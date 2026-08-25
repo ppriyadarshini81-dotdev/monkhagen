@@ -1,0 +1,17 @@
+<a class="mh-pcard" [routerLink]="['/product', product.slug]">
+  <div class="mh-pcard__media">
+    <img [src]="product.images[0]" [alt]="product.name" loading="lazy" />
+    <span class="mh-pcard__badge" *ngIf="product.badge">{{ product.badge }}</span>
+    <button class="mh-pcard__add" (click)="quickAdd($event)">
+      {{ added ? 'Added ✓' : 'Quick Add' }}
+    </button>
+  </div>
+  <div class="mh-pcard__body">
+    <span class="mh-pcard__cat">{{ product.category }}</span>
+    <h3 class="mh-pcard__name">{{ product.name }}</h3>
+    <div class="mh-pcard__foot">
+      <span class="mh-pcard__price">₹{{ product.price | number }}</span>
+      <span class="mh-pcard__rating">★ {{ product.rating || '—' }}</span>
+    </div>
+  </div>
+</a>

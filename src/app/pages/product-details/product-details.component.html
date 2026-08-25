@@ -1,0 +1,95 @@
+<section class="mh-pd mh-container" *ngIf="product && !loading">
+  <nav class="mh-crumbs">
+    <a routerLink="/">Home</a> /
+    <a routerLink="/products">Products</a> /
+    <span>{{ product.name }}</span>
+  </nav>
+
+  <div class="mh-pd__grid">
+    <!-- Gallery -->
+    <div class="mh-pd__gallery">
+      <div class="mh-pd__main">
+        <img [src]="product.images[activeImage]" [alt]="product.name" />
+        <span class="mh-pd__badge" *ngIf="product.badge">{{ product.badge }}</span>
+      </div>
+      <div class="mh-pd__thumbs" *ngIf="product.images.length > 1">
+        <button
+          *ngFor="let img of product.images; let i = index"
+          [class.active]="i === activeImage"
+          (click)="activeImage = i"
+        >
+          <img [src]="img" [alt]="product.name + ' ' + (i + 1)" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="mh-pd__info">
+      <span class="mh-eyebrow">{{ product.category }}</span>
+      <h1>{{ product.name }}</h1>
+      <div class="mh-pd__meta">
+        <span class="mh-pd__price">₹{{ product.price | number }}</span>
+        <span class="mh-pd__rating">★ {{ product.rating || '—' }}</span>
+        <span class="mh-pd__stock" [class.low]="product.stock < 10">
+          {{ product.stock > 0 ? product.stock + ' in stock' : 'Sold out' }}
+        </span>
+      </div>
+
+      <p class="mh-pd__desc">{{ product.description }}</p>
+
+      <div class="mh-pd__opt" *ngIf="product.colors.length">
+        <span class="mh-label">Color</span>
+        <div class="mh-pd__choices">
+          <button
+            *ngFor="let c of product.colors"
+            [class.active]="selectedColor === c"
+            (click)="selectedColor = c"
+          >
+            {{ c }}
+          </button>
+        </div>
+      </div>
+
+      <div class="mh-pd__opt" *ngIf="product.sizes.length">
+        <span class="mh-label">Size</span>
+        <div class="mh-pd__choices">
+          <button
+            *ngFor="let s of product.sizes"
+            [class.active]="selectedSize === s"
+            (click)="selectedSize = s"
+          >
+            {{ s }}
+          </button>
+        </div>
+      </div>
+
+      <div class="mh-pd__buy">
+        <div class="mh-qty">
+          <button (click)="changeQty(-1)" aria-label="Decrease">−</button>
+          <span>{{ quantity }}</span>
+          <button (click)="changeQty(1)" aria-label="Increase">+</button>
+        </div>
+        <button
+          class="mh-btn mh-btn--gold mh-pd__add"
+          [disabled]="product.stock === 0"
+          (click)="addToCart()"
+        >
+          {{ added ? 'Added to Cart ✓' : 'Add to Cart' }}
+        </button>
+      </div>
+
+      <ul class="mh-pd__perks">
+        <li>Free shipping over ₹2999</li>
+        <li>Heavyweight premium fabric</li>
+        <li>Limited run — never restocked</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div class="mh-pd__state mh-container" *ngIf="loading">Loading…</div>
+
+<div class="mh-pd__state mh-container" *ngIf="notFound && !loading">
+  <h2>Product not found</h2>
+  <a class="mh-btn mh-btn--ghost" routerLink="/products">Back to products</a>
+</div>

@@ -1,0 +1,51 @@
+<header class="mh-header">
+  <div class="mh-container mh-header__inner">
+    <a class="mh-logo" routerLink="/" (click)="closeMenu()">
+      <img src="https://res.cloudinary.com/arlwk9bi/image/upload/v1787588435/logo.png" alt="Monk Hagen" class="mh-logo__img" />
+    </a>
+
+    <nav class="mh-nav" [class.open]="menuOpen">
+      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Home</a>
+      <a routerLink="/products" routerLinkActive="active" (click)="closeMenu()">Products</a>
+      <a routerLink="/about" routerLinkActive="active" (click)="closeMenu()">About Us</a>
+
+      <ng-container *ngIf="isAdmin">
+        <a routerLink="/admin" routerLinkActive="active" (click)="closeMenu()">Admin</a>
+      </ng-container>
+
+      <div class="mh-nav__mobileonly">
+        <ng-container *ngIf="user$ | async as user; else mobileLogin">
+          <span class="mh-nav__hi">Hi, {{ user.name }}</span>
+          <a (click)="logout()">Logout</a>
+        </ng-container>
+        <ng-template #mobileLogin>
+          <a routerLink="/login" (click)="closeMenu()">Login</a>
+        </ng-template>
+      </div>
+    </nav>
+
+    <div class="mh-header__actions">
+      <ng-container *ngIf="user$ | async as user; else loginLink">
+        <div class="mh-user">
+          <span class="mh-user__name">{{ user.name }}</span>
+          <button class="mh-linkbtn" (click)="logout()">Logout</button>
+        </div>
+      </ng-container>
+      <ng-template #loginLink>
+        <a class="mh-icon-link" routerLink="/login" aria-label="Login">Login</a>
+      </ng-template>
+
+      <a class="mh-cart" routerLink="/cart" aria-label="Cart">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M6 7h12l-1 13H7L6 7z" />
+          <path d="M9 7a3 3 0 0 1 6 0" />
+        </svg>
+        <span class="mh-cart__badge" *ngIf="cart.count > 0">{{ cart.count }}</span>
+      </a>
+
+      <button class="mh-burger" (click)="toggleMenu()" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>

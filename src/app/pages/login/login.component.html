@@ -1,0 +1,101 @@
+<section class="mh-auth">
+  <div class="mh-auth__card mh-card">
+    <a class="mh-logo" routerLink="/">MONK<span>HAGEN</span></a>
+    <h1>Welcome</h1>
+    <p class="mh-auth__sub">Sign in or create your Monk Hagen account.</p>
+
+    <!-- Top tab: Phone vs Email -->
+    <div class="mh-auth__tabs">
+      <button [class.active]="tab === 'phone'" (click)="switchTab('phone')">Mobile OTP</button>
+      <button [class.active]="tab === 'email'" (click)="switchTab('email')">Email</button>
+    </div>
+
+    <!-- ── PHONE / OTP FLOW ── -->
+    <ng-container *ngIf="tab === 'phone'">
+
+      <!-- Step 1: enter phone -->
+      <form *ngIf="otpStep === 'phone'" (ngSubmit)="sendOtp()">
+        <div class="mh-field">
+          <label class="mh-label">Mobile Number</label>
+          <div class="mh-phone-row">
+            <span class="mh-phone-prefix">+91</span>
+            <input class="mh-input" name="phone" type="tel" [(ngModel)]="phone"
+                   maxlength="10" placeholder="10-digit number" />
+          </div>
+        </div>
+        <p class="mh-error" *ngIf="error">{{ error }}</p>
+        <button class="mh-btn mh-btn--gold mh-btn--block" type="submit" [disabled]="loading">
+          {{ loading ? 'Sending…' : 'Send OTP' }}
+        </button>
+      </form>
+
+      <!-- Step 2: enter OTP -->
+      <form *ngIf="otpStep === 'otp'" (ngSubmit)="verifyOtp()">
+        <p class="mh-auth__sub">OTP sent to <strong>+91 {{ phone }}</strong>
+          <button type="button" class="mh-link" (click)="otpStep = 'phone'">Change</button>
+        </p>
+        <div class="mh-field">
+          <label class="mh-label">Enter OTP</label>
+          <input class="mh-input mh-otp-input" name="otp" type="text"
+                 [(ngModel)]="otp" maxlength="6" placeholder="6-digit OTP" />
+        </div>
+        <p class="mh-error" *ngIf="error">{{ error }}</p>
+        <button class="mh-btn mh-btn--gold mh-btn--block" type="submit" [disabled]="loading">
+          {{ loading ? 'Verifying…' : 'Verify OTP' }}
+        </button>
+        <button type="button" class="mh-link mh-resend" (click)="otpStep = 'phone'; otp = ''">
+          Resend OTP
+        </button>
+      </form>
+
+      <!-- Step 3: new user name -->
+      <form *ngIf="otpStep === 'name'" (ngSubmit)="confirmName()">
+        <p class="mh-auth__sub">Welcome! What should we call you?</p>
+        <div class="mh-field">
+          <label class="mh-label">Your Name</label>
+          <input class="mh-input" name="otpName" [(ngModel)]="otpName" placeholder="Full name" />
+        </div>
+        <p class="mh-error" *ngIf="error">{{ error }}</p>
+        <button class="mh-btn mh-btn--gold mh-btn--block" type="submit" [disabled]="loading">
+          {{ loading ? 'Please wait…' : 'Continue' }}
+        </button>
+      </form>
+
+    </ng-container>
+
+    <!-- ── EMAIL / PASSWORD FLOW ── -->
+    <ng-container *ngIf="tab === 'email'">
+      <div class="mh-auth__tabs mh-auth__subtabs">
+        <button [class.active]="mode === 'login'" (click)="switchMode('login')">Login</button>
+        <button [class.active]="mode === 'register'" (click)="switchMode('register')">Register</button>
+      </div>
+
+      <form (ngSubmit)="submit()">
+        <div class="mh-field" *ngIf="mode === 'register'">
+          <label class="mh-label">Name</label>
+          <input class="mh-input" name="name" [(ngModel)]="name" required placeholder="Your name" />
+        </div>
+        <div class="mh-field">
+          <label class="mh-label">Email</label>
+          <input class="mh-input" name="email" type="email" [(ngModel)]="email" required placeholder="you@email.com" />
+        </div>
+        <div class="mh-field">
+          <label class="mh-label">Password</label>
+          <input class="mh-input" name="password" type="password" [(ngModel)]="password" required placeholder="••••••••" />
+        </div>
+        <p class="mh-error" *ngIf="error">{{ error }}</p>
+        <button class="mh-btn mh-btn--gold mh-btn--block" type="submit" [disabled]="loading">
+          {{ loading ? 'Please wait…' : (mode === 'login' ? 'Sign In' : 'Create Account') }}
+        </button>
+      </form>
+    </ng-container>
+
+    <div class="mh-auth__demo">
+      <span>Try a demo account:</span>
+      <div>
+        <button (click)="fillDemo('admin')">Admin</button>
+        <button (click)="fillDemo('customer')">Customer</button>
+      </div>
+    </div>
+  </div>
+</section>

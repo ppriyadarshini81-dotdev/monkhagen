@@ -1,0 +1,206 @@
+.mh-pd {
+  padding: 40px 20px 24px;
+}
+
+.mh-crumbs {
+  font-size: 13px;
+  color: var(--mh-text-dim);
+  margin-bottom: 28px;
+}
+
+.mh-crumbs a:hover {
+  color: var(--mh-text);
+}
+
+.mh-pd__grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 48px;
+}
+
+.mh-pd__main {
+  position: relative;
+  border-radius: var(--mh-radius);
+  overflow: hidden;
+  aspect-ratio: 4 / 5;
+  background: var(--mh-bg-elev);
+}
+
+.mh-pd__main img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mh-pd__badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: var(--mh-accent);
+  color: #161300;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+
+.mh-pd__thumbs {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.mh-pd__thumbs button {
+  width: 76px;
+  height: 92px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--mh-line);
+  background: none;
+  padding: 0;
+}
+
+.mh-pd__thumbs button.active {
+  border-color: var(--mh-accent);
+}
+
+.mh-pd__thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mh-pd__info h1 {
+  font-size: clamp(28px, 4vw, 42px);
+  margin: 10px 0 16px;
+}
+
+.mh-pd__meta {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.mh-pd__price {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.mh-pd__rating {
+  color: var(--mh-accent);
+  font-size: 14px;
+}
+
+.mh-pd__stock {
+  font-size: 13px;
+  color: var(--mh-text-dim);
+}
+
+.mh-pd__stock.low {
+  color: var(--mh-accent);
+}
+
+.mh-pd__desc {
+  color: var(--mh-text-dim);
+  line-height: 1.7;
+  margin-bottom: 26px;
+}
+
+.mh-pd__opt {
+  margin-bottom: 22px;
+}
+
+.mh-pd__choices {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mh-pd__choices button {
+  min-width: 48px;
+  padding: 10px 14px;
+  background: var(--mh-bg-elev);
+  border: 1px solid var(--mh-line);
+  color: var(--mh-text);
+  border-radius: 10px;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.mh-pd__choices button.active {
+  border-color: var(--mh-accent);
+  background: var(--mh-bg-elev-2);
+}
+
+.mh-pd__buy {
+  display: flex;
+  gap: 14px;
+  margin: 28px 0 24px;
+}
+
+.mh-qty {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--mh-line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.mh-qty button {
+  width: 44px;
+  height: 46px;
+  background: var(--mh-bg-elev);
+  border: none;
+  color: var(--mh-text);
+  font-size: 18px;
+}
+
+.mh-qty span {
+  width: 44px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.mh-pd__add {
+  flex: 1;
+}
+
+.mh-pd__perks {
+  list-style: none;
+  padding: 22px 0 0;
+  margin: 0;
+  border-top: 1px solid var(--mh-line);
+}
+
+.mh-pd__perks li {
+  color: var(--mh-text-dim);
+  font-size: 14px;
+  padding: 7px 0 7px 22px;
+  position: relative;
+}
+
+.mh-pd__perks li::before {
+  content: '✦';
+  position: absolute;
+  left: 0;
+  color: var(--mh-accent);
+}
+
+.mh-pd__state {
+  padding: 80px 20px;
+  text-align: center;
+}
+
+.mh-pd__state h2 {
+  margin-bottom: 20px;
+}
+
+@media (max-width: 860px) {
+  .mh-pd__grid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+}

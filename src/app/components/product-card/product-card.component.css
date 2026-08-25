@@ -1,0 +1,108 @@
+.mh-pcard {
+  display: block;
+  background: var(--mh-bg-elev);
+  border: 1px solid var(--mh-line);
+  border-radius: var(--mh-radius);
+  overflow: hidden;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.mh-pcard:hover {
+  transform: translateY(-4px);
+  border-color: #3a3a40;
+}
+
+.mh-pcard__media {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  background: var(--mh-bg-elev-2);
+}
+
+.mh-pcard__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+}
+
+.mh-pcard:hover .mh-pcard__media img {
+  transform: scale(1.05);
+}
+
+.mh-pcard__badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: var(--mh-accent);
+  color: #161300;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+
+.mh-pcard__add {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  background: rgba(231, 227, 216, 0.96);
+  color: #111;
+  border: none;
+  border-radius: 999px;
+  padding: 11px;
+  font-weight: 600;
+  font-size: 13px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all 0.2s ease;
+}
+
+.mh-pcard:hover .mh-pcard__add {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.mh-pcard__body {
+  padding: 16px;
+}
+
+.mh-pcard__cat {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--mh-text-dim);
+}
+
+.mh-pcard__name {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 8px 0 14px;
+  line-height: 1.3;
+}
+
+.mh-pcard__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mh-pcard__price {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.mh-pcard__rating {
+  font-size: 13px;
+  color: var(--mh-accent);
+}
+
+@media (hover: none) {
+  .mh-pcard__add {
+    opacity: 1;
+    transform: none;
+  }
+}

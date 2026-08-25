@@ -1,0 +1,3 @@
+.mh-main {
+  min-height: calc(100vh - var(--mh-header-h));
+}
