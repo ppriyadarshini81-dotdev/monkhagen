@@ -1,0 +1,57 @@
+<section class="mh-acct-section">
+  <div class="mh-acct-section__head">
+    <h2>Profile</h2>
+    <button *ngIf="!editing" class="mh-btn mh-btn--ghost" (click)="startEdit()">Edit</button>
+  </div>
+
+  <p class="mh-success" *ngIf="message && !editing">{{ message }}</p>
+
+  <!-- View mode -->
+  <div *ngIf="!editing" class="mh-profile__fields">
+    <div class="mh-profile__field">
+      <span class="mh-label">Full name</span>
+      <span>{{ user?.name || '—' }}</span>
+    </div>
+    <div class="mh-profile__field">
+      <span class="mh-label">Email</span>
+      <span>{{ user?.email || '—' }}
+        <span *ngIf="user?.emailVerified" class="mh-badge mh-badge--green">Verified</span>
+      </span>
+    </div>
+    <div class="mh-profile__field">
+      <span class="mh-label">Phone</span>
+      <span>{{ user?.phone || '—' }}</span>
+    </div>
+    <div class="mh-profile__field">
+      <span class="mh-label">Date of birth</span>
+      <span>{{ user?.dateOfBirth || '—' }}</span>
+    </div>
+  </div>
+
+  <!-- Edit mode -->
+  <form *ngIf="editing" (ngSubmit)="save()" class="mh-profile__form">
+    <div class="mh-field">
+      <label class="mh-label">Full name</label>
+      <input class="mh-input" [(ngModel)]="form.name" name="name" required />
+    </div>
+    <div class="mh-field">
+      <label class="mh-label">Phone</label>
+      <input class="mh-input" [(ngModel)]="form.phone" name="phone" placeholder="10-digit number" />
+    </div>
+    <div class="mh-field">
+      <label class="mh-label">Date of birth</label>
+      <input class="mh-input" type="date" [(ngModel)]="form.dateOfBirth" name="dateOfBirth" />
+    </div>
+    <div class="mh-field mh-profile__form-note">
+      <span class="mh-label">Email</span>
+      <span class="mh-text-dim" style="font-size:13px">{{ user?.email }} — managed by Google</span>
+    </div>
+    <p class="mh-error" *ngIf="error">{{ error }}</p>
+    <div class="mh-profile__actions">
+      <button class="mh-btn mh-btn--gold" type="submit" [disabled]="saving">
+        {{ saving ? 'Saving…' : 'Save' }}
+      </button>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="cancelEdit()">Cancel</button>
+    </div>
+  </form>
+</section>

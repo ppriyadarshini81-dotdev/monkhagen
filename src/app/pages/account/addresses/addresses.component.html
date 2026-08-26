@@ -1,0 +1,62 @@
+<section class="mh-acct-section">
+  <div class="mh-acct-section__head">
+    <h2>Address Book</h2>
+    <button class="mh-btn mh-btn--gold" (click)="openAdd()" *ngIf="!showForm">+ Add Address</button>
+  </div>
+
+  <!-- Address form -->
+  <div class="mh-addr-form mh-card" *ngIf="showForm">
+    <h3>{{ editingId ? 'Edit' : 'New' }} Address</h3>
+    <form (ngSubmit)="save()">
+      <div class="mh-addr-form__grid">
+        <div class="mh-field"><label class="mh-label">Full name</label>
+          <input class="mh-input" [(ngModel)]="form.fullName" name="fullName" required /></div>
+        <div class="mh-field"><label class="mh-label">Phone</label>
+          <input class="mh-input" [(ngModel)]="form.phone" name="phone" required /></div>
+        <div class="mh-field mh-field--full"><label class="mh-label">Address line 1</label>
+          <input class="mh-input" [(ngModel)]="form.addressLine1" name="l1" required /></div>
+        <div class="mh-field mh-field--full"><label class="mh-label">Address line 2</label>
+          <input class="mh-input" [(ngModel)]="form.addressLine2" name="l2" /></div>
+        <div class="mh-field mh-field--full"><label class="mh-label">Landmark</label>
+          <input class="mh-input" [(ngModel)]="form.landmark" name="lm" /></div>
+        <div class="mh-field"><label class="mh-label">City</label>
+          <input class="mh-input" [(ngModel)]="form.city" name="city" required /></div>
+        <div class="mh-field"><label class="mh-label">State</label>
+          <input class="mh-input" [(ngModel)]="form.state" name="state" required /></div>
+        <div class="mh-field"><label class="mh-label">PIN code</label>
+          <input class="mh-input" [(ngModel)]="form.postalCode" name="pin" required /></div>
+        <div class="mh-field"><label class="mh-label">Type</label>
+          <select class="mh-input mh-select" [(ngModel)]="form.addressType" name="type">
+            <option>Home</option><option>Work</option><option>Other</option>
+          </select></div>
+      </div>
+      <p class="mh-error" *ngIf="error">{{ error }}</p>
+      <div class="mh-addr-form__actions">
+        <button class="mh-btn mh-btn--gold" type="submit" [disabled]="saving">
+          {{ saving ? 'Saving…' : 'Save Address' }}</button>
+        <button class="mh-btn mh-btn--ghost" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Address cards -->
+  <div class="mh-addr-list" *ngIf="!showForm">
+    <div *ngIf="addresses.length === 0" class="mh-empty">No saved addresses yet.</div>
+    <div class="mh-addr-card mh-card" *ngFor="let a of addresses">
+      <div class="mh-addr-card__header">
+        <span class="mh-addr-card__type">{{ a.addressType }}</span>
+        <span *ngIf="a.isDefault" class="mh-badge mh-badge--blue">Default</span>
+      </div>
+      <p><strong>{{ a.fullName }}</strong></p>
+      <p>{{ a.addressLine1 }}<span *ngIf="a.addressLine2">, {{ a.addressLine2 }}</span></p>
+      <p *ngIf="a.landmark">Near {{ a.landmark }}</p>
+      <p>{{ a.city }}, {{ a.state }} – {{ a.postalCode }}</p>
+      <p>{{ a.country }} &nbsp;·&nbsp; {{ a.phone }}</p>
+      <div class="mh-addr-card__actions">
+        <button class="mh-link-btn" (click)="openEdit(a)">Edit</button>
+        <button class="mh-link-btn mh-link-btn--danger" (click)="delete(a.id)">Delete</button>
+        <button class="mh-link-btn" *ngIf="!a.isDefault" (click)="setDefault(a.id)">Set Default</button>
+      </div>
+    </div>
+  </div>
+</section>

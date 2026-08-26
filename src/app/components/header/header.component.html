@@ -28,7 +28,7 @@
     <div class="mh-header__actions">
       <ng-container *ngIf="user$ | async as user; else loginLink">
         <div class="mh-user">
-          <span class="mh-user__name">{{ user.name }}</span>
+          <a class="mh-user__name" routerLink="/account/profile">{{ user.name }}</a>
           <button class="mh-linkbtn" (click)="logout()">Logout</button>
         </div>
       </ng-container>

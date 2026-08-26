@@ -6,6 +6,7 @@ export interface User {
   role: 'admin' | 'super_admin' | 'customer';
   profileImage: string | null;
   googleUid: string | null;
+  dateOfBirth?: string | null;
 }
 
 export interface AuthResponse {

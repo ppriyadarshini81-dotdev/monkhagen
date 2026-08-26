@@ -1,0 +1,10 @@
+.mh-credits__balance { padding: 24px; text-align: center; margin-top: 16px; }
+.mh-credits__amount { font-size: 36px; font-weight: 800; margin: 8px 0 6px; }
+.mh-credit-list { display: flex; flex-direction: column; }
+.mh-credit-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--mh-line); }
+.mh-credit-row__info { display: flex; flex-direction: column; gap: 3px; }
+.mh-credit-row__reason { font-size: 14px; }
+.mh-credit-row__date { font-size: 12px; color: var(--mh-text-dim); }
+.mh-credit-row__amount { font-weight: 700; font-size: 15px; }
+.mh-credit-row__amount.credit { color: #059669; }
+.mh-credit-row__amount.debit { color: var(--mh-danger); }

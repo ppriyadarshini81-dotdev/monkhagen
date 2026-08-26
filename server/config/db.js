@@ -505,12 +505,40 @@ async function initSchema() {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS google_uid    VARCHAR(128);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+  `);
+  await pool.query(`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS awb_number   VARCHAR(100);
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS courier_name VARCHAR(100);
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_url TEXT;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipped_at   TIMESTAMPTZ;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS credit_accounts (
+      user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      balance     NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (balance >= 0),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS credit_transactions (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type            VARCHAR(10) NOT NULL CHECK (type IN ('CREDIT','DEBIT')),
+      amount          NUMERIC(10,2) NOT NULL CHECK (amount > 0),
+      reason          VARCHAR(255) NOT NULL,
+      reference_type  VARCHAR(50),
+      reference_id    VARCHAR(255),
+      expires_at      TIMESTAMPTZ,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
   await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS uq_users_google_uid
       ON users (google_uid)
       WHERE google_uid IS NOT NULL;
-  `).catch(() => {}); // ignore if index already exists
+    CREATE INDEX IF NOT EXISTS idx_credit_transactions_user
+      ON credit_transactions(user_id);
+  `).catch(() => {});
 }
 
 async function connectDB() {

@@ -75,6 +75,11 @@ export class AuthService {
     this.userSubject.next(null);
   }
 
+  refreshUser(user: User): void {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    this.userSubject.next(user);
+  }
+
   private persist(res: AuthResponse): void {
     localStorage.setItem(TOKEN_KEY, res.token);
     localStorage.setItem(USER_KEY, JSON.stringify(res.user));

@@ -158,6 +158,38 @@ h3 {
   border-radius: var(--mh-radius);
 }
 
+.mh-success {
+  color: #059669;
+  font-size: 13px;
+}
+
+.mh-empty {
+  padding: 32px 0;
+  text-align: center;
+  color: var(--mh-text-dim);
+  font-size: 14px;
+}
+
+.mh-text-dim {
+  color: var(--mh-text-dim);
+}
+
+.mh-acct-section {
+  padding: 0;
+}
+
+.mh-acct-section h2 {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.mh-acct-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
 .mh-error {
   color: var(--mh-danger);
   font-size: 13px;

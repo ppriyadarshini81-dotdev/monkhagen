@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { adminGuard } from './guards';
+import { adminGuard, customerGuard } from './guards';
 
 export const routes: Routes = [
   {
@@ -54,6 +54,21 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./pages/refund-policy/refund-policy.component').then((m) => m.RefundPolicyComponent),
     title: 'Refund & Return Policy — Monk Hagen'
+  },
+  {
+    path: 'account',
+    canActivate: [customerGuard],
+    loadComponent: () =>
+      import('./pages/account/account.component').then((m) => m.AccountComponent),
+    children: [
+      { path: '', redirectTo: 'profile', pathMatch: 'full' },
+      { path: 'profile',   loadComponent: () => import('./pages/account/profile/profile.component').then((m) => m.AccountProfileComponent) },
+      { path: 'addresses', loadComponent: () => import('./pages/account/addresses/addresses.component').then((m) => m.AccountAddressesComponent) },
+      { path: 'orders',    loadComponent: () => import('./pages/account/orders/orders.component').then((m) => m.AccountOrdersComponent) },
+      { path: 'returns',   loadComponent: () => import('./pages/account/returns/returns.component').then((m) => m.AccountReturnsComponent) },
+      { path: 'credits',   loadComponent: () => import('./pages/account/credits/credits.component').then((m) => m.AccountCreditsComponent) },
+    ],
+    title: 'My Account — Monk Hagen'
   },
   { path: '**', redirectTo: '' }
 ];

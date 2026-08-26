@@ -1,0 +1,15 @@
+.mh-addr-list { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
+.mh-addr-card { padding: 20px; }
+.mh-addr-card p { font-size: 14px; color: var(--mh-text-dim); margin: 3px 0; }
+.mh-addr-card p strong { color: var(--mh-text); }
+.mh-addr-card__header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.mh-addr-card__type { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mh-text-dim); }
+.mh-addr-card__actions { display: flex; gap: 14px; margin-top: 12px; border-top: 1px solid var(--mh-line); padding-top: 12px; }
+.mh-link-btn { background: none; border: none; font-size: 13px; font-weight: 600; color: var(--mh-accent); cursor: pointer; padding: 0; }
+.mh-link-btn--danger { color: var(--mh-danger); }
+.mh-badge--blue { background: #dbeafe; color: #1e40af; }
+.mh-addr-form { padding: 24px; margin-top: 20px; }
+.mh-addr-form h3 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+.mh-addr-form__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.mh-field--full { grid-column: 1 / -1; }
+.mh-addr-form__actions { display: flex; gap: 12px; margin-top: 20px; }

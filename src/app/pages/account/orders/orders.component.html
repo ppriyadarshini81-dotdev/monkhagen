@@ -1,0 +1,68 @@
+<section class="mh-acct-section">
+  <h2>My Orders</h2>
+
+  <div *ngIf="loading" class="mh-empty">Loading…</div>
+  <div *ngIf="!loading && orders.length === 0" class="mh-empty">No orders yet.</div>
+
+  <div class="mh-orders" *ngIf="!loading && orders.length > 0">
+    <div class="mh-order-card mh-card" *ngFor="let o of orders">
+      <!-- Header row -->
+      <div class="mh-order-card__head" (click)="toggle(o.id)">
+        <div class="mh-order-card__info">
+          <span class="mh-order-card__num">#{{ o.orderNumber }}</span>
+          <span class="mh-order-card__date">{{ o.createdAt | date:'mediumDate' }}</span>
+        </div>
+        <div class="mh-order-card__right">
+          <span class="mh-status" [class]="'mh-status--' + statusClass(o.status)">{{ o.status }}</span>
+          <span class="mh-order-card__total">₹{{ o.totalAmount | number }}</span>
+          <span class="mh-order-card__caret">{{ expandedId === o.id ? '▲' : '▼' }}</span>
+        </div>
+      </div>
+
+      <!-- Product thumbnails preview -->
+      <div class="mh-order-card__items">
+        <span *ngFor="let i of o.items.slice(0,4)" class="mh-order-card__pill">
+          {{ i.productName }}<span *ngIf="i.size"> / {{ i.size }}</span> × {{ i.quantity }}
+        </span>
+        <span *ngIf="o.items.length > 4" class="mh-text-dim">+{{ o.items.length - 4 }} more</span>
+      </div>
+
+      <!-- Expanded detail -->
+      <div class="mh-order-detail" *ngIf="expandedId === o.id">
+        <table class="mh-order-table">
+          <thead><tr><th>Product</th><th>Size/Color</th><th>Qty</th><th>Price</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let i of o.items">
+              <td>{{ i.productName }}</td>
+              <td>{{ i.size || '—' }} / {{ i.color || '—' }}</td>
+              <td>{{ i.quantity }}</td>
+              <td>₹{{ i.totalPrice | number }}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="mh-order-summary">
+          <div><span>Subtotal</span><span>₹{{ o.subtotal | number }}</span></div>
+          <div><span>Shipping</span><span>₹{{ o.shippingAmount | number }}</span></div>
+          <div class="mh-order-summary__total"><span>Total</span><span>₹{{ o.totalAmount | number }}</span></div>
+          <div><span>Payment</span><span>{{ o.paymentMethod }} · {{ o.paymentStatus }}</span></div>
+        </div>
+
+        <div class="mh-order-address" *ngIf="o.address">
+          <strong>Shipped to</strong>
+          <p>{{ o.address.fullName }} · {{ o.address.phone }}</p>
+          <p>{{ o.address.addressLine1 }}<span *ngIf="o.address.addressLine2">, {{ o.address.addressLine2 }}</span></p>
+          <p>{{ o.address.city }}, {{ o.address.state }} – {{ o.address.postalCode }}</p>
+        </div>
+
+        <div class="mh-order-tracking" *ngIf="o.awbNumber || o.courierName">
+          <strong>Tracking</strong>
+          <p>{{ o.courierName }} · AWB: {{ o.awbNumber }}</p>
+          <a *ngIf="o.trackingUrl" [href]="o.trackingUrl" target="_blank" class="mh-link-btn">
+            Track shipment →
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

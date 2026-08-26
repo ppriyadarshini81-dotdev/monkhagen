@@ -1,0 +1,27 @@
+<section class="mh-acct-section">
+  <h2>Returns</h2>
+  <p class="mh-text-dim" style="font-size:13px;margin:8px 0 20px">
+    To request a return on a delivered order, go to <strong>My Orders</strong> and contact support within 7 days of delivery.
+  </p>
+
+  <div *ngIf="loading" class="mh-empty">Loading…</div>
+  <div *ngIf="!loading && returns.length === 0" class="mh-empty">No return requests yet.</div>
+
+  <div class="mh-returns" *ngIf="!loading && returns.length > 0">
+    <div class="mh-return-card mh-card" *ngFor="let r of returns">
+      <div class="mh-return-card__head">
+        <div>
+          <div class="mh-return-card__num">#{{ r.returnNumber }}</div>
+          <div class="mh-text-dim" style="font-size:12px">{{ r.requestedAt | date:'mediumDate' }}</div>
+        </div>
+        <span class="mh-status" [class]="'mh-status--' + statusClass(r.status)">{{ r.status }}</span>
+      </div>
+      <p style="font-size:14px;margin:10px 0 4px"><strong>Reason:</strong> {{ r.reason }}</p>
+      <p *ngIf="r.comments" style="font-size:13px;color:var(--mh-text-dim)">{{ r.comments }}</p>
+      <div *ngIf="r.refundAmount > 0" style="font-size:14px;margin-top:8px">
+        Refund: ₹{{ r.refundAmount }} ·
+        <span [class]="'mh-status mh-status--' + (r.refundStatus === 'refunded' ? 'green' : 'grey')">{{ r.refundStatus }}</span>
+      </div>
+    </div>
+  </div>
+</section>

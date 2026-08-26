@@ -26,6 +26,7 @@ function format(row) {
     role: row.role_name,
     profileImage: row.profile_image || null,
     googleUid: row.google_uid || null,
+    dateOfBirth: row.date_of_birth || null,
     phoneVerified: row.phone_verified,
     emailVerified: row.email_verified,
     isActive: row.is_active,
@@ -79,6 +80,15 @@ const User = {
   },
   async updateLastLogin(id) {
     await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [id]);
+  },
+  async updateProfile(id, { name, phone, dateOfBirth }) {
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET name = $1, phone = $2, date_of_birth = $3, updated_at = NOW()
+       WHERE id = $4 RETURNING id`,
+      [name, phone || null, dateOfBirth || null, id]
+    );
+    return this.findById(rows[0].id);
   },
   async findByGoogleUid(googleUid) {
     const { rows } = await pool.query(`${BASE_Q} WHERE u.google_uid = $1`, [googleUid]);

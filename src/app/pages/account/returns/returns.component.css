@@ -1,0 +1,4 @@
+.mh-returns { display: flex; flex-direction: column; gap: 14px; }
+.mh-return-card { padding: 18px 20px; }
+.mh-return-card__head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.mh-return-card__num { font-weight: 700; font-size: 15px; }
