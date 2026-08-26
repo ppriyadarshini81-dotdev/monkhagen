@@ -24,6 +24,8 @@ function format(row) {
     email: row.email || null,
     phone: row.phone || null,
     role: row.role_name,
+    profileImage: row.profile_image || null,
+    googleUid: row.google_uid || null,
     phoneVerified: row.phone_verified,
     emailVerified: row.email_verified,
     isActive: row.is_active,
@@ -77,6 +79,41 @@ const User = {
   },
   async updateLastLogin(id) {
     await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [id]);
+  },
+  async findByGoogleUid(googleUid) {
+    const { rows } = await pool.query(`${BASE_Q} WHERE u.google_uid = $1`, [googleUid]);
+    return wrapRow(rows[0]);
+  },
+  async createGoogleCustomer({ googleUid, email, name, profileImage, emailVerified }) {
+    const roleId = await getRoleId('customer');
+    const { rows } = await pool.query(
+      `INSERT INTO users (name, email, google_uid, profile_image, role_id, email_verified, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING id`,
+      [name, email, googleUid, profileImage, roleId, emailVerified]
+    );
+    return this.findById(rows[0].id);
+  },
+  async linkGoogleUid(id, { uid, picture, name }) {
+    await pool.query(
+      `UPDATE users
+       SET google_uid = $1, profile_image = $2,
+           name = COALESCE(NULLIF($3, ''), name),
+           last_login_at = NOW(), updated_at = NOW()
+       WHERE id = $4`,
+      [uid, picture, name, id]
+    );
+    return this.findById(id);
+  },
+  async updateGoogleUser(id, { name, picture }) {
+    await pool.query(
+      `UPDATE users
+       SET profile_image = $1,
+           name = COALESCE(NULLIF($2, ''), name),
+           last_login_at = NOW(), updated_at = NOW()
+       WHERE id = $3`,
+      [picture, name, id]
+    );
+    return this.findById(id);
   },
   async deleteMany() {
     await pool.query('DELETE FROM users');

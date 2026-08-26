@@ -500,6 +500,17 @@ async function initSchema() {
     );
 
   `);
+
+  // Safe migrations — add Google auth columns to existing deployments
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS google_uid    VARCHAR(128);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_users_google_uid
+      ON users (google_uid)
+      WHERE google_uid IS NOT NULL;
+  `).catch(() => {}); // ignore if index already exists
 }
 
 async function connectDB() {

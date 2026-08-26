@@ -3,7 +3,9 @@ export interface User {
   name: string;
   email: string | null;
   phone: string | null;
-  role: 'admin' | 'customer';
+  role: 'admin' | 'super_admin' | 'customer';
+  profileImage: string | null;
+  googleUid: string | null;
 }
 
 export interface AuthResponse {

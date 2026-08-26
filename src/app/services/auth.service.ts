@@ -51,10 +51,18 @@ export class AuthService {
       .pipe(tap((res) => this.persist(res)));
   }
 
+  loginWithGoogle(idToken: string): Observable<AuthResponse> {
+    return this.http
+      .post<AuthResponse>(`${this.api}/google`, { idToken })
+      .pipe(tap((res) => this.persist(res)));
+  }
+
+  /** @deprecated OTP login replaced by Google auth */
   sendOtp(phone: string): Observable<{ message: string }> {
     return this.http.post<{ message: string }>(`${this.api}/send-otp`, { phone });
   }
 
+  /** @deprecated OTP login replaced by Google auth */
   verifyOtp(phone: string, otp: string, name?: string): Observable<AuthResponse> {
     return this.http
       .post<AuthResponse>(`${this.api}/verify-otp`, { phone, otp, name })

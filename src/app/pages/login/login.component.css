@@ -7,6 +7,25 @@
   background: radial-gradient(circle at 50% 0%, rgba(201, 163, 91, 0.08), transparent 55%);
 }
 
+.mh-btn--google {
+  background: #fff;
+  border: 1.5px solid var(--mh-line);
+  color: #3c4043;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.mh-btn--google:hover:not(:disabled) {
+  background: #f8f8f8;
+  border-color: #c8c8c8;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  transform: translateY(-1px);
+}
+
 .mh-auth__card {
   width: 100%;
   max-width: 420px;
