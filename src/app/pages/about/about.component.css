@@ -10,10 +10,7 @@
 .mh-about-hero__bg {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(to top, rgba(11, 11, 12, 0.96), rgba(11, 11, 12, 0.4)),
-    url('https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=1600&q=80')
-      center / cover;
+  /* background set via [style.background] in template from media-assets.ts */
 }
 
 .mh-about-hero__content {

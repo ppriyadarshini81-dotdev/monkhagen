@@ -7,6 +7,7 @@ import { Category } from '../../models/category.model';
 import { ProductService } from '../../services/product.service';
 import { CategoryService } from '../../services/category.service';
 import { ProductCardComponent } from '../../components/product-card/product-card.component';
+import { MEDIA } from '../../config/media-assets';
 
 @Component({
   selector: 'app-home',
@@ -21,17 +22,13 @@ export class HomeComponent implements OnInit, OnDestroy {
   categories: Category[] = [];
   loading = true;
 
-  // Rotating hero videos (muted, autoplay, looped one at a time).
-  videos = [
-    'https://cdn.coverr.co/videos/coverr-a-woman-in-a-fashion-store-1573/1080p.mp4',
-    'https://cdn.coverr.co/videos/coverr-walking-on-the-street-9438/1080p.mp4',
-    'https://cdn.coverr.co/videos/coverr-a-man-in-a-denim-jacket-2999/1080p.mp4'
-  ];
-  posters = [
-    'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1600&q=80',
-    'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1600&q=80',
-    'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1600&q=80'
-  ];
+  readonly videos  = MEDIA.hero.videos;
+  readonly posters = MEDIA.hero.posters;
+  readonly media   = MEDIA;
+
+  // CSS background strings built once from central config
+  readonly editorialBg = `linear-gradient(to right, rgba(11,11,12,0.92), rgba(11,11,12,0.35)), url(${MEDIA.home.editorialBg}) center/cover`;
+
   currentVideo = 0;
   private timer?: ReturnType<typeof setInterval>;
 

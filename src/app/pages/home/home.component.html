@@ -92,11 +92,11 @@
 <!-- ====== CATEGORY SPLIT ====== -->
 <section class="mh-split mh-container">
   <a class="mh-split__card" routerLink="/products">
-    <img src="https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=1000&q=80" alt="Hoodies" />
+    <img [src]="media.home.categoryHoodies" alt="Hoodies" />
     <div class="mh-split__label"><span>Outerwear</span><h3>Hoodies & Jackets</h3></div>
   </a>
   <a class="mh-split__card" routerLink="/products">
-    <img src="https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=1000&q=80" alt="Tees" />
+    <img [src]="media.home.categoryTees" alt="Tees" />
     <div class="mh-split__label"><span>Essentials</span><h3>Heavyweight Tees</h3></div>
   </a>
 </section>
@@ -117,7 +117,7 @@
 
 <!-- ====== EDITORIAL BANNER ====== -->
 <section class="mh-editorial">
-  <div class="mh-editorial__bg"></div>
+  <div class="mh-editorial__bg" [style.background]="editorialBg"></div>
   <div class="mh-container mh-editorial__content">
     <span class="mh-eyebrow">Lookbook · SS Collection</span>
     <h2>Built for the<br />everyday ascent.</h2>
