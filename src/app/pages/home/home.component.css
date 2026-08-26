@@ -7,6 +7,99 @@
   overflow: hidden;
 }
 
+/* ===== INSTAGRAM FEED ===== */
+.mh-insta {
+  padding: 56px 0 48px;
+  background: var(--mh-bg);
+  overflow: hidden;
+}
+
+.mh-insta__track {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  position: relative;
+}
+
+.mh-insta__post {
+  flex: 1;
+  aspect-ratio: 1;
+  overflow: hidden;
+  position: relative;
+  display: block;
+}
+
+.mh-insta__post img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.45s ease;
+  display: block;
+}
+
+.mh-insta__post:hover img {
+  transform: scale(1.06);
+}
+
+.mh-insta__overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: background 0.3s ease, opacity 0.3s ease;
+}
+
+.mh-insta__post:hover .mh-insta__overlay {
+  background: rgba(0, 0, 0, 0.38);
+  opacity: 1;
+}
+
+.mh-insta__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: #111;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  transition: background 0.2s ease;
+}
+
+.mh-insta__arrow:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mh-insta__arrow--prev { left: 14px; }
+.mh-insta__arrow--next { right: 14px; }
+.mh-insta__arrow:hover:not(:disabled) { background: #fff; }
+
+.mh-insta__cta {
+  display: flex;
+  justify-content: center;
+  margin-top: 28px;
+}
+
+.mh-insta__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
 .mh-hero__videos {
   position: absolute;
   inset: 0;

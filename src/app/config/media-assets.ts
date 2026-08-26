@@ -30,5 +30,21 @@ export const MEDIA = {
   // ── About page ────────────────────────────────────────────
   about: {
     heroBg: 'https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=1600&q=80'
+  },
+
+  // ── Instagram feed — replace with your actual post image URLs ──
+  // Add/remove items freely; the carousel adjusts automatically.
+  instagram: {
+    handle: 'monkhagen',   // your Instagram handle (no @)
+    profileUrl: 'https://www.instagram.com/monkhagen.in',
+    posts: [
+      { img: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' },
+      { img: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600&q=80',   url: 'https://www.instagram.com/monkhagen.in' },
+      { img: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=600&q=80',   url: 'https://www.instagram.com/monkhagen.in' },
+      { img: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' },
+      { img: 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' },
+      { img: 'https://images.unsplash.com/photo-1576871337622-98d48d1cf531?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' },
+      { img: 'https://images.unsplash.com/photo-1544022613-e87ca75a784a?w=600&q=80',   url: 'https://www.instagram.com/monkhagen.in' }
+    ]
   }
 };

@@ -29,6 +29,17 @@ export class HomeComponent implements OnInit, OnDestroy {
   // CSS background strings built once from central config
   readonly editorialBg = `linear-gradient(to right, rgba(11,11,12,0.92), rgba(11,11,12,0.35)), url(${MEDIA.home.editorialBg}) center/cover`;
 
+  readonly instaFeed  = MEDIA.instagram.posts;
+  readonly instaUrl   = MEDIA.instagram.profileUrl;
+  instaOffset = 0;
+  readonly instaVisible = 5;
+
+  get instaSlice() {
+    return this.instaFeed.slice(this.instaOffset, this.instaOffset + this.instaVisible);
+  }
+  instaNext() { if (this.instaOffset + this.instaVisible < this.instaFeed.length) this.instaOffset++; }
+  instaPrev() { if (this.instaOffset > 0) this.instaOffset--; }
+
   currentVideo = 0;
   private timer?: ReturnType<typeof setInterval>;
 
@@ -48,19 +59,19 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   testimonials = [
     {
-      quote: 'The hoodie is genuinely the heaviest, best-made piece I own. Worth every rupee.',
-      name: 'Aarav K.',
-      role: 'Verified Buyer'
+      quote: 'I wanted to create pieces I’d genuinely want in my own wardrobe.',
+      name: '',
+      role: ''
     },
     {
-      quote: 'Fit is perfect and the fabric just doesn\'t quit. Already on my third order.',
-      name: 'Meera S.',
-      role: 'Verified Buyer'
+      quote: 'The first collection is personal. Every piece represents what I wanted this brand to become.',
+      name: '',
+      role: ''
     },
     {
-      quote: 'Limited drops mean nobody else has what I\'m wearing. That\'s the whole point.',
-      name: 'Dev R.',
-      role: 'Verified Buyer'
+      quote: 'I’ve spent months imagining, refining and building this. Now it’s almost yours.',
+      name: '',
+      role: ''
     }
   ];
 
