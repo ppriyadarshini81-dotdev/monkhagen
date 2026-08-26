@@ -1,4 +1,4 @@
-const admin = require('../config/firebaseAdmin');
+const { getAuth } = require('../config/firebaseAdmin');
 const User = require('../models/User');
 const { signToken } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
@@ -13,7 +13,7 @@ exports.googleLogin = asyncHandler(async (req, res) => {
 
   let decoded;
   try {
-    decoded = await admin.auth().verifyIdToken(idToken);
+    decoded = await getAuth().verifyIdToken(idToken);
   } catch {
     return res.status(401).json({ message: 'Invalid or expired Firebase token.' });
   }
