@@ -8,7 +8,7 @@ export class UploadService {
 
   constructor(private http: HttpClient) {}
 
-  // Uploads image files to Cloudinary via the API and returns their URLs.
+  // Uploads files to Cloudflare R2 via the API and returns their public URLs.
   uploadImages(files: FileList | File[]): Observable<{ urls: string[] }> {
     const form = new FormData();
     Array.from(files).forEach((file) => form.append('images', file));

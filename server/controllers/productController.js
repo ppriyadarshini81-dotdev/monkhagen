@@ -1,5 +1,6 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const { deleteFile } = require('../config/r2');
 const asyncHandler = require('../middleware/asyncHandler');
 
 // GET /api/products?category=&search=&featured=
@@ -33,16 +34,29 @@ exports.create = asyncHandler(async (req, res) => {
 
 // PUT /api/products/:id — admin
 exports.update = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id, { full: false });
+  const product = await Product.findById(req.params.id, { full: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
-  const updated = await Product.update(req.params.id, sanitize(req.body));
+
+  // Delete R2 objects for images removed from the product
+  const payload = sanitize(req.body);
+  if (Array.isArray(payload.images)) {
+    const newUrls = new Set(payload.images.map((i) => i?.url ?? i));
+    const removed = product.images.filter((url) => !newUrls.has(url));
+    await Promise.allSettled(removed.map(deleteFile));
+  }
+
+  const updated = await Product.update(req.params.id, payload);
   res.json(updated);
 });
 
 // DELETE /api/products/:id — admin
 exports.remove = asyncHandler(async (req, res) => {
-  const product = await Product.findByIdAndDelete(req.params.id);
+  const product = await Product.findById(req.params.id, { full: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
+
+  // Delete all R2 images before removing the product record
+  await Promise.allSettled(product.images.map(deleteFile));
+  await Product.findByIdAndDelete(req.params.id);
   res.json({ message: 'Product deleted.', id: product.id });
 });
 
