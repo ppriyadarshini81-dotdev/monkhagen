@@ -14,9 +14,9 @@ export const MEDIA = {
       'https://cdn.coverr.co/videos/coverr-a-man-in-a-denim-jacket-2999/1080p.mp4'
     ],
     posters: [
-      'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1600&q=80',
-      'https://images.unsplash.com/photo-1483985988355-763728e1935b?w=1600&q=80',
-      'https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1600&q=80'
+      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/banner1.png',
+      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/banner5.png',
+      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/banner4.png'
     ]
   },
 

@@ -8,8 +8,8 @@
   --mh-text: #1a1a18;
   --mh-text-dim: #7a7a72;
   --mh-line: #e8e5e0;
-  --mh-accent: #b8903e; /* deep gold */
-  --mh-accent-2: #f0ede8; /* warm ivory */
+  --mh-accent: #2140E6; /* primary blue */
+  --mh-accent-2: #e8ecfd; /* light blue tint */
   --mh-danger: #c0392b;
   --mh-radius: 10px;
   --mh-maxw: 1240px;
@@ -99,7 +99,7 @@ h3 {
 
 .mh-btn--gold {
   background: var(--mh-accent);
-  color: #161300;
+  color: #ffffff;
 }
 
 .mh-btn--ghost {

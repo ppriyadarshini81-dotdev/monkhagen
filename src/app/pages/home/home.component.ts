@@ -90,7 +90,7 @@ export class HomeComponent implements OnInit, OnDestroy {
 
     this.timer = setInterval(() => {
       this.currentVideo = (this.currentVideo + 1) % this.videos.length;
-    }, 8000);
+    }, 6000);
   }
 
   selectVideo(index: number): void {
