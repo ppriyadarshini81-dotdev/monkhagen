@@ -49,5 +49,11 @@ export const routes: Routes = [
       import('./pages/about/about.component').then((m) => m.AboutComponent),
     title: 'About — Monk Hagen'
   },
+  {
+    path: 'refund-policy',
+    loadComponent: () =>
+      import('./pages/refund-policy/refund-policy.component').then((m) => m.RefundPolicyComponent),
+    title: 'Refund & Return Policy — Monk Hagen'
+  },
   { path: '**', redirectTo: '' }
 ];
