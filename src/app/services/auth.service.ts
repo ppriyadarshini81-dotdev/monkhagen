@@ -5,6 +5,7 @@ import { AuthResponse, User } from '../models/user.model';
 
 const TOKEN_KEY = 'mh_token';
 const USER_KEY = 'mh_user';
+const PROFILE_HINT_KEY = 'mh_show_profile_hint';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -62,6 +63,7 @@ export class AuthService {
   logout(): void {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(PROFILE_HINT_KEY);
     this.userSubject.next(null);
   }
 
@@ -73,6 +75,7 @@ export class AuthService {
   private persist(res: AuthResponse): void {
     localStorage.setItem(TOKEN_KEY, res.token);
     localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+    sessionStorage.setItem(PROFILE_HINT_KEY, '1');
     this.userSubject.next(res.user);
   }
 }

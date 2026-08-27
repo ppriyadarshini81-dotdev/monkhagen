@@ -28,7 +28,16 @@
     <div class="mh-header__actions">
       <ng-container *ngIf="user$ | async as user; else loginLink">
         <div class="mh-user">
-          <a class="mh-user__name" routerLink="/account/profile">{{ user.name }}</a>
+          <div class="mh-user__profile">
+            <a class="mh-user__name"
+               [class.mh-user__name--highlight]="showProfileHint"
+               routerLink="/account/profile"
+               (click)="dismissProfileHint()">{{ user.name }}</a>
+            <a class="mh-user__hint"
+               *ngIf="showProfileHint"
+               routerLink="/account/profile"
+               (click)="dismissProfileHint()">You can edit profile here</a>
+          </div>
           <button class="mh-linkbtn" (click)="logout()">Logout</button>
         </div>
       </ng-container>

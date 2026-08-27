@@ -29,7 +29,8 @@
   display: block;
 }
 
-.mh-insta__post img {
+.mh-insta__post img,
+.mh-insta__post video {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -37,7 +38,8 @@
   display: block;
 }
 
-.mh-insta__post:hover img {
+.mh-insta__post:hover img,
+.mh-insta__post:hover video {
   transform: scale(1.06);
 }
 
@@ -306,11 +308,12 @@
 
 .mh-cat__overlay h3 {
   font-size: 17px;
+  color: #fff;
 }
 
 .mh-cat__overlay span {
   font-size: 12px;
-  color: var(--mh-text-dim);
+  color: #fff;
   margin-top: 4px;
 }
 
@@ -318,35 +321,23 @@
 .mh-editorial {
   position: relative;
   margin: 64px 0;
-  min-height: 460px;
-  display: flex;
-  align-items: center;
+  height: clamp(360px, 46vw, 620px);
   overflow: hidden;
+  background: #071d57;
 }
 
-.mh-editorial__bg {
-  position: absolute;
-  inset: 0;
-  /* background set via [style.background] in template from media-assets.ts */
-}
-
-.mh-editorial__content {
-  position: relative;
-}
-
-.mh-editorial__content h2 {
-  font-size: clamp(34px, 6vw, 68px);
-  font-weight: 800;
-  margin: 14px 0 16px;
-}
-
-.mh-editorial__content p {
-  color: var(--mh-text-dim);
-  font-size: 17px;
-  margin-bottom: 26px;
+.mh-editorial__video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* ===== TESTIMONIALS ===== */
+.mh-testimonial-section {
+  padding-bottom: 32px;
+}
+
 .mh-testimonials {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -355,6 +346,14 @@
 
 .mh-testimonial {
   padding: 28px;
+  transition: transform 0.22s ease, border-color 0.22s ease, background 0.22s ease, box-shadow 0.22s ease;
+}
+
+.mh-testimonial:hover {
+  transform: translateY(-5px);
+  background: var(--mh-accent-2);
+  border-color: rgba(33, 64, 230, 0.42);
+  box-shadow: 0 14px 30px rgba(33, 64, 230, 0.12);
 }
 
 .mh-testimonial__stars {
@@ -381,7 +380,7 @@
 
 /* ===== NEWSLETTER ===== */
 .mh-newsletter {
-  margin-top: 64px;
+  margin-top: 0;
   padding: 72px 0;
   background:
     radial-gradient(circle at 80% 50%, rgba(201, 163, 91, 0.1), transparent 55%),

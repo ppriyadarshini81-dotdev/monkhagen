@@ -26,9 +26,6 @@ export class HomeComponent implements OnInit, OnDestroy {
   readonly posters = MEDIA.hero.posters;
   readonly media   = MEDIA;
 
-  // CSS background strings built once from central config
-  readonly editorialBg = `linear-gradient(to right, rgba(11,11,12,0.92), rgba(11,11,12,0.35)), url(${MEDIA.home.editorialBg}) center/cover`;
-
   readonly instaFeed  = MEDIA.instagram.posts;
   readonly instaUrl   = MEDIA.instagram.profileUrl;
   instaOffset = 0;
@@ -37,11 +34,19 @@ export class HomeComponent implements OnInit, OnDestroy {
   get instaSlice() {
     return this.instaFeed.slice(this.instaOffset, this.instaOffset + this.instaVisible);
   }
-  instaNext() { if (this.instaOffset + this.instaVisible < this.instaFeed.length) this.instaOffset++; }
-  instaPrev() { if (this.instaOffset > 0) this.instaOffset--; }
+  instaNext(): void {
+    this.advanceInstagram(1);
+    this.startInstagramTimer();
+  }
+
+  instaPrev(): void {
+    this.advanceInstagram(-1);
+    this.startInstagramTimer();
+  }
 
   currentVideo = 0;
-  private timer?: ReturnType<typeof setInterval>;
+  private heroTimer?: ReturnType<typeof setInterval>;
+  private instagramTimer?: ReturnType<typeof setInterval>;
 
   marquee = [
     'NEW DROP — MONK HEAVY HOODIE',
@@ -51,10 +56,10 @@ export class HomeComponent implements OnInit, OnDestroy {
   ];
 
   perks = [
-    { icon: '🚚', title: 'Free Shipping', text: 'On all orders over ₹2999, across India.' },
-    { icon: '↩️', title: 'Easy Returns', text: '7-day no-questions returns on every piece.' },
-    { icon: '🧵', title: 'Heavyweight Fabric', text: '240–400 GSM premium cottons & fleece.' },
-    { icon: '🔒', title: 'Secure Checkout', text: 'Encrypted payments and data protection.' }
+    { icon: '🚚', title: 'Shipping', text: 'Shipping \n on any orders all across India. ' },
+    { icon: '↩️', title: 'Easy Returns', text: '\nEasy returns within 7 days of delivery.' },
+    { icon: '🧵', title: 'Heavyweight Fabric', text: 'Premium Fabrics \nCrafted with quality fabrics for lasting comfort.' },
+    { icon: '🔒', title: 'Secure Checkout', text: 'Secure Checkout \nSafe and encrypted online payments.' }
   ];
 
   testimonials = [
@@ -99,18 +104,39 @@ export class HomeComponent implements OnInit, OnDestroy {
       next: (cats) => (this.categories = cats)
     });
 
-    this.timer = setInterval(() => {
+    this.heroTimer = setInterval(() => {
       this.currentVideo = (this.currentVideo + 1) % this.videos.length;
     }, 6000);
+
+    this.startInstagramTimer();
   }
 
   selectVideo(index: number): void {
     this.currentVideo = index;
   }
 
+  private advanceInstagram(direction: 1 | -1): void {
+    const maxOffset = Math.max(0, this.instaFeed.length - this.instaVisible);
+    if (direction === 1) {
+      this.instaOffset = this.instaOffset >= maxOffset ? 0 : this.instaOffset + 1;
+    } else {
+      this.instaOffset = this.instaOffset <= 0 ? maxOffset : this.instaOffset - 1;
+    }
+  }
+
+  private startInstagramTimer(): void {
+    if (this.instagramTimer) {
+      clearInterval(this.instagramTimer);
+    }
+    this.instagramTimer = setInterval(() => this.advanceInstagram(1), 2000);
+  }
+
   ngOnDestroy(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
+    if (this.heroTimer) {
+      clearInterval(this.heroTimer);
+    }
+    if (this.instagramTimer) {
+      clearInterval(this.instagramTimer);
     }
   }
 }
