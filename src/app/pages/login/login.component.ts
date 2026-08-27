@@ -47,7 +47,12 @@ export class LoginComponent {
     try {
       const idToken = await this.firebase.signInWithGoogle();
       this.auth.loginWithGoogle(idToken).subscribe({
-        next: () => { this.loading = false; this.redirectAfterLogin(); },
+        next: (res) => {
+          this.loading = false;
+          // Customers always land on their account after Google login
+          const redirect = this.route.snapshot.queryParamMap.get('redirect');
+          this.router.navigateByUrl(redirect || (res.user.role === 'customer' ? '/account/profile' : '/'));
+        },
         error: (err: any) => {
           this.loading = false;
           this.error = err?.error?.message || 'Google sign-in failed.';

@@ -7,6 +7,9 @@ export interface User {
   profileImage: string | null;
   googleUid: string | null;
   dateOfBirth?: string | null;
+  emailVerified?: boolean;
+  phoneVerified?: boolean;
+  isActive?: boolean;
 }
 
 export interface AuthResponse {

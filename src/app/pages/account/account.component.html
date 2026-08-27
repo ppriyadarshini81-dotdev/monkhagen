@@ -8,11 +8,11 @@
     <div class="mh-acct__email">{{ user?.email }}</div>
 
     <nav class="mh-acct__nav">
-      <a routerLink="profile"      routerLinkActive="active">Profile</a>
-      <a routerLink="orders"       routerLinkActive="active">My Orders</a>
-      <a routerLink="addresses"    routerLinkActive="active">Addresses</a>
-      <a routerLink="returns"      routerLinkActive="active">Returns</a>
-      <a routerLink="credits"      routerLinkActive="active">Credits</a>
+      <a routerLink="/account/profile"      routerLinkActive="active">Profile</a>
+      <a routerLink="/account/orders"       routerLinkActive="active">My Orders</a>
+      <a routerLink="/account/addresses"    routerLinkActive="active">Addresses</a>
+      <a routerLink="/account/returns"      routerLinkActive="active">Returns</a>
+      <a routerLink="/account/credits"      routerLinkActive="active">Credits</a>
       <button class="mh-acct__logout" (click)="logout()">Logout</button>
     </nav>
   </aside>

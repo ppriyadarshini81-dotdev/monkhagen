@@ -38,8 +38,8 @@ export const MEDIA = {
     handle: 'monkhagen',   // your Instagram handle (no @)
     profileUrl: 'https://www.instagram.com/monkhagen.in',
     posts: [
-      { img: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' },
-      { img: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?w=600&q=80',   url: 'https://www.instagram.com/monkhagen.in' },
+      { img: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta0.png', url: 'https://www.instagram.com/monkhagen.in' },
+      { img: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta1.png',   url: 'https://www.instagram.com/monkhagen.in' },
       { img: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=600&q=80',   url: 'https://www.instagram.com/monkhagen.in' },
       { img: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' },
       { img: 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' },
