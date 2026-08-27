@@ -13,8 +13,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 function formatVariant(row) {
   return {
     id: row.id,
-    size: row.size,
-    color: row.color,
+    size: row.size_name || row.size,
+    color: row.color_name || row.color,
+    sizeId: row.size_id || null,
+    colorId: row.color_id || null,
     sku: row.sku || null,
     price: row.price !== null ? Number(row.price) : null,
     stock: row.stock,
@@ -33,13 +35,21 @@ function formatImage(row) {
 }
 
 // Produces a response compatible with the existing Angular frontend
-function formatRow(row, images = [], variants = []) {
+function formatRow(row, images = [], variants = [], sizeDetails = [], colorDetails = []) {
   const activeVariants = variants.filter((v) => v.isActive);
-  const sizes = [...new Set(activeVariants.map((v) => v.size))];
-  const colors = [...new Set(activeVariants.map((v) => v.color))];
-  const stock = activeVariants.reduce((s, v) => s + v.stock, 0);
+  const sizes = sizeDetails.length
+    ? sizeDetails.map((detail) => detail.name)
+    : [...new Set(activeVariants.map((v) => v.size))];
+  const colors = colorDetails.length
+    ? colorDetails.map((detail) => detail.name)
+    : [...new Set(activeVariants.map((v) => v.color))];
+  const stock = variants.length
+    ? activeVariants.reduce((s, v) => s + v.stock, 0)
+    : Number(row.agg_stock || 0);
   const prices = activeVariants.map((v) => v.price !== null ? v.price : Number(row.base_price));
-  const price = prices.length ? Math.min(...prices) : Number(row.base_price);
+  const price = prices.length
+    ? Math.min(...prices)
+    : Number(row.min_price !== null && row.min_price !== undefined ? row.min_price : row.base_price);
   return {
     id: row.id,
     name: row.name,
@@ -48,7 +58,8 @@ function formatRow(row, images = [], variants = []) {
     basePrice: Number(row.base_price),
     price,
     featured: row.featured,
-    badge: row.badge,
+    badge: row.badge_name || '',
+    badgeId: row.badge_id || null,
     isActive: row.is_active,
     // Backward-compat fields the Angular frontend already uses
     category: row.category_name || null,
@@ -59,6 +70,8 @@ function formatRow(row, images = [], variants = []) {
     variants,
     sizes,
     colors,
+    sizeIds: sizeDetails.map((detail) => detail.id),
+    colorIds: colorDetails.map((detail) => detail.id),
     stock,
     rating: 0,
     createdAt: row.created_at,
@@ -72,11 +85,13 @@ const LIST_Q = `
     p.*,
     c.name  AS category_name,
     c.slug  AS category_slug,
+    b.name  AS badge_name,
     pi.image_url AS primary_image_url,
     COALESCE(v.total_stock, 0) AS agg_stock,
     v.min_price
   FROM products p
   JOIN categories c ON c.id = p.category_id
+  LEFT JOIN badges b ON b.id = p.badge_id
   LEFT JOIN product_images pi
     ON pi.product_id = p.id AND pi.is_primary = TRUE
   LEFT JOIN LATERAL (
@@ -89,11 +104,86 @@ const LIST_Q = `
 `;
 
 async function fetchVariantsAndImages(productId) {
-  const [imgRes, varRes] = await Promise.all([
+  const [imgRes, varRes, sizeRes, colorRes] = await Promise.all([
     pool.query('SELECT * FROM product_images WHERE product_id = $1 ORDER BY display_order, created_at', [productId]),
-    pool.query('SELECT * FROM product_variants WHERE product_id = $1 ORDER BY size, color', [productId])
+    pool.query(
+      `SELECT pv.*, s.name AS size_name, c.name AS color_name
+       FROM product_variants pv
+       LEFT JOIN sizes s ON s.id = pv.size_id
+       LEFT JOIN colors c ON c.id = pv.color_id
+       WHERE pv.product_id = $1
+       ORDER BY COALESCE(s.name, pv.size), COALESCE(c.name, pv.color)`,
+      [productId]
+    ),
+    pool.query(
+      `SELECT s.id, s.name
+       FROM product_size_details psd
+       JOIN sizes s ON s.id = psd.size_id
+       WHERE psd.product_id = $1
+       ORDER BY s.name`,
+      [productId]
+    ),
+    pool.query(
+      `SELECT c.id, c.name
+       FROM product_color_details pcd
+       JOIN colors c ON c.id = pcd.color_id
+       WHERE pcd.product_id = $1
+       ORDER BY c.name`,
+      [productId]
+    )
   ]);
-  return { images: imgRes.rows.map(formatImage), variants: varRes.rows.map(formatVariant) };
+  return {
+    images: imgRes.rows.map(formatImage),
+    variants: varRes.rows.map(formatVariant),
+    sizeDetails: sizeRes.rows,
+    colorDetails: colorRes.rows
+  };
+}
+
+async function replaceImages(client, productId, images) {
+  await client.query('DELETE FROM product_images WHERE product_id = $1', [productId]);
+  for (let i = 0; i < images.length; i++) {
+    const image = images[i];
+    const url = typeof image === 'string' ? image : image.url;
+    if (!url) continue;
+    await client.query(
+      `INSERT INTO product_images
+         (product_id, image_url, cloudinary_public_id, display_order, is_primary)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [productId, url, typeof image === 'string' ? null : image.cloudinaryPublicId || null, i, i === 0]
+    );
+  }
+}
+
+async function replaceVariants(client, productId, variants) {
+  await client.query('DELETE FROM product_variants WHERE product_id = $1', [productId]);
+  for (const variant of variants) {
+    await client.query(
+      `INSERT INTO product_variants
+         (product_id, size, color, size_id, color_id, sku, price, stock)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        productId,
+        variant.size,
+        variant.color,
+        variant.sizeId || null,
+        variant.colorId || null,
+        variant.sku || null,
+        variant.price ?? null,
+        variant.stock ?? 0
+      ]
+    );
+  }
+}
+
+async function replaceProductOptions(client, productId, table, column, optionIds) {
+  await client.query(`DELETE FROM ${table} WHERE product_id = $1`, [productId]);
+  for (const optionId of [...new Set(optionIds)]) {
+    await client.query(
+      `INSERT INTO ${table} (product_id, ${column}) VALUES ($1, $2)`,
+      [productId, optionId]
+    );
+  }
 }
 
 const Product = {
@@ -130,16 +220,16 @@ const Product = {
     const { rows } = await pool.query(`${LIST_Q} WHERE p.id = $1`, [id]);
     if (!rows[0]) return null;
     if (!full) return formatRow(rows[0]);
-    const { images, variants } = await fetchVariantsAndImages(id);
-    return formatRow(rows[0], images, variants);
+    const { images, variants, sizeDetails, colorDetails } = await fetchVariantsAndImages(id);
+    return formatRow(rows[0], images, variants, sizeDetails, colorDetails);
   },
 
   async findBySlug(slug, { full = true } = {}) {
     const { rows } = await pool.query(`${LIST_Q} WHERE p.slug = $1`, [slug]);
     if (!rows[0]) return null;
     if (!full) return formatRow(rows[0]);
-    const { images, variants } = await fetchVariantsAndImages(rows[0].id);
-    return formatRow(rows[0], images, variants);
+    const { images, variants, sizeDetails, colorDetails } = await fetchVariantsAndImages(rows[0].id);
+    return formatRow(rows[0], images, variants, sizeDetails, colorDetails);
   },
 
   async findVariantById(variantId) {
@@ -160,49 +250,78 @@ const Product = {
     };
   },
 
-  async create({ name, categoryId, description = '', basePrice, featured = false, badge = '', images = [], variants = [] }) {
+  async create({
+    name, categoryId, description = '', basePrice, featured = false, badgeId = null,
+    images = [], variants = [], sizeIds = [], colorIds = []
+  }) {
     const slug = `${slugify(name)}-${Date.now().toString(36).slice(-4)}`;
-    const { rows } = await pool.query(
-      `INSERT INTO products (name, slug, category_id, description, base_price, featured, badge)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [name, slug, categoryId, description, basePrice, featured, badge]
-    );
-    const productId = rows[0].id;
-    for (let i = 0; i < images.length; i++) {
-      const img = images[i];
-      await pool.query(
-        `INSERT INTO product_images (product_id, image_url, cloudinary_public_id, display_order, is_primary)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [productId, img.url || img, img.cloudinaryPublicId || null, i, i === 0]
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows } = await client.query(
+        `INSERT INTO products (name, slug, category_id, description, base_price, featured, badge_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [name, slug, categoryId, description, basePrice, featured, badgeId || null]
       );
+      const productId = rows[0].id;
+      await replaceImages(client, productId, images);
+      await replaceProductOptions(client, productId, 'product_size_details', 'size_id', sizeIds);
+      await replaceProductOptions(client, productId, 'product_color_details', 'color_id', colorIds);
+      await replaceVariants(client, productId, variants);
+      await client.query('COMMIT');
+      return this.findById(productId);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-    for (const v of variants) {
-      await pool.query(
-        `INSERT INTO product_variants (product_id, size, color, sku, price, stock)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [productId, v.size, v.color, v.sku || null, v.price || null, v.stock || 0]
-      );
-    }
-    return this.findById(productId);
   },
 
   async update(id, data) {
-    const fieldMap = { basePrice: 'base_price', categoryId: 'category_id', isActive: 'is_active' };
-    const fields = [];
-    const values = [];
-    let idx = 1;
-    for (const [js, db] of Object.entries(fieldMap)) {
-      if (data[js] !== undefined) { fields.push(`${db} = $${idx++}`); values.push(data[js]); }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const fieldMap = {
+        basePrice: 'base_price', categoryId: 'category_id', badgeId: 'badge_id', isActive: 'is_active'
+      };
+      const fields = [];
+      const values = [];
+      for (const [js, db] of Object.entries(fieldMap)) {
+        if (data[js] !== undefined) {
+          fields.push(`${db} = $${values.length + 1}`);
+          values.push(js === 'badgeId' ? data[js] || null : data[js]);
+        }
+      }
+      for (const key of ['name', 'description', 'featured']) {
+        if (data[key] !== undefined) {
+          fields.push(`${key} = $${values.length + 1}`);
+          values.push(data[key]);
+        }
+      }
+      if (fields.length) {
+        values.push(id);
+        await client.query(
+          `UPDATE products SET ${fields.join(', ')}, updated_at = NOW() WHERE id = $${values.length}`,
+          values
+        );
+      }
+      if (Array.isArray(data.images)) await replaceImages(client, id, data.images);
+      if (Array.isArray(data.sizeIds)) {
+        await replaceProductOptions(client, id, 'product_size_details', 'size_id', data.sizeIds);
+      }
+      if (Array.isArray(data.colorIds)) {
+        await replaceProductOptions(client, id, 'product_color_details', 'color_id', data.colorIds);
+      }
+      if (Array.isArray(data.variants)) await replaceVariants(client, id, data.variants);
+      await client.query('COMMIT');
+      return this.findById(id);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
-    for (const key of ['name', 'description', 'featured', 'badge']) {
-      if (data[key] !== undefined) { fields.push(`${key} = $${idx++}`); values.push(data[key]); }
-    }
-    if (fields.length) {
-      fields.push('updated_at = NOW()');
-      values.push(id);
-      await pool.query(`UPDATE products SET ${fields.join(', ')} WHERE id = $${idx}`, values);
-    }
-    return this.findById(id);
   },
 
   async findByIdAndDelete(id) {

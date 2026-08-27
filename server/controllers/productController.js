@@ -37,15 +37,16 @@ exports.update = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id, { full: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
 
-  // Delete R2 objects for images removed from the product
   const payload = sanitize(req.body);
+  const removed = [];
   if (Array.isArray(payload.images)) {
     const newUrls = new Set(payload.images.map((i) => i?.url ?? i));
-    const removed = product.images.filter((url) => !newUrls.has(url));
-    await Promise.allSettled(removed.map(deleteFile));
+    removed.push(...product.images.filter((url) => !newUrls.has(url)));
   }
 
   const updated = await Product.update(req.params.id, payload);
+  // Remove obsolete R2 objects only after the database transaction succeeds.
+  await Promise.allSettled(removed.map(deleteFile));
   res.json(updated);
 });
 
@@ -61,7 +62,10 @@ exports.remove = asyncHandler(async (req, res) => {
 });
 
 function sanitize(body) {
-  const allowed = ['name', 'description', 'basePrice', 'categoryId', 'featured', 'badge', 'isActive', 'images', 'variants'];
+  const allowed = [
+    'name', 'description', 'basePrice', 'categoryId', 'featured', 'badgeId',
+    'isActive', 'images', 'variants', 'sizeIds', 'colorIds'
+  ];
   const out = {};
   for (const key of allowed) {
     if (body[key] !== undefined) out[key] = body[key];

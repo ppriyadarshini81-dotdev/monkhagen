@@ -10,6 +10,15 @@
     <button class="mh-btn mh-btn--gold" (click)="newCategory()" *ngIf="tab === 'categories'">
       + New Category
     </button>
+    <button class="mh-btn mh-btn--gold" (click)="newBadge()" *ngIf="tab === 'badges'">
+      + New Badge
+    </button>
+    <button class="mh-btn mh-btn--gold" (click)="newOption('sizes')" *ngIf="tab === 'sizes'">
+      + New Size
+    </button>
+    <button class="mh-btn mh-btn--gold" (click)="newOption('colors')" *ngIf="tab === 'colors'">
+      + New Color
+    </button>
   </header>
 
   <div class="mh-admin__tabs">
@@ -18,6 +27,15 @@
     </button>
     <button [class.active]="tab === 'categories'" (click)="tab = 'categories'">
       Categories ({{ categories.length }})
+    </button>
+    <button [class.active]="tab === 'badges'" (click)="tab = 'badges'">
+      Badges ({{ badges.length }})
+    </button>
+    <button [class.active]="tab === 'sizes'" (click)="tab = 'sizes'">
+      Sizes ({{ sizes.length }})
+    </button>
+    <button [class.active]="tab === 'colors'" (click)="tab = 'colors'">
+      Colors ({{ colors.length }})
     </button>
     <button [class.active]="tab === 'orders'" (click)="tab = 'orders'">
       Orders ({{ orders.length }})
@@ -39,34 +57,59 @@
         </div>
         <div>
           <label class="mh-label">Category *</label>
-          <input class="mh-input" [(ngModel)]="form.category" placeholder="T-Shirts, Hoodies…" />
+          <select class="mh-input" [(ngModel)]="form.categoryId">
+            <option value="" disabled>Select a category</option>
+            <option *ngFor="let category of categories" [value]="category.id">
+              {{ category.name }}
+            </option>
+          </select>
         </div>
         <div>
           <label class="mh-label">Price (₹) *</label>
           <input class="mh-input" type="number" [(ngModel)]="form.price" />
         </div>
         <div>
-          <label class="mh-label">Stock</label>
-          <input class="mh-input" type="number" [(ngModel)]="form.stock" />
+          <label class="mh-label">Total stock</label>
+          <input class="mh-input" type="number" min="0" step="1" [(ngModel)]="form.stock" />
         </div>
         <div class="mh-admin__full">
           <label class="mh-label">Description</label>
           <textarea class="mh-textarea" rows="3" [(ngModel)]="form.description"></textarea>
         </div>
         <div>
-          <label class="mh-label">Sizes (comma separated)</label>
-          <input class="mh-input" [(ngModel)]="form.sizes" placeholder="S, M, L, XL" />
+          <label class="mh-label">Sizes * (select one or more)</label>
+          <details class="mh-checkdrop">
+            <summary>{{ selectedOptionLabel('sizes') }}</summary>
+            <div class="mh-checkdrop__menu">
+              <label *ngFor="let size of sizes">
+                <input type="checkbox" [checked]="optionSelected('sizes', size.id)"
+                  (change)="toggleProductOption('sizes', size.id, $any($event.target).checked)" />
+                <span>{{ size.name }}</span>
+              </label>
+              <span class="mh-checkdrop__empty" *ngIf="sizes.length === 0">Add sizes in the Sizes tab first.</span>
+            </div>
+          </details>
         </div>
         <div>
-          <label class="mh-label">Colors (comma separated)</label>
-          <input class="mh-input" [(ngModel)]="form.colors" placeholder="Black, Bone" />
+          <label class="mh-label">Colors * (select one or more)</label>
+          <details class="mh-checkdrop">
+            <summary>{{ selectedOptionLabel('colors') }}</summary>
+            <div class="mh-checkdrop__menu">
+              <label *ngFor="let color of colors">
+                <input type="checkbox" [checked]="optionSelected('colors', color.id)"
+                  (change)="toggleProductOption('colors', color.id, $any($event.target).checked)" />
+                <span>{{ color.name }}</span>
+              </label>
+              <span class="mh-checkdrop__empty" *ngIf="colors.length === 0">Add colors in the Colors tab first.</span>
+            </div>
+          </details>
         </div>
         <div class="mh-admin__full">
           <label class="mh-label">Image URLs (comma separated)</label>
           <input class="mh-input" [(ngModel)]="form.images" placeholder="https://…, https://…" />
           <div class="mh-admin__upload">
             <label class="mh-admin__uploadbtn">
-              {{ uploading ? 'Uploading…' : '⬆ Upload images (Cloudinary)' }}
+              {{ uploading ? 'Uploading…' : '⬆ Upload images (R2)' }}
               <input type="file" accept="image/*" multiple (change)="onImagesSelected($event)" hidden [disabled]="uploading" />
             </label>
             <div class="mh-admin__thumbs" *ngIf="form.images">
@@ -76,7 +119,12 @@
         </div>
         <div>
           <label class="mh-label">Badge</label>
-          <input class="mh-input" [(ngModel)]="form.badge" placeholder="New Drop" />
+          <select class="mh-input" [(ngModel)]="form.badgeId">
+            <option value="">No badge</option>
+            <option *ngFor="let badge of badges" [value]="badge.id">
+              {{ badge.name }}
+            </option>
+          </select>
         </div>
         <div class="mh-admin__check">
           <label>
@@ -132,7 +180,7 @@
         <div class="mh-admin__full">
           <div class="mh-admin__upload">
             <label class="mh-admin__uploadbtn">
-              {{ uploadingCat ? 'Uploading…' : '⬆ Upload image (Cloudinary)' }}
+              {{ uploadingCat ? 'Uploading…' : '⬆ Upload image (R2)' }}
               <input type="file" accept="image/*" (change)="onCatImageSelected($event)" hidden [disabled]="uploadingCat" />
             </label>
             <div class="mh-admin__thumbs" *ngIf="catForm.image">
@@ -163,6 +211,93 @@
         <span class="mh-table__act">
           <button (click)="editCategory(c)">Edit</button>
           <button class="danger" (click)="removeCategory(c)">Delete</button>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- BADGES -->
+  <div *ngIf="tab === 'badges'">
+    <div class="mh-admin__form mh-card" *ngIf="showBadgeForm">
+      <h3>{{ editingBadge ? 'Edit Badge' : 'New Badge' }}</h3>
+      <div class="mh-admin__grid">
+        <div>
+          <label class="mh-label">Name *</label>
+          <input class="mh-input" [(ngModel)]="badgeForm.name" placeholder="New Arrival" />
+        </div>
+      </div>
+      <div class="mh-admin__actions">
+        <button class="mh-btn mh-btn--gold" (click)="saveBadge()">Save</button>
+        <button class="mh-btn mh-btn--ghost" (click)="cancelBadge()">Cancel</button>
+      </div>
+    </div>
+
+    <p class="mh-empty" *ngIf="badges.length === 0">No badges yet.</p>
+    <div class="mh-table mh-table--simple" *ngIf="badges.length">
+      <div class="mh-table__row mh-table__row--head">
+        <span>Badge</span><span></span>
+      </div>
+      <div class="mh-table__row" *ngFor="let badge of badges">
+        <span>{{ badge.name }}</span>
+        <span class="mh-table__act">
+          <button (click)="editBadge(badge)">Edit</button>
+          <button class="danger" (click)="removeBadge(badge)">Delete</button>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIZES -->
+  <div *ngIf="tab === 'sizes'">
+    <div class="mh-admin__form mh-card" *ngIf="showOptionForm && optionType === 'sizes'">
+      <h3>{{ editingOption ? 'Edit Size' : 'New Size' }}</h3>
+      <div class="mh-admin__grid">
+        <div>
+          <label class="mh-label">Name *</label>
+          <input class="mh-input" [(ngModel)]="optionForm.name" placeholder="XL" />
+        </div>
+      </div>
+      <div class="mh-admin__actions">
+        <button class="mh-btn mh-btn--gold" (click)="saveOption()">Save</button>
+        <button class="mh-btn mh-btn--ghost" (click)="cancelOption()">Cancel</button>
+      </div>
+    </div>
+    <p class="mh-empty" *ngIf="sizes.length === 0">No sizes yet.</p>
+    <div class="mh-table mh-table--simple" *ngIf="sizes.length">
+      <div class="mh-table__row mh-table__row--head"><span>Size</span><span></span></div>
+      <div class="mh-table__row" *ngFor="let size of sizes">
+        <span>{{ size.name }}</span>
+        <span class="mh-table__act">
+          <button (click)="editOption('sizes', size)">Edit</button>
+          <button class="danger" (click)="removeOption('sizes', size)">Delete</button>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLORS -->
+  <div *ngIf="tab === 'colors'">
+    <div class="mh-admin__form mh-card" *ngIf="showOptionForm && optionType === 'colors'">
+      <h3>{{ editingOption ? 'Edit Color' : 'New Color' }}</h3>
+      <div class="mh-admin__grid">
+        <div>
+          <label class="mh-label">Name *</label>
+          <input class="mh-input" [(ngModel)]="optionForm.name" placeholder="Black" />
+        </div>
+      </div>
+      <div class="mh-admin__actions">
+        <button class="mh-btn mh-btn--gold" (click)="saveOption()">Save</button>
+        <button class="mh-btn mh-btn--ghost" (click)="cancelOption()">Cancel</button>
+      </div>
+    </div>
+    <p class="mh-empty" *ngIf="colors.length === 0">No colors yet.</p>
+    <div class="mh-table mh-table--simple" *ngIf="colors.length">
+      <div class="mh-table__row mh-table__row--head"><span>Color</span><span></span></div>
+      <div class="mh-table__row" *ngFor="let color of colors">
+        <span>{{ color.name }}</span>
+        <span class="mh-table__act">
+          <button (click)="editOption('colors', color)">Edit</button>
+          <button class="danger" (click)="removeOption('colors', color)">Delete</button>
         </span>
       </div>
     </div>

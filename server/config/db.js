@@ -149,6 +149,30 @@ async function initSchema() {
       updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS badges (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name            VARCHAR(100) UNIQUE NOT NULL,
+      is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS sizes (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name            VARCHAR(50) UNIQUE NOT NULL,
+      is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS colors (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name            VARCHAR(100) UNIQUE NOT NULL,
+      is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
 
     /* =========================================================
        PRODUCTS
@@ -170,6 +194,7 @@ async function initSchema() {
 
       featured        BOOLEAN NOT NULL DEFAULT FALSE,
       badge           VARCHAR(100) NOT NULL DEFAULT '',
+      badge_id        UUID REFERENCES badges(id) ON DELETE SET NULL,
       is_active       BOOLEAN NOT NULL DEFAULT TRUE,
 
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -178,6 +203,28 @@ async function initSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_products_category
       ON products(category_id);
+
+    /* Product-to-size and product-to-color selections. */
+    CREATE TABLE IF NOT EXISTS product_size_details (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      product_id  UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      size_id     UUID NOT NULL REFERENCES sizes(id) ON DELETE RESTRICT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(product_id, size_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS product_color_details (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      product_id  UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      color_id    UUID NOT NULL REFERENCES colors(id) ON DELETE RESTRICT,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(product_id, color_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_product_size_details_product
+      ON product_size_details(product_id);
+    CREATE INDEX IF NOT EXISTS idx_product_color_details_product
+      ON product_color_details(product_id);
 
 
     /* =========================================================
@@ -223,6 +270,8 @@ async function initSchema() {
 
       size            VARCHAR(50) NOT NULL,
       color           VARCHAR(100) NOT NULL,
+      size_id         UUID REFERENCES sizes(id) ON DELETE RESTRICT,
+      color_id        UUID REFERENCES colors(id) ON DELETE RESTRICT,
 
       sku             VARCHAR(100) UNIQUE,
 
@@ -242,7 +291,6 @@ async function initSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_product_variants_product
       ON product_variants(product_id);
-
 
     /* =========================================================
        CARTS
@@ -499,6 +547,108 @@ async function initSchema() {
       UNIQUE(return_request_id, order_item_id)
     );
 
+  `);
+
+  // Preserve existing text badges while moving product editing to badge IDs.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS badges (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name VARCHAR(100) UNIQUE NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE products
+      ADD COLUMN IF NOT EXISTS badge_id UUID REFERENCES badges(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_products_badge ON products(badge_id);
+  `);
+  await pool.query(`
+    INSERT INTO badges (name)
+    SELECT DISTINCT TRIM(badge)
+    FROM products
+    WHERE TRIM(badge) <> ''
+    ON CONFLICT (name) DO NOTHING;
+
+    UPDATE products p
+    SET badge_id = b.id
+    FROM badges b
+    WHERE p.badge_id IS NULL AND LOWER(b.name) = LOWER(TRIM(p.badge));
+  `);
+
+  // Normalize existing size/color text into admin-managed option tables.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sizes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name VARCHAR(50) UNIQUE NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS colors (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name VARCHAR(100) UNIQUE NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE product_variants
+      ADD COLUMN IF NOT EXISTS size_id UUID REFERENCES sizes(id) ON DELETE RESTRICT;
+    ALTER TABLE product_variants
+      ADD COLUMN IF NOT EXISTS color_id UUID REFERENCES colors(id) ON DELETE RESTRICT;
+    CREATE INDEX IF NOT EXISTS idx_product_variants_size ON product_variants(size_id);
+    CREATE INDEX IF NOT EXISTS idx_product_variants_color ON product_variants(color_id);
+  `);
+  await pool.query(`
+    INSERT INTO sizes (name)
+    SELECT DISTINCT TRIM(size) FROM product_variants WHERE TRIM(size) <> ''
+    ON CONFLICT (name) DO NOTHING;
+    INSERT INTO colors (name)
+    SELECT DISTINCT TRIM(color) FROM product_variants WHERE TRIM(color) <> ''
+    ON CONFLICT (name) DO NOTHING;
+
+    UPDATE product_variants pv
+    SET size_id = s.id
+    FROM sizes s
+    WHERE pv.size_id IS NULL AND LOWER(s.name) = LOWER(TRIM(pv.size));
+    UPDATE product_variants pv
+    SET color_id = c.id
+    FROM colors c
+    WHERE pv.color_id IS NULL AND LOWER(c.name) = LOWER(TRIM(pv.color));
+  `);
+
+  // Explicit one-to-many product selections, independent of stock variants.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS product_size_details (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      size_id UUID NOT NULL REFERENCES sizes(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(product_id, size_id)
+    );
+    CREATE TABLE IF NOT EXISTS product_color_details (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      color_id UUID NOT NULL REFERENCES colors(id) ON DELETE RESTRICT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(product_id, color_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_size_details_product
+      ON product_size_details(product_id);
+    CREATE INDEX IF NOT EXISTS idx_product_color_details_product
+      ON product_color_details(product_id);
+  `);
+  await pool.query(`
+    INSERT INTO product_size_details (product_id, size_id)
+    SELECT DISTINCT product_id, size_id
+    FROM product_variants
+    WHERE size_id IS NOT NULL
+    ON CONFLICT (product_id, size_id) DO NOTHING;
+
+    INSERT INTO product_color_details (product_id, color_id)
+    SELECT DISTINCT product_id, color_id
+    FROM product_variants
+    WHERE color_id IS NOT NULL
+    ON CONFLICT (product_id, color_id) DO NOTHING;
   `);
 
   // Safe migrations — add Google auth columns to existing deployments

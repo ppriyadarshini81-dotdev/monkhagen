@@ -30,47 +30,58 @@
   max-width: 460px;
 }
 
-.mh-about-intro {
+.mh-about-story {
+  max-width: 860px;
+  padding-top: 88px;
+  padding-bottom: 88px;
+}
+
+.mh-about-story__lead {
   max-width: 760px;
-}
-
-.mh-about-intro p {
-  font-size: clamp(18px, 2.4vw, 24px);
-  line-height: 1.7;
+  margin: 0 0 52px;
   color: var(--mh-text);
-  margin-bottom: 24px;
+  font-family: var(--mh-font-serif);
+  font-size: clamp(30px, 4.4vw, 48px);
+  font-weight: 600;
+  line-height: 1.22;
 }
 
-.mh-values {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 22px;
-  padding-bottom: 24px;
+.mh-about-story__copy {
+  max-width: 700px;
 }
 
-.mh-value {
-  background: var(--mh-bg-elev);
-  border: 1px solid var(--mh-line);
-  border-radius: var(--mh-radius);
-  padding: 30px 26px;
+.mh-about-story__copy p {
+  margin: 0 0 34px;
+  color: var(--mh-text);
+  font-size: clamp(17px, 2vw, 21px);
+  line-height: 1.75;
 }
 
-.mh-value__num {
+.mh-about-story__copy strong,
+.mh-about-story__belief {
   color: var(--mh-accent);
-  font-weight: 800;
-  font-size: 14px;
-  letter-spacing: 0.1em;
+  font-weight: 700;
 }
 
-.mh-value h3 {
-  font-size: 20px;
-  margin: 14px 0 10px;
+.mh-about-story__signature {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 20px;
+  color: var(--mh-text);
 }
 
-.mh-value p {
-  color: var(--mh-text-dim);
-  line-height: 1.6;
-  font-size: 14px;
+.mh-about-story__signature strong {
+  color: var(--mh-accent);
+  font-size: 18px;
+  letter-spacing: 0.2em;
+}
+
+.mh-about-story__signature span {
+  font-family: var(--mh-font-serif);
+  font-size: 28px;
+  font-weight: 600;
 }
 
 .mh-stats {
@@ -116,8 +127,9 @@
 }
 
 @media (max-width: 820px) {
-  .mh-values {
-    grid-template-columns: 1fr;
+  .mh-about-story {
+    padding-top: 56px;
+    padding-bottom: 56px;
   }
   .mh-stats__grid {
     grid-template-columns: 1fr 1fr;

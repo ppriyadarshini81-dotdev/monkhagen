@@ -1,10 +1,14 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, HostListener, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Product } from '../../models/product.model';
 import { Category } from '../../models/category.model';
-import { ProductService } from '../../services/product.service';
+import { Badge } from '../../models/badge.model';
+import { VariantOption } from '../../models/variant-option.model';
+import { ProductService, ProductWrite } from '../../services/product.service';
 import { CategoryService } from '../../services/category.service';
+import { BadgeService } from '../../services/badge.service';
+import { VariantOptionService } from '../../services/variant-option.service';
 import { OrderService, Order } from '../../services/order.service';
 import { UploadService } from '../../services/upload.service';
 import { AuthService } from '../../services/auth.service';
@@ -13,13 +17,13 @@ interface ProductForm {
   id?: string;
   name: string;
   price: number | null;
-  category: string;
+  categoryId: string;
   description: string;
-  sizes: string;
-  colors: string;
+  sizeIds: string[];
+  colorIds: string[];
   images: string;
   stock: number | null;
-  badge: string;
+  badgeId: string;
   featured: boolean;
 }
 
@@ -30,6 +34,13 @@ interface CategoryForm {
   description: string;
 }
 
+interface BadgeForm {
+  id?: string;
+  name: string;
+}
+
+type OptionType = 'sizes' | 'colors';
+
 @Component({
   selector: 'app-admin',
   standalone: true,
@@ -38,9 +49,12 @@ interface CategoryForm {
   styleUrl: './admin.component.css'
 })
 export class AdminComponent implements OnInit {
-  tab: 'products' | 'categories' | 'orders' = 'products';
+  tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' = 'products';
   products: Product[] = [];
   categories: Category[] = [];
+  badges: Badge[] = [];
+  sizes: VariantOption[] = [];
+  colors: VariantOption[] = [];
   orders: Order[] = [];
   message = '';
   error = '';
@@ -55,9 +69,20 @@ export class AdminComponent implements OnInit {
   uploadingCat = false;
   catForm: CategoryForm = this.emptyCatForm();
 
+  showBadgeForm = false;
+  editingBadge = false;
+  badgeForm: BadgeForm = { name: '' };
+
+  showOptionForm = false;
+  editingOption = false;
+  optionType: OptionType = 'sizes';
+  optionForm: { id?: string; name: string } = { name: '' };
+
   constructor(
     private productService: ProductService,
     private categoryService: CategoryService,
+    private badgeService: BadgeService,
+    private variantOptionService: VariantOptionService,
     private orderService: OrderService,
     private uploadService: UploadService,
     public auth: AuthService
@@ -66,6 +91,9 @@ export class AdminComponent implements OnInit {
   ngOnInit(): void {
     this.loadProducts();
     this.loadCategories();
+    this.loadBadges();
+    this.loadOptions('sizes');
+    this.loadOptions('colors');
     this.loadOrders();
   }
 
@@ -73,13 +101,13 @@ export class AdminComponent implements OnInit {
     return {
       name: '',
       price: null,
-      category: '',
+      categoryId: '',
       description: '',
-      sizes: '',
-      colors: '',
+      sizeIds: [],
+      colorIds: [],
       images: '',
       stock: null,
-      badge: '',
+      badgeId: '',
       featured: false
     };
   }
@@ -90,6 +118,17 @@ export class AdminComponent implements OnInit {
 
   loadCategories(): void {
     this.categoryService.getCategories().subscribe((c) => (this.categories = c));
+  }
+
+  loadBadges(): void {
+    this.badgeService.getBadges().subscribe((badges) => (this.badges = badges));
+  }
+
+  loadOptions(type: OptionType): void {
+    this.variantOptionService.getOptions(type).subscribe((options) => {
+      if (type === 'sizes') this.sizes = options;
+      else this.colors = options;
+    });
   }
 
   loadOrders(): void {
@@ -108,23 +147,32 @@ export class AdminComponent implements OnInit {
   }
 
   editProduct(p: Product): void {
-    this.editing = true;
-    this.form = {
-      id: p.id,
-      name: p.name,
-      price: p.price,
-      category: p.category,
-      description: p.description,
-      sizes: p.sizes.join(', '),
-      colors: p.colors.join(', '),
-      images: p.images.join(', '),
-      stock: p.stock,
-      badge: p.badge || '',
-      featured: p.featured
-    };
-    this.showForm = true;
     this.message = '';
     this.error = '';
+    this.productService.getProduct(p.id).subscribe({
+      next: (product) => {
+        this.editing = true;
+        this.form = {
+          id: product.id,
+          name: product.name,
+          price: product.basePrice,
+          categoryId: product.categoryId,
+          description: product.description,
+          sizeIds: product.sizeIds?.length ? product.sizeIds : [...new Set((product.variants || []).map((v) =>
+            v.sizeId || this.sizes.find((size) => size.name === v.size)?.id || ''
+          ).filter(Boolean))],
+          colorIds: product.colorIds?.length ? product.colorIds : [...new Set((product.variants || []).map((v) =>
+            v.colorId || this.colors.find((color) => color.name === v.color)?.id || ''
+          ).filter(Boolean))],
+          images: product.images.join(', '),
+          stock: product.stock,
+          badgeId: product.badgeId || '',
+          featured: product.featured
+        };
+        this.showForm = true;
+      },
+      error: (err) => (this.error = err?.error?.message || 'Could not load product details.')
+    });
   }
 
   onImagesSelected(event: Event): void {
@@ -154,30 +202,47 @@ export class AdminComponent implements OnInit {
     this.showForm = false;
   }
 
-  private toPayload(): Partial<Product> {
+  private toPayload(): ProductWrite {
     const split = (s: string) =>
       s
         .split(',')
         .map((x) => x.trim())
         .filter(Boolean);
+    const selectedSizes = this.sizes.filter((size) => this.form.sizeIds.includes(size.id));
+    const selectedColors = this.colors.filter((color) => this.form.colorIds.includes(color.id));
+    const variantSelections = selectedSizes.flatMap((size) =>
+      selectedColors.map((color) => ({
+        size: size.name,
+        color: color.name,
+        sizeId: size.id,
+        colorId: color.id
+      }))
+    );
+    const totalStock = Math.max(0, Math.floor(Number(this.form.stock) || 0));
+    const stockPerVariant = variantSelections.length ? Math.floor(totalStock / variantSelections.length) : 0;
+    const stockRemainder = variantSelections.length ? totalStock % variantSelections.length : 0;
     return {
       name: this.form.name,
-      price: Number(this.form.price),
-      category: this.form.category,
+      basePrice: Number(this.form.price),
+      categoryId: this.form.categoryId,
+      badgeId: this.form.badgeId || null,
       description: this.form.description,
-      sizes: split(this.form.sizes),
-      colors: split(this.form.colors),
       images: split(this.form.images),
-      stock: Number(this.form.stock) || 0,
-      badge: this.form.badge,
+      sizeIds: [...this.form.sizeIds],
+      colorIds: [...this.form.colorIds],
+      variants: variantSelections.map((variant, index) => ({
+        ...variant,
+        stock: stockPerVariant + (index < stockRemainder ? 1 : 0)
+      })),
       featured: this.form.featured
     };
   }
 
   save(): void {
     this.error = '';
-    if (!this.form.name || this.form.price == null || !this.form.category) {
-      this.error = 'Name, price and category are required.';
+    if (!this.form.name || this.form.price == null || !this.form.categoryId ||
+        !this.form.sizeIds.length || !this.form.colorIds.length) {
+      this.error = 'Name, price, category, at least one size and at least one color are required.';
       return;
     }
     const payload = this.toPayload();
@@ -300,6 +365,148 @@ export class AdminComponent implements OnInit {
       error: (err) => {
         this.error = err?.error?.message || 'Could not delete category.';
       }
+    });
+  }
+
+  // ---- Badges ----
+  newBadge(): void {
+    this.editingBadge = false;
+    this.badgeForm = { name: '' };
+    this.showBadgeForm = true;
+    this.message = '';
+    this.error = '';
+  }
+
+  editBadge(badge: Badge): void {
+    this.editingBadge = true;
+    this.badgeForm = { id: badge.id, name: badge.name };
+    this.showBadgeForm = true;
+    this.message = '';
+    this.error = '';
+  }
+
+  cancelBadge(): void {
+    this.showBadgeForm = false;
+  }
+
+  saveBadge(): void {
+    const name = this.badgeForm.name.trim();
+    if (!name) {
+      this.error = 'Badge name is required.';
+      return;
+    }
+    const request = this.editingBadge && this.badgeForm.id
+      ? this.badgeService.updateBadge(this.badgeForm.id, { name })
+      : this.badgeService.createBadge({ name });
+    request.subscribe({
+      next: () => {
+        this.message = this.editingBadge ? 'Badge updated.' : 'Badge created.';
+        this.showBadgeForm = false;
+        this.loadBadges();
+        this.loadProducts();
+      },
+      error: (err) => (this.error = err?.error?.message || 'Could not save badge.')
+    });
+  }
+
+  removeBadge(badge: Badge): void {
+    if (!confirm(`Delete badge "${badge.name}"?`)) return;
+    this.badgeService.deleteBadge(badge.id).subscribe({
+      next: () => {
+        this.message = 'Badge deleted.';
+        this.loadBadges();
+        this.loadProducts();
+      },
+      error: (err) => (this.error = err?.error?.message || 'Could not delete badge.')
+    });
+  }
+
+  // ---- Sizes and colors ----
+  newOption(type: OptionType): void {
+    this.optionType = type;
+    this.editingOption = false;
+    this.optionForm = { name: '' };
+    this.showOptionForm = true;
+    this.message = '';
+    this.error = '';
+  }
+
+  editOption(type: OptionType, option: VariantOption): void {
+    this.optionType = type;
+    this.editingOption = true;
+    this.optionForm = { id: option.id, name: option.name };
+    this.showOptionForm = true;
+    this.message = '';
+    this.error = '';
+  }
+
+  cancelOption(): void {
+    this.showOptionForm = false;
+  }
+
+  saveOption(): void {
+    const name = this.optionForm.name.trim();
+    const label = this.optionType === 'sizes' ? 'Size' : 'Color';
+    if (!name) {
+      this.error = `${label} name is required.`;
+      return;
+    }
+    const request = this.editingOption && this.optionForm.id
+      ? this.variantOptionService.updateOption(this.optionType, this.optionForm.id, name)
+      : this.variantOptionService.createOption(this.optionType, name);
+    request.subscribe({
+      next: () => {
+        this.message = this.editingOption ? `${label} updated.` : `${label} created.`;
+        this.showOptionForm = false;
+        this.loadOptions(this.optionType);
+        this.loadProducts();
+      },
+      error: (err) => (this.error = err?.error?.message || `Could not save ${label.toLowerCase()}.`)
+    });
+  }
+
+  removeOption(type: OptionType, option: VariantOption): void {
+    const label = type === 'sizes' ? 'size' : 'color';
+    if (!confirm(`Delete ${label} "${option.name}"?`)) return;
+    this.variantOptionService.deleteOption(type, option.id).subscribe({
+      next: () => {
+        this.message = `${label[0].toUpperCase()}${label.slice(1)} deleted.`;
+        this.loadOptions(type);
+      },
+      error: (err) => (this.error = err?.error?.message || `Could not delete ${label}.`)
+    });
+  }
+
+  optionSelected(type: OptionType, id: string): boolean {
+    return (type === 'sizes' ? this.form.sizeIds : this.form.colorIds).includes(id);
+  }
+
+  toggleProductOption(type: OptionType, id: string, checked: boolean): void {
+    const selected = type === 'sizes' ? this.form.sizeIds : this.form.colorIds;
+    if (checked && !selected.includes(id)) selected.push(id);
+    if (!checked) {
+      const index = selected.indexOf(id);
+      if (index >= 0) selected.splice(index, 1);
+    }
+  }
+
+  selectedOptionLabel(type: OptionType): string {
+    const options = type === 'sizes' ? this.sizes : this.colors;
+    const selected = type === 'sizes' ? this.form.sizeIds : this.form.colorIds;
+    const names = options.filter((option) => selected.includes(option.id)).map((option) => option.name);
+    if (!names.length) return type === 'sizes' ? 'Select sizes' : 'Select colors';
+    if (names.length <= 2) return names.join(', ');
+    return `${names.length} selected`;
+  }
+
+  @HostListener('document:click', ['$event'])
+  closeOtherOptionDropdowns(event: MouseEvent): void {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const clickedDropdown = target.closest('.mh-checkdrop');
+    document.querySelectorAll<HTMLDetailsElement>('.mh-checkdrop[open]').forEach((dropdown) => {
+      if (dropdown !== clickedDropdown) dropdown.open = false;
     });
   }
 }

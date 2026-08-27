@@ -41,10 +41,12 @@ export const MEDIA = {
       { type: 'image', src: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta0.png', url: 'https://www.instagram.com/monkhagen.in' },
       { type: 'image', src: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta1.png', url: 'https://www.instagram.com/monkhagen.in' },
       { type: 'video', src: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta3.mp4', url: 'https://www.instagram.com/monkhagen.in' },
-      { type: 'image', src: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' },
-      { type: 'image', src: 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' },
-      { type: 'image', src: 'https://images.unsplash.com/photo-1576871337622-98d48d1cf531?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' },
-      { type: 'image', src: 'https://images.unsplash.com/photo-1544022613-e87ca75a784a?w=600&q=80', url: 'https://www.instagram.com/monkhagen.in' }
+      { type: 'image', src: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta4.png', url: 'https://www.instagram.com/monkhagen.in' },
+      { type: 'image', src: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta5.png', url: 'https://www.instagram.com/monkhagen.in' },
+      { type: 'video', src: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta2.mp4', url: 'https://www.instagram.com/monkhagen.in' },
+      { type: 'image', src: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta6.png', url: 'https://www.instagram.com/monkhagen.in' },
+      { type: 'image', src: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta7.jpg', url: 'https://www.instagram.com/monkhagen.in' },
+      { type: 'image', src: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta8.png', url: 'https://www.instagram.com/monkhagen.in' },
     ]
   }
 };

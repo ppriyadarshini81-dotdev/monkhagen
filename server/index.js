@@ -8,6 +8,9 @@ const { notFound, errorHandler } = require('./middleware/error');
 
 const productRoutes = require('./routes/products');
 const categoryRoutes = require('./routes/categories');
+const badgeRoutes = require('./routes/badges');
+const sizeRoutes = require('./routes/sizes');
+const colorRoutes = require('./routes/colors');
 const authRoutes = require('./routes/auth');
 const orderRoutes = require('./routes/orders');
 const cartRoutes = require('./routes/cart');
@@ -26,6 +29,9 @@ app.use(express.json({ limit: '2mb' }));
 // API routes
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/badges', badgeRoutes);
+app.use('/api/sizes', sizeRoutes);
+app.use('/api/colors', colorRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/cart', cartRoutes);
