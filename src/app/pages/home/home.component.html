@@ -38,7 +38,7 @@
   </div>
 
   <div class="mh-grid" *ngIf="!loading; else loadingTpl">
-    <app-product-card *ngFor="let p of featured" [product]="p"></app-product-card>
+    <app-product-card *ngFor="let p of featured" [product]="p" [cycleImages]="true"></app-product-card>
   </div>
   <ng-template #loadingTpl>
     <div class="mh-skeleton-grid">
@@ -91,7 +91,7 @@
     <a class="mh-link" routerLink="/products">Shop new →</a>
   </div>
   <div class="mh-grid">
-    <app-product-card *ngFor="let p of newArrivals" [product]="p"></app-product-card>
+    <app-product-card *ngFor="let p of newArrivals" [product]="p" [cycleImages]="true"></app-product-card>
   </div>
 </section>
 

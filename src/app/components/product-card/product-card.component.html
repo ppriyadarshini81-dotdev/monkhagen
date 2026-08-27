@@ -1,6 +1,7 @@
-<a class="mh-pcard" [routerLink]="['/product', product.slug]">
+<a class="mh-pcard" [routerLink]="['/product', product.slug]"
+   (mouseenter)="onMouseEnter()" (mouseleave)="onMouseLeave()">
   <div class="mh-pcard__media">
-    <img [src]="product.images[0]" [alt]="product.name" loading="lazy" />
+    <img [src]="currentImage" [alt]="product.name" loading="lazy" />
     <span class="mh-pcard__badge" *ngIf="product.badge">{{ product.badge }}</span>
     <button class="mh-pcard__add" (click)="quickAdd($event)">
       {{ added ? 'Added ✓' : 'Quick Add' }}

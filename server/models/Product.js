@@ -86,14 +86,17 @@ const LIST_Q = `
     c.name  AS category_name,
     c.slug  AS category_slug,
     b.name  AS badge_name,
-    pi.image_url AS primary_image_url,
+    image_list.image_urls,
     COALESCE(v.total_stock, 0) AS agg_stock,
     v.min_price
   FROM products p
   JOIN categories c ON c.id = p.category_id
   LEFT JOIN badges b ON b.id = p.badge_id
-  LEFT JOIN product_images pi
-    ON pi.product_id = p.id AND pi.is_primary = TRUE
+  LEFT JOIN LATERAL (
+    SELECT ARRAY_AGG(img.image_url ORDER BY img.is_primary DESC, img.display_order, img.created_at) AS image_urls
+    FROM product_images img
+    WHERE img.product_id = p.id
+  ) image_list ON TRUE
   LEFT JOIN LATERAL (
     SELECT
       SUM(pv.stock)              AS total_stock,
@@ -209,10 +212,14 @@ const Product = {
       `${LIST_Q} WHERE ${conditions.join(' AND ')} ORDER BY p.featured DESC, p.created_at DESC`,
       params
     );
-    // For list view, use primary image only (no full variant/image fetch)
+    // Return every image so selected storefront cards can rotate their media.
     return rows.map((r) => {
-      const img = r.primary_image_url ? [{ url: r.primary_image_url, isPrimary: true }] : [];
-      return formatRow(r, img, []);
+      const images = (r.image_urls || []).map((url, index) => ({
+        url,
+        isPrimary: index === 0,
+        displayOrder: index
+      }));
+      return formatRow(r, images, []);
     });
   },
 

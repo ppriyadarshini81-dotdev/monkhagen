@@ -58,6 +58,12 @@ export class ProductDetailsComponent implements OnInit {
     this.quantity = Math.max(1, this.quantity + delta);
   }
 
+  changeImage(delta: -1 | 1): void {
+    const imageCount = this.product?.images.length || 0;
+    if (imageCount < 2) return;
+    this.activeImage = (this.activeImage + delta + imageCount) % imageCount;
+  }
+
   addToCart(): void {
     if (!this.product) {
       return;

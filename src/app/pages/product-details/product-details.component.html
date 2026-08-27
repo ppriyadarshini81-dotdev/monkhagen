@@ -11,6 +11,16 @@
       <div class="mh-pd__main">
         <img [src]="product.images[activeImage]" [alt]="product.name" />
         <span class="mh-pd__badge" *ngIf="product.badge">{{ product.badge }}</span>
+        <ng-container *ngIf="product.images.length > 1">
+          <button class="mh-pd__arrow mh-pd__arrow--prev" type="button"
+            (click)="changeImage(-1)" aria-label="Previous product image">
+            &#8592;
+          </button>
+          <button class="mh-pd__arrow mh-pd__arrow--next" type="button"
+            (click)="changeImage(1)" aria-label="Next product image">
+            &#8594;
+          </button>
+        </ng-container>
       </div>
       <div class="mh-pd__thumbs" *ngIf="product.images.length > 1">
         <button
@@ -79,9 +89,9 @@
       </div>
 
       <ul class="mh-pd__perks">
-        <li>Free shipping over ₹2999</li>
+        <li>Free shipping</li>
         <li>Heavyweight premium fabric</li>
-        <li>Limited run — never restocked</li>
+        <li>Limited run | never restocked</li>
       </ul>
     </div>
   </div>

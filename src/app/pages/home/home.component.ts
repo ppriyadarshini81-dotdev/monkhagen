@@ -56,7 +56,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   ];
 
   perks = [
-    { icon: '🚚', title: 'Shipping', text: 'Shipping \n on any orders all across India. ' },
+    { icon: '🚚', title: 'Free Shipping', text: 'Free Shipping \n on any orders all across India. ' },
     { icon: '↩️', title: 'Easy Returns', text: '\nEasy returns within 7 days of delivery.' },
     { icon: '🧵', title: 'Heavyweight Fabric', text: 'Premium Fabrics \nCrafted with quality fabrics for lasting comfort.' },
     { icon: '🔒', title: 'Secure Checkout', text: 'Secure Checkout \nSafe and encrypted online payments.' }
