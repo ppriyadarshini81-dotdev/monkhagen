@@ -41,16 +41,6 @@ export class AuthService {
       .pipe(tap((res) => this.persist(res)));
   }
 
-  register(
-    name: string,
-    email: string,
-    password: string
-  ): Observable<AuthResponse> {
-    return this.http
-      .post<AuthResponse>(`${this.api}/register`, { name, email, password })
-      .pipe(tap((res) => this.persist(res)));
-  }
-
   loginWithGoogle(idToken: string): Observable<AuthResponse> {
     return this.http
       .post<AuthResponse>(`${this.api}/google`, { idToken })

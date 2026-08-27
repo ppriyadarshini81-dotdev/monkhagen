@@ -3,7 +3,6 @@ const ctrl = require('../controllers/authController');
 const googleCtrl = require('../controllers/googleAuthController');
 const { authenticate } = require('../middleware/auth');
 
-router.post('/register', ctrl.register);
 router.post('/login', ctrl.login);
 router.get('/me', authenticate, ctrl.me);
 

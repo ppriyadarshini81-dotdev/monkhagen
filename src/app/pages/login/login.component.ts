@@ -16,8 +16,6 @@ type Tab = 'google' | 'email';
 })
 export class LoginComponent {
   tab: Tab = 'google';
-  mode: 'login' | 'register' = 'login';
-  name = '';
   email = '';
   password = '';
   error = '';
@@ -32,11 +30,6 @@ export class LoginComponent {
 
   switchTab(tab: Tab): void {
     this.tab = tab;
-    this.error = '';
-  }
-
-  switchMode(mode: 'login' | 'register'): void {
-    this.mode = mode;
     this.error = '';
   }
 
@@ -69,7 +62,6 @@ export class LoginComponent {
   // ── Admin email/password login ────────────────────────────
   fillDemo(): void {
     this.tab = 'email';
-    this.mode = 'login';
     this.email = 'admin@monkhagen.com';
     this.password = 'admin123';
   }
@@ -81,11 +73,7 @@ export class LoginComponent {
       next: () => { this.loading = false; this.redirectAfterLogin(); },
       error: (err: any) => { this.loading = false; this.error = err?.error?.message || 'Something went wrong.'; }
     };
-    if (this.mode === 'login') {
-      this.auth.login(this.email, this.password).subscribe(done);
-    } else {
-      this.auth.register(this.name, this.email, this.password).subscribe(done);
-    }
+    this.auth.login(this.email, this.password).subscribe(done);
   }
 
   private redirectAfterLogin(): void {

@@ -1,164 +1,191 @@
 .mh-auth {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   min-height: calc(100vh - var(--mh-header-h));
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 48px 20px;
-  background: radial-gradient(circle at 50% 0%, rgba(201, 163, 91, 0.08), transparent 55%);
+  padding: 64px 20px;
+  background: #071d57;
 }
 
-.mh-btn--google {
-  background: #fff;
-  border: 1.5px solid var(--mh-line);
-  color: #3c4043;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+.mh-auth::before {
+  content: '';
+  position: absolute;
+  z-index: -2;
+  inset: -28px;
+  background-image: url('https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/banner2.png');
+  background-position: center;
+  background-size: cover;
+  filter: blur(10px);
+  transform: scale(1.05);
+  opacity: 0.78;
 }
 
-.mh-btn--google:hover:not(:disabled) {
-  background: #f8f8f8;
-  border-color: #c8c8c8;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-  transform: translateY(-1px);
+.mh-auth::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 22%, rgba(44, 91, 224, 0.22), transparent 42%),
+    linear-gradient(135deg, rgba(2, 12, 43, 0.8), rgba(12, 47, 127, 0.58) 52%, rgba(3, 14, 48, 0.82));
 }
 
 .mh-auth__card {
+  position: relative;
   width: 100%;
-  max-width: 420px;
-  padding: 36px;
+  max-width: 440px;
+  padding: 44px 42px 40px;
+  overflow: hidden;
   text-align: center;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 20px;
+  box-shadow: 0 28px 80px rgba(0, 9, 38, 0.48), 0 4px 18px rgba(0, 17, 68, 0.2);
+  backdrop-filter: blur(22px) saturate(125%);
+  -webkit-backdrop-filter: blur(22px) saturate(125%);
 }
 
 .mh-auth__card .mh-logo {
-  font-weight: 800;
+  display: inline-block;
+  color: #101b39;
   font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
 }
 
 .mh-auth__card .mh-logo span {
-  color: var(--mh-accent);
+  color: #2140e6;
+  margin-left: 0.18em;
 }
 
 .mh-auth__card h1 {
-  font-size: 28px;
-  margin: 22px 0 8px;
+  margin: 28px 0 8px;
+  color: #101b39;
+  font-size: 32px;
 }
 
 .mh-auth__sub {
-  color: var(--mh-text-dim);
-  font-size: 14px;
   margin-bottom: 24px;
+  color: #66708a;
+  font-size: 14px;
 }
 
 .mh-auth__tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
-  background: var(--mh-bg);
-  border: 1px solid var(--mh-line);
-  border-radius: 999px;
   padding: 4px;
   margin-bottom: 24px;
+  background: rgba(225, 231, 247, 0.68);
+  border: 1px solid rgba(33, 64, 230, 0.1);
+  border-radius: 999px;
 }
 
 .mh-auth__tabs button {
-  border: none;
-  background: none;
-  color: var(--mh-text-dim);
-  padding: 9px;
-  border-radius: 999px;
-  font-weight: 600;
+  padding: 10px;
+  color: #69738b;
   font-size: 13px;
+  font-weight: 600;
+  background: none;
+  border: none;
+  border-radius: 999px;
 }
 
 .mh-auth__tabs button.active {
-  background: var(--mh-accent-2);
-  color: #111;
+  color: #fff;
+  background: #173fbd;
+  box-shadow: 0 5px 14px rgba(23, 63, 189, 0.24);
 }
 
 .mh-field {
-  text-align: left;
   margin-bottom: 16px;
+  text-align: left;
+}
+
+.mh-auth .mh-label {
+  color: #3c4863;
+  font-weight: 700;
+}
+
+.mh-auth .mh-input {
+  min-height: 48px;
+  color: #111b35;
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(31, 54, 111, 0.18);
+}
+
+.mh-auth .mh-input:focus {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: #2140e6;
+  box-shadow: 0 0 0 4px rgba(33, 64, 230, 0.11);
+}
+
+.mh-auth .mh-btn--gold {
+  min-height: 48px;
+  background: linear-gradient(135deg, #173fbd, #2140e6);
+  box-shadow: 0 10px 24px rgba(23, 63, 189, 0.24);
+}
+
+.mh-btn--google {
+  min-height: 48px;
+  color: #3c4043;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(17, 47, 116, 0.14);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.mh-btn--google:hover:not(:disabled) {
+  background: #fff;
+  border-color: rgba(23, 63, 189, 0.28);
+  box-shadow: 0 7px 18px rgba(0, 16, 58, 0.14);
 }
 
 .mh-auth__demo {
-  margin-top: 22px;
   padding-top: 18px;
-  border-top: 1px solid var(--mh-line);
+  margin-top: 22px;
+  color: #69738b;
   font-size: 13px;
-  color: var(--mh-text-dim);
-}
-
-.mh-auth__demo div {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-top: 10px;
+  border-top: 1px solid rgba(31, 54, 111, 0.14);
 }
 
 .mh-auth__demo button {
-  background: var(--mh-bg-elev-2);
-  border: 1px solid var(--mh-line);
-  color: var(--mh-text);
-  padding: 7px 18px;
-  border-radius: 999px;
+  padding: 7px 14px;
+  margin-left: 6px;
+  color: #173fbd;
   font-size: 13px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(23, 63, 189, 0.18);
+  border-radius: 999px;
 }
 
 .mh-auth__demo button:hover {
-  border-color: var(--mh-accent);
+  background: #fff;
+  border-color: #2140e6;
 }
 
-.mh-auth__subtabs {
-  margin-top: 0;
-  margin-bottom: 20px;
+@media (max-width: 520px) {
+  .mh-auth {
+    align-items: flex-start;
+    padding: 32px 16px;
+  }
+
+  .mh-auth__card {
+    padding: 36px 24px 30px;
+    border-radius: 16px;
+  }
+
+  .mh-auth__card h1 {
+    font-size: 28px;
+  }
 }
 
-.mh-phone-row {
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-.mh-phone-prefix {
-  background: var(--mh-bg-elev);
-  border: 1px solid var(--mh-line);
-  border-right: none;
-  border-radius: var(--mh-radius) 0 0 var(--mh-radius);
-  padding: 0 12px;
-  height: 46px;
-  display: flex;
-  align-items: center;
-  font-size: 14px;
-  color: var(--mh-text-dim);
-  white-space: nowrap;
-}
-
-.mh-phone-row .mh-input {
-  border-radius: 0 var(--mh-radius) var(--mh-radius) 0;
-  flex: 1;
-}
-
-.mh-otp-input {
-  letter-spacing: 0.35em;
-  font-size: 22px;
-  text-align: center;
-}
-
-.mh-link {
-  background: none;
-  border: none;
-  color: var(--mh-accent);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 0 4px;
-  text-decoration: underline;
-}
-
-.mh-resend {
-  display: block;
-  margin: 12px auto 0;
+@media (prefers-reduced-motion: reduce) {
+  .mh-auth::before {
+    transform: none;
+  }
 }
