@@ -50,6 +50,18 @@ export const routes: Routes = [
     title: 'About — Monk Hagen'
   },
   {
+    path: 'contact/email',
+    loadComponent: () =>
+      import('./pages/contact-email/contact-email.component').then((m) => m.ContactEmailComponent),
+    title: 'Email Us â€” Monk Hagen'
+  },
+  {
+    path: 'contact',
+    loadComponent: () =>
+      import('./pages/contact/contact.component').then((m) => m.ContactComponent),
+    title: 'Contact — Monk Hagen'
+  },
+  {
     path: 'refund-policy',
     loadComponent: () =>
       import('./pages/refund-policy/refund-policy.component').then((m) => m.RefundPolicyComponent),

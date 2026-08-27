@@ -16,6 +16,7 @@ const orderRoutes = require('./routes/orders');
 const cartRoutes = require('./routes/cart');
 const uploadRoutes = require('./routes/upload');
 const accountRoutes = require('./routes/account');
+const contactRoutes = require('./routes/contact');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,6 +38,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/account', accountRoutes);
+app.use('/api/contact', contactRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', brand: 'Monk Hagen' });
