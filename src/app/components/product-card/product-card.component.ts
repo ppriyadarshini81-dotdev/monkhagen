@@ -3,6 +3,7 @@ import { Component, Input, OnDestroy, OnInit } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { CartService } from '../../services/cart.service';
+import { cachedMediaUrl } from '../../utils/media-url';
 
 @Component({
   selector: 'app-product-card',
@@ -21,7 +22,8 @@ export class ProductCardComponent implements OnInit, OnDestroy {
   constructor(private cart: CartService) {}
 
   get currentImage(): string {
-    return this.product.images[this.currentImageIndex] || this.product.images[0] || '';
+    const image = this.product.images[this.currentImageIndex] || this.product.images[0] || '';
+    return cachedMediaUrl(image);
   }
 
   ngOnInit(): void {

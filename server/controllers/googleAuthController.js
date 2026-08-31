@@ -4,7 +4,7 @@ const { signToken } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
 
 // POST /api/auth/google
-// Angular sends a Firebase ID token; we verify it and return our own JWT.
+// Angular sends a Firebase ID token; the backend verifies it and assigns roles.
 exports.googleLogin = asyncHandler(async (req, res) => {
   const { idToken } = req.body;
   if (!idToken) {
@@ -19,39 +19,50 @@ exports.googleLogin = asyncHandler(async (req, res) => {
   }
 
   const { uid, email, name, picture, email_verified } = decoded;
-
   if (!email) {
     return res.status(400).json({ message: 'Google account must have an email address.' });
   }
 
-  // 1. Try to find by google_uid (fastest path for returning users)
+  const normalizedEmail = email.toLowerCase();
+  const configuredAdminEmail = (
+    process.env.ADMIN_GOOGLE_EMAIL || 'officialmail.monkhagen@gmail.com'
+  ).trim().toLowerCase();
+  const isConfiguredAdmin = normalizedEmail === configuredAdminEmail;
+
+  if (isConfiguredAdmin && !email_verified) {
+    return res.status(403).json({ message: 'The administrator Google email must be verified.' });
+  }
+
   let user = await User.findByGoogleUid(uid);
 
   if (!user) {
-    const existingByEmail = await User.findOne({ email: email.toLowerCase() });
+    let existingByEmail = await User.findOne({ email: normalizedEmail });
 
     if (existingByEmail) {
-      // Block Google login for admin / super_admin accounts
-      if (['admin', 'super_admin'].includes(existingByEmail.role)) {
-        return res.status(403).json({
-          message: 'This email belongs to an admin account. Use email + password to sign in.'
-        });
+      if (['admin', 'super_admin'].includes(existingByEmail.role) && !email_verified) {
+        return res.status(403).json({ message: 'The administrator Google email must be verified.' });
       }
-      // Link google_uid to existing customer account
+
+      if (isConfiguredAdmin && !['admin', 'super_admin'].includes(existingByEmail.role)) {
+        existingByEmail = await User.setRole(existingByEmail.id, 'admin');
+      }
+
       user = await User.linkGoogleUid(existingByEmail.id, { uid, picture, name });
     } else {
-      // New customer — backend assigns the role, never trusted from client
-      user = await User.createGoogleCustomer({
+      user = await User.createGoogleUser({
         googleUid: uid,
-        email: email.toLowerCase(),
+        email: normalizedEmail,
         name: name || email.split('@')[0],
         profileImage: picture || null,
-        emailVerified: email_verified || false
+        emailVerified: email_verified || false,
+        role: isConfiguredAdmin ? 'admin' : 'customer'
       });
     }
   } else {
-    // Returning user — refresh profile and last_login_at
     user = await User.updateGoogleUser(user.id, { name, picture });
+    if (isConfiguredAdmin && !['admin', 'super_admin'].includes(user.role)) {
+      user = await User.setRole(user.id, 'admin');
+    }
   }
 
   res.json({ token: signToken(user), user: user.toJSON() });

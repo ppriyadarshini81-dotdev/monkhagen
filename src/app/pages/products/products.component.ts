@@ -6,6 +6,7 @@ import { Category } from '../../models/category.model';
 import { ProductService } from '../../services/product.service';
 import { CategoryService } from '../../services/category.service';
 import { ProductCardComponent } from '../../components/product-card/product-card.component';
+import { cachedMediaUrl } from '../../utils/media-url';
 
 @Component({
   selector: 'app-products',
@@ -22,6 +23,7 @@ export class ProductsComponent implements OnInit {
   search = '';
   sort = 'featured';
   loading = true;
+  readonly cachedMediaUrl = cachedMediaUrl;
 
   constructor(
     private productService: ProductService,

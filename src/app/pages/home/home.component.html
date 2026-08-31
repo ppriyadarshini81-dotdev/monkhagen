@@ -4,12 +4,13 @@
     <video
       *ngFor="let v of videos; let i = index"
       [class.active]="i === currentVideo"
-      [src]="v"
-      [poster]="posters[i]"
+      [attr.src]="i === currentVideo ? v : null"
+      [attr.poster]="i === currentVideo ? posters[i] : null"
       autoplay
       [muted]="true"
       loop
       playsinline
+      preload="metadata"
     ></video>
     <div class="mh-hero__scrim"></div>
   </div>

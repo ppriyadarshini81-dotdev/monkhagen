@@ -94,14 +94,25 @@ const User = {
     const { rows } = await pool.query(`${BASE_Q} WHERE u.google_uid = $1`, [googleUid]);
     return wrapRow(rows[0]);
   },
-  async createGoogleCustomer({ googleUid, email, name, profileImage, emailVerified }) {
-    const roleId = await getRoleId('customer');
+  async createGoogleUser({ googleUid, email, name, profileImage, emailVerified, role = 'customer' }) {
+    const roleId = await getRoleId(role);
     const { rows } = await pool.query(
       `INSERT INTO users (name, email, google_uid, profile_image, role_id, email_verified, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING id`,
       [name, email, googleUid, profileImage, roleId, emailVerified]
     );
     return this.findById(rows[0].id);
+  },
+  async setRole(id, role) {
+    const roleId = await getRoleId(role);
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET role_id = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id`,
+      [roleId, id]
+    );
+    return rows[0] ? this.findById(rows[0].id) : null;
   },
   async linkGoogleUid(id, { uid, picture, name }) {
     await pool.query(

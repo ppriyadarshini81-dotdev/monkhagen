@@ -23,7 +23,7 @@
       (click)="setCategory(cat.name)"
     >
       <div class="mh-catblock__img">
-        <img [src]="cat.image" [alt]="cat.name" loading="lazy" />
+        <img [src]="cachedMediaUrl(cat.image)" [alt]="cat.name" loading="lazy" decoding="async" />
       </div>
       <span class="mh-catblock__name">{{ cat.name }}</span>
       <span class="mh-catblock__count" *ngIf="cat.productCount != null">

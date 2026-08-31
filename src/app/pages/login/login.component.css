@@ -10,14 +10,13 @@
   background: #071d57;
 }
 
-.mh-auth::before {
-  content: '';
+.mh-auth__background {
   position: absolute;
   z-index: -2;
   inset: -28px;
-  background-image: url('https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/banner2.png');
-  background-position: center;
-  background-size: cover;
+  width: calc(100% + 56px);
+  height: calc(100% + 56px);
+  object-fit: cover;
   filter: blur(10px);
   transform: scale(1.05);
   opacity: 0.78;
@@ -73,62 +72,6 @@
   font-size: 14px;
 }
 
-.mh-auth__tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  padding: 4px;
-  margin-bottom: 24px;
-  background: rgba(225, 231, 247, 0.68);
-  border: 1px solid rgba(33, 64, 230, 0.1);
-  border-radius: 999px;
-}
-
-.mh-auth__tabs button {
-  padding: 10px;
-  color: #69738b;
-  font-size: 13px;
-  font-weight: 600;
-  background: none;
-  border: none;
-  border-radius: 999px;
-}
-
-.mh-auth__tabs button.active {
-  color: #fff;
-  background: #173fbd;
-  box-shadow: 0 5px 14px rgba(23, 63, 189, 0.24);
-}
-
-.mh-field {
-  margin-bottom: 16px;
-  text-align: left;
-}
-
-.mh-auth .mh-label {
-  color: #3c4863;
-  font-weight: 700;
-}
-
-.mh-auth .mh-input {
-  min-height: 48px;
-  color: #111b35;
-  background: rgba(255, 255, 255, 0.72);
-  border-color: rgba(31, 54, 111, 0.18);
-}
-
-.mh-auth .mh-input:focus {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: #2140e6;
-  box-shadow: 0 0 0 4px rgba(33, 64, 230, 0.11);
-}
-
-.mh-auth .mh-btn--gold {
-  min-height: 48px;
-  background: linear-gradient(135deg, #173fbd, #2140e6);
-  box-shadow: 0 10px 24px rgba(23, 63, 189, 0.24);
-}
-
 .mh-btn--google {
   min-height: 48px;
   color: #3c4043;
@@ -142,30 +85,6 @@
   background: #fff;
   border-color: rgba(23, 63, 189, 0.28);
   box-shadow: 0 7px 18px rgba(0, 16, 58, 0.14);
-}
-
-.mh-auth__demo {
-  padding-top: 18px;
-  margin-top: 22px;
-  color: #69738b;
-  font-size: 13px;
-  border-top: 1px solid rgba(31, 54, 111, 0.14);
-}
-
-.mh-auth__demo button {
-  padding: 7px 14px;
-  margin-left: 6px;
-  color: #173fbd;
-  font-size: 13px;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.58);
-  border: 1px solid rgba(23, 63, 189, 0.18);
-  border-radius: 999px;
-}
-
-.mh-auth__demo button:hover {
-  background: #fff;
-  border-color: #2140e6;
 }
 
 @media (max-width: 520px) {
@@ -185,7 +104,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mh-auth::before {
+  .mh-auth__background {
     transform: none;
   }
 }

@@ -1,23 +1,17 @@
 import { CommonModule } from '@angular/common';
 import { Component } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { FirebaseService } from '../../services/firebase.service';
-
-type Tab = 'google' | 'email';
 
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, RouterLink],
   templateUrl: './login.component.html',
   styleUrl: './login.component.css'
 })
 export class LoginComponent {
-  tab: Tab = 'google';
-  email = '';
-  password = '';
   error = '';
   loading = false;
 
@@ -27,12 +21,6 @@ export class LoginComponent {
     private router: Router
   ) {}
 
-  switchTab(tab: Tab): void {
-    this.tab = tab;
-    this.error = '';
-  }
-
-  // ── Google login (customers) ──────────────────────────────
   async continueWithGoogle(): Promise<void> {
     this.error = '';
     this.loading = true;
@@ -54,22 +42,5 @@ export class LoginComponent {
         this.error = err?.message || 'Google sign-in failed.';
       }
     }
-  }
-
-  // ── Admin email/password login ────────────────────────────
-  fillDemo(): void {
-    this.tab = 'email';
-    this.email = 'admin@monkhagen.com';
-    this.password = 'admin123';
-  }
-
-  submit(): void {
-    this.error = '';
-    this.loading = true;
-    const done = {
-      next: () => { this.loading = false; this.router.navigateByUrl('/'); },
-      error: (err: any) => { this.loading = false; this.error = err?.error?.message || 'Something went wrong.'; }
-    };
-    this.auth.login(this.email, this.password).subscribe(done);
   }
 }
