@@ -16,9 +16,11 @@ export const adminGuard: CanActivateFn = () => {
   return router.parseUrl('/login');
 };
 
-export const customerGuard: CanActivateFn = () => {
+export const customerGuard: CanActivateFn = (_route, state) => {
   const auth = inject(AuthService);
   const router = inject(Router);
   if (auth.isLoggedIn) return true;
-  return router.parseUrl('/login?redirect=/account/profile');
+  return router.createUrlTree(['/login'], {
+    queryParams: { redirect: state.url }
+  });
 };

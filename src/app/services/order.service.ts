@@ -1,7 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { CartItem } from '../models/cart.model';
 
 export interface ShippingForm {
   name?: string;
@@ -28,9 +27,8 @@ export class OrderService {
 
   constructor(private http: HttpClient) {}
 
-  checkout(items: CartItem[], shipping: ShippingForm): Observable<Order> {
+  checkout(shipping: ShippingForm): Observable<Order> {
     return this.http.post<Order>(this.api, {
-      items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
       address: {
         fullName: shipping.name,
         addressLine1: shipping.address,

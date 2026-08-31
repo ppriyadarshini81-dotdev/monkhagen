@@ -5,8 +5,9 @@ const asyncHandler = require('../middleware/asyncHandler');
 
 // POST /api/orders — checkout
 exports.create = asyncHandler(async (req, res) => {
-  const { items, address, shippingAmount = 0, paymentMethod = 'cod' } = req.body;
-  if (!Array.isArray(items) || items.length === 0) {
+  const { address, shippingAmount = 0, paymentMethod = 'cod' } = req.body;
+  const savedCart = await Cart.getWithItems(req.user.id);
+  if (savedCart.items.length === 0) {
     return res.status(400).json({ message: 'Cart is empty.' });
   }
   if (!address?.fullName || !address?.addressLine1 || !address?.city || !address?.postalCode) {
@@ -16,7 +17,7 @@ exports.create = asyncHandler(async (req, res) => {
   // Prices are always calculated from DB — never trust client-submitted totals
   let subtotal = 0;
   const lineItems = [];
-  for (const item of items) {
+  for (const item of savedCart.items) {
     const variant = await Product.findVariantById(item.variantId);
     if (!variant) {
       return res.status(400).json({ message: `Variant ${item.variantId} not found.` });

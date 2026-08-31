@@ -1,9 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { ProductService } from '../../services/product.service';
 import { CartService } from '../../services/cart.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-product-details',
@@ -22,11 +23,15 @@ export class ProductDetailsComponent implements OnInit {
   selectedColor: string | null = null;
   quantity = 1;
   added = false;
+  adding = false;
+  addError = '';
 
   constructor(
     private route: ActivatedRoute,
     private productService: ProductService,
-    private cart: CartService
+    private cart: CartService,
+    private auth: AuthService,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -40,7 +45,7 @@ export class ProductDetailsComponent implements OnInit {
       this.productService.getProduct(slug).subscribe({
         next: (product) => {
           this.product = product;
-          this.selectedSize = product.sizes[0] ?? null;
+          this.selectedSize = null;
           this.selectedColor = product.colors[0] ?? null;
           this.activeImage = 0;
           this.quantity = 1;
@@ -68,13 +73,35 @@ export class ProductDetailsComponent implements OnInit {
     if (!this.product) {
       return;
     }
+
+    if (!this.auth.isLoggedIn) {
+      this.router.navigate(['/login'], {
+        queryParams: { redirect: this.router.url }
+      });
+      return;
+    }
+    if (this.product.sizes.length > 0 && !this.selectedSize) {
+      this.addError = 'Please select a size.';
+      return;
+    }
+
+    this.adding = true;
+    this.addError = '';
     this.cart.add(
       this.product,
       this.quantity,
       this.selectedSize,
       this.selectedColor
-    );
-    this.added = true;
-    setTimeout(() => (this.added = false), 1800);
+    ).subscribe({
+      next: () => {
+        this.adding = false;
+        this.added = true;
+        setTimeout(() => (this.added = false), 1800);
+      },
+      error: (err) => {
+        this.adding = false;
+        this.addError = err?.error?.message || err?.message || 'Could not add this item.';
+      }
+    });
   }
 }

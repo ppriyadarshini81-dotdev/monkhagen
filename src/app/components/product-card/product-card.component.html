@@ -1,12 +1,41 @@
-<a class="mh-pcard" [routerLink]="['/product', product.slug]"
-   (mouseenter)="onMouseEnter()" (mouseleave)="onMouseLeave()">
+<a
+  class="mh-pcard"
+  [routerLink]="['/product', product.slug]"
+  (mouseenter)="onMouseEnter()"
+  (mouseleave)="onMouseLeave()"
+>
   <div class="mh-pcard__media">
     <img [src]="currentImage" [alt]="product.name" loading="lazy" />
     <span class="mh-pcard__badge" *ngIf="product.badge">{{ product.badge }}</span>
-    <button class="mh-pcard__add" (click)="quickAdd($event)">
-      {{ added ? 'Added ✓' : 'Quick Add' }}
+
+    <button
+      class="mh-pcard__add"
+      type="button"
+      *ngIf="!showSizePicker"
+      [disabled]="loadingSizes"
+      (click)="quickAdd($event)"
+    >
+      {{ loadingSizes ? 'Loading sizes...' : (added ? 'Added ✓' : 'Quick Add') }}
     </button>
+
+    <div
+      class="mh-pcard__sizes"
+      *ngIf="showSizePicker"
+      (click)="$event.preventDefault(); $event.stopPropagation()"
+    >
+      <span>Choose a size</span>
+      <div class="mh-pcard__size-list">
+        <button
+          type="button"
+          *ngFor="let size of availableSizes"
+          [disabled]="adding"
+          (click)="selectSize($event, size)"
+        >{{ size }}</button>
+      </div>
+      <small *ngIf="addError">{{ addError }}</small>
+    </div>
   </div>
+
   <div class="mh-pcard__body">
     <span class="mh-pcard__cat">{{ product.category }}</span>
     <h3 class="mh-pcard__name">{{ product.name }}</h3>

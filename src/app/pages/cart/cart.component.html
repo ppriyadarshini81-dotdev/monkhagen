@@ -25,7 +25,7 @@
     <!-- Items + summary -->
     <div class="mh-cart__grid" *ngIf="cart.items.length > 0">
       <div class="mh-cart__items">
-        <article class="mh-cart__item" *ngFor="let item of cart.items; let i = index">
+        <article class="mh-cart__item" *ngFor="let item of cart.items">
           <a [routerLink]="['/product', item.productSlug]" class="mh-cart__thumb">
             <img [src]="item.imageUrl" [alt]="item.productName" />
           </a>
@@ -42,11 +42,11 @@
           </div>
           <div class="mh-cart__controls">
             <div class="mh-qty">
-              <button (click)="cart.updateQuantity(i, item.quantity - 1)">−</button>
+              <button (click)="updateQuantity(item, item.quantity - 1)" [disabled]="item.quantity <= 1">−</button>
               <span>{{ item.quantity }}</span>
-              <button (click)="cart.updateQuantity(i, item.quantity + 1)">+</button>
+              <button (click)="updateQuantity(item, item.quantity + 1)">+</button>
             </div>
-            <button class="mh-cart__remove" (click)="cart.remove(i)">Remove</button>
+            <button class="mh-cart__remove" (click)="remove(item)">Remove</button>
           </div>
           <div class="mh-cart__line">₹{{ (item.price ?? 0) * item.quantity | number }}</div>
         </article>
@@ -80,8 +80,6 @@
         </div>
 
         <p class="mh-error" *ngIf="error">{{ error }}</p>
-        <p class="mh-cart__hint" *ngIf="!isLoggedIn">You'll be asked to sign in to checkout.</p>
-
         <button class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing" (click)="checkout()">
           {{ placing ? 'Placing…' : 'Checkout' }}
         </button>

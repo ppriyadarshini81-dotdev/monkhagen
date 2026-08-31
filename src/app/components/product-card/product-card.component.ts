@@ -1,8 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { Component, Input, OnDestroy, OnInit } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { CartService } from '../../services/cart.service';
+import { AuthService } from '../../services/auth.service';
+import { ProductService } from '../../services/product.service';
 import { cachedMediaUrl } from '../../utils/media-url';
 
 @Component({
@@ -16,10 +18,20 @@ export class ProductCardComponent implements OnInit, OnDestroy {
   @Input({ required: true }) product!: Product;
   @Input() cycleImages = false;
   added = false;
+  adding = false;
+  loadingSizes = false;
+  showSizePicker = false;
+  addError = '';
+  quickProduct?: Product;
   currentImageIndex = 0;
   private imageTimer?: ReturnType<typeof setInterval>;
 
-  constructor(private cart: CartService) {}
+  constructor(
+    private cart: CartService,
+    private auth: AuthService,
+    private productService: ProductService,
+    private router: Router
+  ) {}
 
   get currentImage(): string {
     const image = this.product.images[this.currentImageIndex] || this.product.images[0] || '';
@@ -36,6 +48,16 @@ export class ProductCardComponent implements OnInit, OnDestroy {
 
   onMouseLeave(): void {
     this.startImageTimer(2000);
+    if (!this.adding) this.showSizePicker = false;
+  }
+
+  get availableSizes(): string[] {
+    if (!this.quickProduct) return [];
+    return this.quickProduct.sizes.filter((size) =>
+      this.quickProduct!.variants?.some(
+        (variant) => variant.isActive && variant.stock > 0 && variant.size === size
+      )
+    );
   }
 
   private startImageTimer(delay: number): void {
@@ -53,13 +75,56 @@ export class ProductCardComponent implements OnInit, OnDestroy {
   quickAdd(event: Event): void {
     event.preventDefault();
     event.stopPropagation();
-    this.cart.add(
-      this.product,
-      1,
-      this.product.sizes[0] ?? null,
-      this.product.colors[0] ?? null
-    );
-    this.added = true;
-    setTimeout(() => (this.added = false), 1400);
+
+    if (!this.auth.isLoggedIn) {
+      this.router.navigate(['/login'], {
+        queryParams: { redirect: this.router.url }
+      });
+      return;
+    }
+
+    this.addError = '';
+    if (this.quickProduct) {
+      this.showSizePicker = true;
+      return;
+    }
+
+    this.loadingSizes = true;
+    this.productService.getProduct(this.product.id).subscribe({
+      next: (product) => {
+        this.quickProduct = product;
+        this.loadingSizes = false;
+        this.showSizePicker = true;
+        if (this.availableSizes.length === 0) {
+          this.addError = 'No sizes are currently available.';
+        }
+      },
+      error: () => {
+        this.loadingSizes = false;
+        this.showSizePicker = true;
+        this.addError = 'Could not load available sizes.';
+      }
+    });
+  }
+
+  selectSize(event: Event, size: string): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!this.quickProduct || this.adding) return;
+
+    this.adding = true;
+    this.addError = '';
+    this.cart.add(this.quickProduct, 1, size).subscribe({
+      next: () => {
+        this.adding = false;
+        this.showSizePicker = false;
+        this.added = true;
+        setTimeout(() => (this.added = false), 1400);
+      },
+      error: (err) => {
+        this.adding = false;
+        this.addError = err?.error?.message || err?.message || 'Could not add this item.';
+      }
+    });
   }
 }

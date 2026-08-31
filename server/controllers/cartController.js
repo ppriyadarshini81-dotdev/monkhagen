@@ -1,35 +1,54 @@
 const Cart = require('../models/Cart');
 const asyncHandler = require('../middleware/asyncHandler');
 
-// GET /api/cart
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function positiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 exports.get = asyncHandler(async (req, res) => {
   const cart = await Cart.getWithItems(req.user.id);
   res.json(cart);
 });
 
-// POST /api/cart/items
 exports.addItem = asyncHandler(async (req, res) => {
-  const { productId, variantId, quantity = 1 } = req.body;
-  if (!variantId) return res.status(400).json({ message: 'variantId is required.' });
-  const cart = await Cart.addItem(req.user.id, { productId, variantId, quantity: Math.max(1, quantity) });
+  const { productId, variantId } = req.body;
+  const quantity = positiveInteger(req.body.quantity ?? 1);
+
+  if (!UUID_RE.test(productId || '') || !UUID_RE.test(variantId || '')) {
+    return res.status(400).json({ message: 'Valid productId and variantId are required.' });
+  }
+  if (!quantity) {
+    return res.status(400).json({ message: 'quantity must be a positive integer.' });
+  }
+
+  const cart = await Cart.addItem(req.user.id, { productId, variantId, quantity });
   res.json(cart);
 });
 
-// PUT /api/cart/items/:itemId
 exports.updateItem = asyncHandler(async (req, res) => {
-  const { quantity } = req.body;
-  if (!quantity || quantity < 1) return res.status(400).json({ message: 'quantity must be >= 1.' });
+  const quantity = positiveInteger(req.body.quantity);
+  if (!UUID_RE.test(req.params.itemId || '')) {
+    return res.status(400).json({ message: 'Valid itemId is required.' });
+  }
+  if (!quantity) {
+    return res.status(400).json({ message: 'quantity must be a positive integer.' });
+  }
+
   const cart = await Cart.updateItem(req.user.id, req.params.itemId, { quantity });
   res.json(cart);
 });
 
-// DELETE /api/cart/items/:itemId
 exports.removeItem = asyncHandler(async (req, res) => {
+  if (!UUID_RE.test(req.params.itemId || '')) {
+    return res.status(400).json({ message: 'Valid itemId is required.' });
+  }
   const cart = await Cart.removeItem(req.user.id, req.params.itemId);
   res.json(cart);
 });
 
-// DELETE /api/cart
 exports.clear = asyncHandler(async (req, res) => {
   await Cart.clear(req.user.id);
   res.json({ message: 'Cart cleared.' });

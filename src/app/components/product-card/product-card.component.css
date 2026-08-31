@@ -66,6 +66,58 @@
   transform: translateY(0);
 }
 
+.mh-pcard__sizes {
+  position: absolute;
+  z-index: 3;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 12px;
+  color: #111;
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+}
+
+.mh-pcard__sizes > span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mh-pcard__size-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mh-pcard__size-list button {
+  min-width: 34px;
+  padding: 7px 9px;
+  color: #111;
+  background: #fff;
+  border: 1px solid rgba(17, 17, 17, 0.22);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mh-pcard__size-list button:hover:not(:disabled) {
+  color: #fff;
+  background: var(--mh-accent);
+  border-color: var(--mh-accent);
+}
+
+.mh-pcard__sizes small {
+  display: block;
+  margin-top: 8px;
+  color: var(--mh-danger);
+  font-size: 11px;
+}
+
 .mh-pcard__body {
   padding: 16px;
 }
