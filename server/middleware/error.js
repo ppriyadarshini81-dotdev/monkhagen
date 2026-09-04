@@ -19,7 +19,11 @@ function errorHandler(err, req, res, _next) {
     return res.status(400).json({ message: 'Image exceeds the 5 MB limit.' });
   }
 
-  console.error(err);
+  console.error('Request failed:', {
+    name: err.name || 'Error',
+    code: err.code || null,
+    message: err.message || 'Server error.'
+  });
   res.status(err.status || 500).json({ message: err.message || 'Server error.' });
 }
 

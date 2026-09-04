@@ -157,6 +157,11 @@
   margin-bottom: 10px;
 }
 
+.mh-cart__address-select {
+  width: 100%;
+  background: var(--mh-bg);
+}
+
 .mh-cart__row2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

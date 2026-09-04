@@ -2,17 +2,32 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Cart = require('../models/Cart');
 const asyncHandler = require('../middleware/asyncHandler');
+const { pool } = require('../config/db');
 
 // POST /api/orders — checkout
 exports.create = asyncHandler(async (req, res) => {
-  const { address, shippingAmount = 0, paymentMethod = 'cod' } = req.body;
+  const { addressId, paymentMethod = 'cod' } = req.body;
   const savedCart = await Cart.getWithItems(req.user.id);
   if (savedCart.items.length === 0) {
     return res.status(400).json({ message: 'Cart is empty.' });
   }
-  if (!address?.fullName || !address?.addressLine1 || !address?.city || !address?.postalCode) {
-    return res.status(400).json({ message: 'Shipping address is required.' });
-  }
+  const { rows: addressRows } = await pool.query(
+    `SELECT * FROM customer_addresses WHERE id = $1 AND user_id = $2`,
+    [addressId, req.user.id]
+  );
+  const savedAddress = addressRows[0];
+  if (!savedAddress) return res.status(400).json({ message: 'Select a saved shipping address.' });
+  const address = {
+    fullName: savedAddress.full_name,
+    phone: savedAddress.phone,
+    addressLine1: savedAddress.address_line1,
+    addressLine2: savedAddress.address_line2,
+    landmark: savedAddress.landmark,
+    city: savedAddress.city,
+    state: savedAddress.state,
+    postalCode: savedAddress.postal_code,
+    country: savedAddress.country
+  };
 
   // Prices are always calculated from DB — never trust client-submitted totals
   let subtotal = 0;
@@ -42,13 +57,15 @@ exports.create = asyncHandler(async (req, res) => {
     });
   }
 
+  // Keep legacy COD checkout server-priced; Razorpay uses /api/payments/create-order.
+  const shippingAmount = subtotal >= 2999 ? 0 : 99;
   const order = await Order.create({
     userId: req.user.id,
     items: lineItems,
     address,
     subtotal,
-    shippingAmount: Number(shippingAmount),
-    totalAmount: subtotal + Number(shippingAmount),
+    shippingAmount,
+    totalAmount: subtotal + shippingAmount,
     paymentMethod
   });
 

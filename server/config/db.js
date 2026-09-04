@@ -664,6 +664,29 @@ async function initSchema() {
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS shipped_at   TIMESTAMPTZ;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;
   `);
+  // Razorpay payment lifecycle and idempotency metadata. All changes are additive.
+  await pool.query(`
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS cart_id UUID REFERENCES carts(id) ON DELETE SET NULL;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_token UUID;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_signature TEXT;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS inventory_deducted_at TIMESTAMPTZ;
+    ALTER TABLE orders ADD COLUMN IF NOT EXISTS confirmation_email_sent_at TIMESTAMPTZ;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_checkout_token
+      ON orders(checkout_token) WHERE checkout_token IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_razorpay_order_id
+      ON orders(razorpay_order_id) WHERE razorpay_order_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_razorpay_payment_id
+      ON orders(razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_orders_cart ON orders(cart_id);
+
+    CREATE TABLE IF NOT EXISTS payment_webhook_events (
+      event_id       VARCHAR(255) PRIMARY KEY,
+      event_type     VARCHAR(100) NOT NULL,
+      processed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS credit_accounts (
       user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

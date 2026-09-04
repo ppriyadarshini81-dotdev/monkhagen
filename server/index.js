@@ -18,6 +18,8 @@ const uploadRoutes = require('./routes/upload');
 const accountRoutes = require('./routes/account');
 const contactRoutes = require('./routes/contact');
 const mediaRoutes = require('./routes/media');
+const paymentRoutes = require('./routes/payments');
+const webhookRoutes = require('./routes/webhooks');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +28,9 @@ const PORT = process.env.PORT || 3000;
 connectDB();
 
 app.use(cors());
+// Razorpay signatures must be verified against the untouched request bytes.
+// This route must remain before express.json().
+app.use('/api/webhooks/razorpay', express.raw({ type: 'application/json', limit: '1mb' }), webhookRoutes);
 app.use(express.json({ limit: '2mb' }));
 
 // API routes
@@ -41,6 +46,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/account', accountRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/media', mediaRoutes);
+app.use('/api/payments', paymentRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', brand: 'Monk Hagen' });

@@ -2,15 +2,6 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
-export interface ShippingForm {
-  name?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-  phone?: string;
-}
-
 export interface Order {
   id: string;
   orderNumber?: string;
@@ -27,17 +18,9 @@ export class OrderService {
 
   constructor(private http: HttpClient) {}
 
-  checkout(shipping: ShippingForm): Observable<Order> {
+  checkout(addressId: string): Observable<Order> {
     return this.http.post<Order>(this.api, {
-      address: {
-        fullName: shipping.name,
-        addressLine1: shipping.address,
-        city: shipping.city,
-        state: shipping.state || shipping.city,
-        postalCode: shipping.zip,
-        phone: shipping.phone
-      },
-      shippingAmount: 0,
+      addressId,
       paymentMethod: 'cod'
     });
   }

@@ -67,21 +67,32 @@
 
         <div class="mh-cart__ship">
           <h4>Shipping details</h4>
-          <input class="mh-input" placeholder="Full name" [(ngModel)]="shipping.name" />
-          <input class="mh-input" placeholder="Address" [(ngModel)]="shipping.address" />
+          <select
+            class="mh-input mh-cart__address-select"
+            *ngIf="addresses.length > 0"
+            [ngModel]="selectedAddressId"
+            (ngModelChange)="selectAddress($event)"
+          >
+            <option value="">Enter a new address</option>
+            <option *ngFor="let address of addresses" [value]="address.id">
+              {{ address.addressType }} - {{ address.addressLine1 }}, {{ address.city }}
+            </option>
+          </select>
+          <input class="mh-input" placeholder="Full name" [(ngModel)]="shipping.name" (ngModelChange)="addressEdited()" />
+          <input class="mh-input" placeholder="Address" [(ngModel)]="shipping.address" (ngModelChange)="addressEdited()" />
           <div class="mh-cart__row2">
-            <input class="mh-input" placeholder="City" [(ngModel)]="shipping.city" />
-            <input class="mh-input" placeholder="State" [(ngModel)]="shipping.state" />
+            <input class="mh-input" placeholder="City" [(ngModel)]="shipping.city" (ngModelChange)="addressEdited()" />
+            <input class="mh-input" placeholder="State" [(ngModel)]="shipping.state" (ngModelChange)="addressEdited()" />
           </div>
           <div class="mh-cart__row2">
-            <input class="mh-input" placeholder="ZIP / Postal code" [(ngModel)]="shipping.zip" />
-            <input class="mh-input" placeholder="Phone" [(ngModel)]="shipping.phone" />
+            <input class="mh-input" placeholder="ZIP / Postal code" [(ngModel)]="shipping.zip" (ngModelChange)="addressEdited()" />
+            <input class="mh-input" placeholder="Phone" [(ngModel)]="shipping.phone" (ngModelChange)="addressEdited()" />
           </div>
         </div>
 
         <p class="mh-error" *ngIf="error">{{ error }}</p>
         <button class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing" (click)="checkout()">
-          {{ placing ? 'Placing…' : 'Checkout' }}
+          {{ placing ? 'Opening secure payment…' : 'Pay securely' }}
         </button>
       </aside>
     </div>
