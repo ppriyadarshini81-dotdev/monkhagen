@@ -3,10 +3,14 @@ const Product = require('../models/Product');
 const Cart = require('../models/Cart');
 const asyncHandler = require('../middleware/asyncHandler');
 const { pool } = require('../config/db');
+const shipping = require('../services/shippingService');
 
 // POST /api/orders — checkout
 exports.create = asyncHandler(async (req, res) => {
   const { addressId, paymentMethod = 'cod' } = req.body;
+  if (paymentMethod !== 'cod') {
+    return res.status(400).json({ message: 'This endpoint supports COD only. Use Razorpay checkout for prepaid orders.' });
+  }
   const savedCart = await Cart.getWithItems(req.user.id);
   if (savedCart.items.length === 0) {
     return res.status(400).json({ message: 'Cart is empty.' });
@@ -70,6 +74,7 @@ exports.create = asyncHandler(async (req, res) => {
   });
 
   await Cart.markConverted(req.user.id).catch(() => {});
+  void shipping.processPendingOrder(order.id);
   res.status(201).json(order);
 });
 

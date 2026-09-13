@@ -37,15 +37,9 @@ server/
    npm install
    ```
 
-3. Make sure MongoDB is running locally (or set an Atlas URI). Copy the env file
-   and adjust values:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Key values: `MONGODB_URI`, `JWT_SECRET`, and the `CLOUDINARY_*` keys (optional —
-   needed only for image uploads from the admin panel).
+3. Configure the existing root `.env` file for the backend. Set the PostgreSQL
+   `DB_*` variables, `JWT_SECRET`, and the credentials required by your integrations.
+   The backend reads this file with dotenv; keep it out of version control.
 
 4. Seed the database:
 

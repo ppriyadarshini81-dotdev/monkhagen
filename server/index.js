@@ -20,12 +20,14 @@ const contactRoutes = require('./routes/contact');
 const mediaRoutes = require('./routes/media');
 const paymentRoutes = require('./routes/payments');
 const webhookRoutes = require('./routes/webhooks');
+const shippingRoutes = require('./routes/shipping');
+const { startShippingWorker } = require('./services/shippingWorker');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Connect to PostgreSQL.
-connectDB();
+const databaseReady = connectDB();
 
 app.use(cors());
 // Razorpay signatures must be verified against the untouched request bytes.
@@ -47,6 +49,7 @@ app.use('/api/account', accountRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/shipping', shippingRoutes);
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', brand: 'Monk Hagen' });
@@ -69,6 +72,9 @@ app.get(/^(?!\/api).*/, (req, res, next) => {
 app.use(notFound);
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`Monk Hagen server running at http://localhost:${PORT}`);
+databaseReady.then(() => {
+  app.listen(PORT, () => {
+    console.log(`Monk Hagen server running at http://localhost:${PORT}`);
+    startShippingWorker();
+  });
 });

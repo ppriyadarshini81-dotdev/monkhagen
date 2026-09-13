@@ -1,4 +1,6 @@
 const { Pool } = require('pg');
+const { readFileSync } = require('fs');
+const path = require('path');
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
@@ -714,6 +716,20 @@ async function initSchema() {
   `).catch(() => {});
 }
 
+async function applyShippingMigration() {
+  const sql = readFileSync(path.join(__dirname, '..', 'migrations', '001_shipments.sql'), 'utf8');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('monkhagen:shipping-migration'))");
+    await client.query(sql);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally { client.release(); }
+}
+
 async function connectDB() {
   try {
     await pool.query('SELECT 1');
@@ -727,6 +743,7 @@ async function connectDB() {
     );
 
     await initSchema();
+    await applyShippingMigration();
 
     console.log('Database schema initialized successfully');
   } catch (err) {
@@ -742,5 +759,6 @@ async function connectDB() {
 module.exports = {
   pool,
   connectDB,
-  initSchema
+  initSchema,
+  applyShippingMigration
 };

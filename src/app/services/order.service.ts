@@ -8,8 +8,19 @@ export interface Order {
   totalAmount?: number;
   total?: number;
   status: string;
+  paymentStatus?: string;
+  paymentMethod?: string;
+  shipment?: {
+    shiprocketOrderId: string | number | null;
+    shiprocketShipmentId: string | number | null;
+    shippingStatus: string;
+    awbCode: string | null;
+    courierName: string | null;
+    pickupStatus: string;
+    lastErrorCode: string | null;
+  };
   createdAt: string;
-  items: { name: string; quantity: number; price: number }[];
+  items: { name?: string; productName: string; quantity: number; price?: number; unitPrice: number }[];
 }
 
 @Injectable({ providedIn: 'root' })

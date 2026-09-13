@@ -1,4 +1,5 @@
 const { pool } = require('../config/db');
+const Shipment = require('./Shipment');
 
 function genOrderNumber() {
   const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -98,6 +99,7 @@ const Order = {
         );
       }
 
+      if (!paymentMethod || paymentMethod === 'cod') await Shipment.enqueue(client, order.id);
       await client.query('COMMIT');
       return enrichOrder(order);
     } catch (err) {
@@ -116,8 +118,17 @@ const Order = {
   },
 
   async findAll() {
-    const { rows } = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
-    return Promise.all(rows.map(enrichOrder));
+    const { rows } = await pool.query(`SELECT o.*, json_build_object(
+      'shiprocketOrderId', s.shiprocket_order_id,
+      'shiprocketShipmentId', s.shiprocket_shipment_id,
+      'shippingStatus', COALESCE(s.shipping_status, 'not_created'),
+      'awbCode', COALESCE(s.awb_code, o.awb_number),
+      'courierName', COALESCE(s.courier_name, o.courier_name),
+      'pickupStatus', COALESCE(s.pickup_status, 'pending'),
+      'lastErrorCode', s.last_error_code
+    ) AS shipment FROM orders o
+    LEFT JOIN shipments s ON s.order_id = o.id ORDER BY o.created_at DESC`);
+    return Promise.all(rows.map(async row => ({ ...await enrichOrder(row), shipment: row.shipment })));
   },
 
   async findByIdAndUpdateStatus(id, status) {

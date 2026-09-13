@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const { pool } = require('../config/db');
 const { getRazorpay } = require('../config/razorpay');
 const { sendOrderConfirmation } = require('./orderConfirmationEmail');
+const Shipment = require('../models/Shipment');
+const shipping = require('./shippingService');
 
 const CURRENCY = 'INR';
 const FREE_SHIPPING_THRESHOLD_PAISE = 299900;
@@ -199,12 +201,13 @@ async function finalizePaidOrder(client, { razorpayOrderId, paymentId, signature
     if (order.razorpay_payment_id !== paymentId) {
       throw httpError(409, 'This order is already linked to another payment.');
     }
+    await Shipment.enqueue(client, order.id);
     return { order, newlyFinalized: false };
   }
-  if (amount !== undefined && Number(amount) !== toPaise(order.total_amount)) {
+  if (!Number.isSafeInteger(Number(amount)) || Number(amount) !== toPaise(order.total_amount)) {
     throw httpError(409, 'Payment amount does not match the order total.');
   }
-  if (currency && currency !== CURRENCY) {
+  if (currency !== CURRENCY) {
     throw httpError(409, 'Payment currency does not match the order currency.');
   }
 
@@ -242,6 +245,7 @@ async function finalizePaidOrder(client, { razorpayOrderId, paymentId, signature
       [order.cart_id, order.user_id]
     );
   }
+  await Shipment.enqueue(client, order.id);
   return { order: updated.rows[0], newlyFinalized: true };
 }
 
@@ -288,6 +292,8 @@ async function verifyPayment(userId, { localOrderId, razorpayPaymentId, razorpay
     client.release();
   }
 
+  // The queue row is committed. Shipping failures cannot roll back or fail a captured payment.
+  void shipping.processPendingOrder(order.id);
   await sendOrderConfirmation(order.id);
   return {
     localOrderId: order.id,
@@ -329,6 +335,9 @@ async function processWebhook(rawBody, headers) {
       const razorpayOrderId = payment?.order_id || razorpayOrder?.id;
       const paymentId = payment?.id;
       if (!razorpayOrderId || !paymentId) throw httpError(400, 'Paid webhook is missing payment details.');
+      if (payment.status !== 'captured' || payment.amount == null || !payment.currency) {
+        throw httpError(400, 'Paid webhook must contain a captured payment with amount and currency.');
+      }
       const finalization = await finalizePaidOrder(client, {
         razorpayOrderId,
         paymentId,
@@ -352,7 +361,10 @@ async function processWebhook(rawBody, headers) {
     client.release();
   }
 
-  if (finalizedOrderId) await sendOrderConfirmation(finalizedOrderId);
+  if (finalizedOrderId) {
+    void shipping.processPendingOrder(finalizedOrderId);
+    await sendOrderConfirmation(finalizedOrderId);
+  }
   return { duplicate: false };
 }
 

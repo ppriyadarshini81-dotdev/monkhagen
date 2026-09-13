@@ -56,6 +56,8 @@ export class AdminComponent implements OnInit {
   sizes: VariantOption[] = [];
   colors: VariantOption[] = [];
   orders: Order[] = [];
+  ordersLoading = false;
+  ordersError = '';
   message = '';
   error = '';
 
@@ -132,10 +134,43 @@ export class AdminComponent implements OnInit {
   }
 
   loadOrders(): void {
+    if (this.ordersLoading) return;
+    this.ordersLoading = true;
+    this.ordersError = '';
     this.orderService.allOrders().subscribe({
-      next: (o) => (this.orders = o),
-      error: () => {}
+      next: (o) => { this.orders = o; this.ordersLoading = false; },
+      error: () => {
+        this.ordersError = 'Could not refresh orders. Please try again.';
+        this.ordersLoading = false;
+      }
     });
+  }
+
+  statusLabel(status: string | null | undefined): string {
+    const labels: Record<string, string> = {
+      not_created: 'Not created', pending: 'Pending', created: 'Shipment Created',
+      needs_configuration: 'Configuration Required', validation_failed: 'Failed',
+      retry_pending: 'Retry Pending', needs_review: 'Review Required',
+      awb_assigned: 'AWB Assigned', pickup_scheduled: 'Pickup Scheduled'
+    };
+    return status ? labels[status] || status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Unavailable';
+  }
+
+  shipmentError(order: Order): string {
+    const code = order.shipment?.lastErrorCode;
+    if (!code) return '';
+    const messages: Record<string, string> = {
+      SHIPPING_PACKAGE_NOT_CONFIGURED: 'Configure the pickup location and package measurements in the backend.',
+      SHIPROCKET_NOT_CONFIGURED: 'Check the Shiprocket configuration in the backend.',
+      SHIPROCKET_AUTH_FAILED: 'Shiprocket authentication failed. Check the backend credentials.',
+      SHIPPING_VALIDATION: 'Check the saved address, order items and package details.',
+      SHIPROCKET_TIMEOUT: 'Shiprocket did not respond in time.',
+      SHIPROCKET_UNAVAILABLE: 'Shiprocket is temporarily unavailable.',
+      SHIPPING_RECONCILIATION_REQUIRED: 'Check the order in Shiprocket before attempting another shipping operation.'
+    };
+    const message = messages[code] || 'The shipping operation could not be completed. Check the order in Shiprocket.';
+    return order.shipment?.shippingStatus === 'needs_review'
+      ? `${message} Review the order in Shiprocket before retrying to avoid duplicates.` : message;
   }
 
   newProduct(): void {

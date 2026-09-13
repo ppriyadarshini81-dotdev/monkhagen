@@ -305,16 +305,30 @@
 
   <!-- ORDERS -->
   <div *ngIf="tab === 'orders'">
-    <p class="mh-empty" *ngIf="orders.length === 0">No orders yet.</p>
+    <div class="mh-admin__actions">
+      <button class="mh-btn mh-btn--ghost" (click)="loadOrders()" [disabled]="ordersLoading">{{ ordersLoading ? 'Refreshing...' : 'Refresh orders' }}</button>
+    </div>
+    <p role="alert" *ngIf="ordersError">{{ ordersError }}</p>
+    <p class="mh-empty" *ngIf="!ordersLoading && !ordersError && orders.length === 0">No orders yet.</p>
     <div class="mh-order mh-card" *ngFor="let o of orders">
       <div class="mh-order__head">
         <strong>Order #{{ o.id }}</strong>
-        <span class="mh-order__status">{{ o.status }}</span>
-        <span class="mh-order__total">₹{{ o.total | number }}</span>
+        <span class="mh-order__status">{{ statusLabel(o.status) }}</span>
+        <span class="mh-order__total">₹{{ o.totalAmount | number }}</span>
       </div>
       <ul>
-        <li *ngFor="let it of o.items">{{ it.quantity }} × {{ it.name }} — ₹{{ it.price | number }}</li>
+        <li *ngFor="let it of o.items">{{ it.quantity }} × {{ it.productName }} — ₹{{ it.unitPrice | number }}</li>
       </ul>
+      <dl class="mh-order__shipping">
+        <div><dt>Payment</dt><dd>{{ statusLabel(o.paymentStatus) }} ({{ o.paymentMethod === 'cod' ? 'COD' : statusLabel(o.paymentMethod) }})</dd></div>
+        <div><dt>Shipment</dt><dd>{{ statusLabel(o.shipment?.shippingStatus) }}</dd></div>
+        <div><dt>Shiprocket order ID</dt><dd>{{ o.shipment?.shiprocketOrderId || 'Not created' }}</dd></div>
+        <div><dt>Shiprocket shipment ID</dt><dd>{{ o.shipment?.shiprocketShipmentId || 'Not created' }}</dd></div>
+        <div><dt>AWB</dt><dd>{{ o.shipment?.awbCode || 'Not assigned' }}</dd></div>
+        <div><dt>Courier</dt><dd>{{ o.shipment?.courierName || 'Not assigned' }}</dd></div>
+        <div><dt>Pickup</dt><dd>{{ !o.shipment?.pickupStatus || o.shipment?.pickupStatus === 'pending' ? 'Not scheduled' : statusLabel(o.shipment?.pickupStatus) }}</dd></div>
+      </dl>
+      <p class="mh-order__shipping-error" *ngIf="shipmentError(o) as shippingError">{{ shippingError }}</p>
       <span class="mh-order__date">{{ o.createdAt | date: 'medium' }}</span>
     </div>
   </div>

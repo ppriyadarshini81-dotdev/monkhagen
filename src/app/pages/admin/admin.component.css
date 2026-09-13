@@ -270,6 +270,8 @@
 
 .mh-order__head {
   display: flex;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
   align-items: center;
   gap: 14px;
   margin-bottom: 10px;
@@ -304,6 +306,31 @@
 .mh-order__date {
   font-size: 12px;
   color: var(--mh-text-dim);
+}
+
+.mh-order__shipping {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  padding: 16px 0;
+  border-top: 1px solid var(--mh-line);
+}
+
+.mh-order__shipping dt {
+  color: var(--mh-text-dim);
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.mh-order__shipping dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.mh-order__shipping-error {
+  color: var(--mh-danger);
+  font-size: 14px;
 }
 
 .mh-empty {
