@@ -35,7 +35,7 @@
 .mh-auth__card {
   position: relative;
   width: 100%;
-  max-width: 440px;
+  max-width: 480px;
   padding: 44px 42px 40px;
   overflow: hidden;
   text-align: center;
@@ -67,9 +67,192 @@
 }
 
 .mh-auth__sub {
-  margin-bottom: 24px;
+  margin: 0 0 24px;
   color: #66708a;
   font-size: 14px;
+  line-height: 1.55;
+}
+
+.mh-auth__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 22px;
+  padding: 4px;
+  background: rgba(225, 229, 239, 0.75);
+  border-radius: 12px;
+}
+
+.mh-auth__tabs button {
+  min-height: 40px;
+  color: #66708a;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.mh-auth__tabs button.is-active {
+  color: #142c85;
+  background: #fff;
+  box-shadow: 0 2px 9px rgba(20, 44, 133, 0.1);
+}
+
+.mh-auth__form {
+  display: grid;
+  gap: 15px;
+  text-align: left;
+}
+
+.mh-auth__form > label {
+  display: grid;
+  gap: 7px;
+  color: #1d2948;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.mh-auth__form input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  color: #101b39;
+  font: inherit;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(17, 47, 116, 0.18);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mh-auth__form input:focus {
+  border-color: #2949e8;
+  box-shadow: 0 0 0 3px rgba(41, 73, 232, 0.12);
+}
+
+.mh-auth__password {
+  position: relative;
+  display: block;
+}
+
+.mh-auth__password input {
+  padding-right: 62px;
+}
+
+.mh-auth__password button {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  padding: 5px;
+  color: #2140e6;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.mh-field-hint,
+.mh-field-error {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.mh-field-hint {
+  color: #798199;
+}
+
+.mh-field-error,
+.mh-error {
+  color: #b42318;
+}
+
+.mh-error,
+.mh-auth__notice {
+  margin: 0 0 18px;
+  padding: 11px 13px;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  border-radius: 9px;
+}
+
+.mh-error {
+  background: #fff1f0;
+  border: 1px solid #ffd4d0;
+}
+
+.mh-auth__notice {
+  color: #17633a;
+  background: #eefbf3;
+  border: 1px solid #c8ecd5;
+}
+
+.mh-auth__form .mh-btn--primary {
+  min-height: 48px;
+  margin-top: 2px;
+  color: #fff;
+  background: #2447eb;
+  box-shadow: 0 8px 20px rgba(36, 71, 235, 0.2);
+}
+
+.mh-auth__form .mh-btn--primary:hover:not(:disabled) {
+  background: #1939d5;
+}
+
+.mh-auth__forgot,
+.mh-auth__back {
+  width: fit-content;
+  padding: 0;
+  color: #2140e6;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.mh-auth__forgot {
+  justify-self: end;
+  margin-top: -5px;
+}
+
+.mh-auth__back {
+  margin-top: 18px;
+}
+
+.mh-auth__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 21px 0;
+  color: #8a91a4;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.mh-auth__divider::before,
+.mh-auth__divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(17, 47, 116, 0.13);
+}
+
+.mh-auth__terms {
+  margin: 20px 0 0;
+  color: #8990a2;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .mh-btn--google {
@@ -79,6 +262,12 @@
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid rgba(17, 47, 116, 0.14);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.mh-btn--google svg {
+  flex: 0 0 auto;
+  margin-right: 8px;
+  vertical-align: middle;
 }
 
 .mh-btn--google:hover:not(:disabled) {

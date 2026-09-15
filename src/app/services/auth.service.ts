@@ -42,10 +42,15 @@ export class AuthService {
       .pipe(tap((res) => this.persist(res)));
   }
 
-  loginWithGoogle(idToken: string): Observable<AuthResponse> {
+  loginWithFirebase(idToken: string): Observable<AuthResponse> {
     return this.http
-      .post<AuthResponse>(`${this.api}/google`, { idToken })
+      .post<AuthResponse>(`${this.api}/firebase`, { idToken })
       .pipe(tap((res) => this.persist(res)));
+  }
+
+  /** @deprecated Use loginWithFirebase for every Firebase provider. */
+  loginWithGoogle(idToken: string): Observable<AuthResponse> {
+    return this.loginWithFirebase(idToken);
   }
 
   /** @deprecated OTP login replaced by Google auth */

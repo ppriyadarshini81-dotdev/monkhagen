@@ -27,7 +27,12 @@ function errorHandler(err, req, res, _next) {
     code: err.code || null,
     message: err.message || 'Server error.'
   });
-  res.status(err.status || 500).json({ message: err.message || 'Server error.' });
+  const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500
+    ? err.status
+    : 500;
+  res.status(status).json({
+    message: status === 500 ? 'Something went wrong. Please try again.' : err.message
+  });
 }
 
 module.exports = { notFound, errorHandler };

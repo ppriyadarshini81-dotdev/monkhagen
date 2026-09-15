@@ -656,8 +656,13 @@ async function initSchema(database = pool) {
   // Safe migrations — add Google auth columns to existing deployments
   await database.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS google_uid    VARCHAR(128);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid  VARCHAR(128);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
+
+    UPDATE users
+    SET firebase_uid = google_uid
+    WHERE firebase_uid IS NULL AND google_uid IS NOT NULL;
   `);
   await database.query(`
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS awb_number   VARCHAR(100);
@@ -711,6 +716,9 @@ async function initSchema(database = pool) {
     CREATE UNIQUE INDEX IF NOT EXISTS uq_users_google_uid
       ON users (google_uid)
       WHERE google_uid IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_users_firebase_uid
+      ON users (firebase_uid)
+      WHERE firebase_uid IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_credit_transactions_user
       ON credit_transactions(user_id);
   `);
@@ -718,6 +726,11 @@ async function initSchema(database = pool) {
 
 async function applyShippingMigration(database = pool) {
   const sql = readFileSync(path.join(__dirname, '..', 'migrations', '001_shipments.sql'), 'utf8');
+  await database.query(sql);
+}
+
+async function applyFirebaseAuthMigration(database = pool) {
+  const sql = readFileSync(path.join(__dirname, '..', 'migrations', '002_firebase_auth.sql'), 'utf8');
   await database.query(sql);
 }
 
@@ -762,9 +775,10 @@ async function connectDB() {
 
     const baseApplied = await runMigration('000_base_schema', initSchema);
     const shippingApplied = await runMigration('001_shipments', applyShippingMigration);
+    const firebaseAuthApplied = await runMigration('002_firebase_auth', applyFirebaseAuthMigration);
 
     console.log(
-      baseApplied || shippingApplied
+      baseApplied || shippingApplied || firebaseAuthApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
@@ -783,5 +797,6 @@ module.exports = {
   connectDB,
   initSchema,
   applyShippingMigration,
+  applyFirebaseAuthMigration,
   runMigration
 };

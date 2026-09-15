@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { rateLimit } = require('express-rate-limit');
 const ctrl = require('../controllers/authController');
-const googleCtrl = require('../controllers/googleAuthController');
+const firebaseCtrl = require('../controllers/firebaseAuthController');
 const { authenticate } = require('../middleware/auth');
 const { legacyOtpEnabled } = require('../config/security');
 
@@ -16,8 +16,10 @@ const authLimiter = rateLimit({
 router.post('/login', authLimiter, ctrl.login);
 router.get('/me', authenticate, ctrl.me);
 
-// Google / Firebase customer login
-router.post('/google', authLimiter, googleCtrl.googleLogin);
+// All Firebase customer providers (Google and email/password) use the same verified-token flow.
+router.post('/firebase', authLimiter, firebaseCtrl.firebaseLogin);
+// Compatibility for clients deployed before the provider-neutral endpoint.
+router.post('/google', authLimiter, firebaseCtrl.firebaseLogin);
 
 // Deprecated OTP routes are available only for deliberately configured legacy clients.
 if (legacyOtpEnabled()) {

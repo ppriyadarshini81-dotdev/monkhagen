@@ -25,6 +25,7 @@ function format(row) {
     phone: row.phone || null,
     role: row.role_name,
     profileImage: row.profile_image || null,
+    firebaseUid: row.firebase_uid || row.google_uid || null,
     googleUid: row.google_uid || null,
     dateOfBirth: row.date_of_birth || null,
     phoneVerified: row.phone_verified,
@@ -40,7 +41,9 @@ function wrapRow(row) {
   return {
     ...format(row),
     passwordHash: row.password_hash,
-    comparePassword(plain) { return bcrypt.compare(plain, row.password_hash); },
+    comparePassword(plain) {
+      return typeof row.password_hash === 'string' && bcrypt.compare(plain, row.password_hash);
+    },
     toJSON() { return format(row); }
   };
 }
@@ -90,16 +93,16 @@ const User = {
     );
     return this.findById(rows[0].id);
   },
-  async findByGoogleUid(googleUid) {
-    const { rows } = await pool.query(`${BASE_Q} WHERE u.google_uid = $1`, [googleUid]);
+  async findByFirebaseUid(firebaseUid) {
+    const { rows } = await pool.query(`${BASE_Q} WHERE u.firebase_uid = $1`, [firebaseUid]);
     return wrapRow(rows[0]);
   },
-  async createGoogleUser({ googleUid, email, name, profileImage, emailVerified, role = 'customer' }) {
+  async createFirebaseUser({ firebaseUid, email, name, profileImage, emailVerified, role = 'customer' }) {
     const roleId = await getRoleId(role);
     const { rows } = await pool.query(
-      `INSERT INTO users (name, email, google_uid, profile_image, role_id, email_verified, is_active)
+      `INSERT INTO users (name, email, firebase_uid, profile_image, role_id, email_verified, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING id`,
-      [name, email, googleUid, profileImage, roleId, emailVerified]
+      [name, email, firebaseUid, profileImage, roleId, emailVerified]
     );
     return this.findById(rows[0].id);
   },
@@ -114,25 +117,28 @@ const User = {
     );
     return rows[0] ? this.findById(rows[0].id) : null;
   },
-  async linkGoogleUid(id, { uid, picture, name }) {
+  async linkFirebaseUid(id, { uid, picture, name, emailVerified }) {
     await pool.query(
       `UPDATE users
-       SET google_uid = $1, profile_image = $2,
+       SET firebase_uid = $1,
+           profile_image = COALESCE(NULLIF($2, ''), profile_image),
            name = COALESCE(NULLIF($3, ''), name),
+           email_verified = email_verified OR $4,
            last_login_at = NOW(), updated_at = NOW()
-       WHERE id = $4`,
-      [uid, picture, name, id]
+       WHERE id = $5`,
+      [uid, picture, name, Boolean(emailVerified), id]
     );
     return this.findById(id);
   },
-  async updateGoogleUser(id, { name, picture }) {
+  async updateFirebaseUser(id, { name, picture, emailVerified }) {
     await pool.query(
       `UPDATE users
-       SET profile_image = $1,
+       SET profile_image = COALESCE(NULLIF($1, ''), profile_image),
            name = COALESCE(NULLIF($2, ''), name),
+           email_verified = email_verified OR $3,
            last_login_at = NOW(), updated_at = NOW()
-       WHERE id = $3`,
-      [picture, name, id]
+       WHERE id = $4`,
+      [picture, name, Boolean(emailVerified), id]
     );
     return this.findById(id);
   },
