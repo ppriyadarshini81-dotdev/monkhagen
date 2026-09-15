@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, ElementRef, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Address, AddressPayload } from '../../models/account.model';
@@ -16,7 +16,10 @@ import { PaymentOrder, PaymentService, RazorpaySuccess } from '../../services/pa
   templateUrl: './cart.component.html',
   styleUrl: './cart.component.css'
 })
-export class CartComponent implements OnInit {
+export class CartComponent {
+  @ViewChild('addressDialog') addressDialog!: ElementRef<HTMLDialogElement>;
+  addingAddress = false;
+  loadingAddresses = false;
   shipping = { name: '', address: '', city: '', state: '', zip: '', phone: '' };
   addresses: Address[] = [];
   selectedAddressId = '';
@@ -31,30 +34,42 @@ export class CartComponent implements OnInit {
     private payments: PaymentService
   ) {}
 
-  ngOnInit(): void {
+  checkout(): void {
+    if (this.placing) return;
+    this.error = '';
+    this.addressDialog.nativeElement.showModal();
+    this.loadAddresses();
+  }
+
+  loadAddresses(): void {
+    this.loadingAddresses = true;
     this.account.getAddresses().subscribe({
       next: (addresses) => {
         this.addresses = addresses;
         const selected = addresses.find((address) => address.isDefault) || addresses[0];
         if (selected) this.selectAddress(selected.id);
+        else this.newAddress();
+        this.loadingAddresses = false;
       },
-      error: () => { this.error = 'Could not load your saved addresses.'; }
+      error: () => { this.loadingAddresses = false; this.error = 'Could not load your saved addresses. Please retry.'; }
     });
   }
 
   get shippingFee(): number {
-    return this.cart.total >= 2999 || this.cart.total === 0 ? 0 : 99;
+    return 0;
   }
 
   get grandTotal(): number {
     return this.cart.total + this.shippingFee;
   }
 
-  checkout(): void {
+  continueCheckout(): void {
+    if (this.placing || this.loadingAddresses) return;
     this.error = '';
-    if (!this.shipping.name || !this.shipping.address || !this.shipping.phone ||
-        !this.shipping.city || !this.shipping.state || !this.shipping.zip) {
-      this.error = 'Please complete the shipping address.';
+    if (this.shipping.name.trim().length < 2 || this.shipping.address.trim().length < 5 ||
+        this.shipping.city.trim().length < 2 || this.shipping.state.trim().length < 2 ||
+        !/^[1-9]\d{5}$/.test(this.shipping.zip.trim()) || !/^[6-9]\d{9}$/.test(this.shipping.phone.trim())) {
+      this.error = 'Enter a full name, complete address, city, state, valid 6-digit PIN and 10-digit Indian mobile number. For an invalid saved address, add a corrected address.';
       return;
     }
     this.placing = true;
@@ -67,6 +82,7 @@ export class CartComponent implements OnInit {
       next: (address) => {
         this.addresses = [...this.addresses, address];
         this.selectedAddressId = address.id;
+        this.addingAddress = false;
         this.startPayment(address.id);
       },
       error: (err) => this.fail(err?.error?.message || 'Could not save the shipping address.')
@@ -74,6 +90,7 @@ export class CartComponent implements OnInit {
   }
 
   selectAddress(addressId: string): void {
+    this.addingAddress = false;
     this.selectedAddressId = addressId;
     const address = this.addresses.find((item) => item.id === addressId);
     if (!address) return;
@@ -87,8 +104,14 @@ export class CartComponent implements OnInit {
     };
   }
 
-  addressEdited(): void {
+  newAddress(): void {
     this.selectedAddressId = '';
+    this.addingAddress = true;
+    this.shipping = { name: '', address: '', city: '', state: '', zip: '', phone: '' };
+  }
+
+  closeAddressDialog(): void {
+    if (!this.placing) this.addressDialog.nativeElement.close();
   }
 
   updateQuantity(item: CartItem, quantity: number): void {
@@ -113,6 +136,7 @@ export class CartComponent implements OnInit {
   }
 
   private async openRazorpay(order: PaymentOrder): Promise<void> {
+    this.addressDialog.nativeElement.close();
     try {
       const result = await this.payments.openCheckout(order, {
         name: this.shipping.name,

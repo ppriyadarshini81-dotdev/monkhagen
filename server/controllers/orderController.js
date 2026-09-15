@@ -62,7 +62,7 @@ exports.create = asyncHandler(async (req, res) => {
   }
 
   // Keep legacy COD checkout server-priced; Razorpay uses /api/payments/create-order.
-  const shippingAmount = subtotal >= 2999 ? 0 : 99;
+  const shippingAmount = 0;
   const order = await Order.create({
     userId: req.user.id,
     items: lineItems,

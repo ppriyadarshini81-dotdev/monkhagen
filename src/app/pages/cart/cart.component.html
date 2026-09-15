@@ -59,42 +59,56 @@
         </div>
         <div class="mh-cart__row">
           <span>Shipping</span>
-          <span>{{ shippingFee === 0 ? 'Free' : '₹' + shippingFee }}</span>
+          <span><s aria-label="Original shipping charge">&#8377;100</s> <strong>Free</strong></span>
         </div>
         <div class="mh-cart__row mh-cart__row--total">
           <span>Total</span><span>₹{{ grandTotal | number }}</span>
         </div>
 
-        <div class="mh-cart__ship">
-          <h4>Shipping details</h4>
-          <select
-            class="mh-input mh-cart__address-select"
-            *ngIf="addresses.length > 0"
-            [ngModel]="selectedAddressId"
-            (ngModelChange)="selectAddress($event)"
-          >
-            <option value="">Enter a new address</option>
-            <option *ngFor="let address of addresses" [value]="address.id">
-              {{ address.addressType }} - {{ address.addressLine1 }}, {{ address.city }}
-            </option>
-          </select>
-          <input class="mh-input" placeholder="Full name" [(ngModel)]="shipping.name" (ngModelChange)="addressEdited()" />
-          <input class="mh-input" placeholder="Address" [(ngModel)]="shipping.address" (ngModelChange)="addressEdited()" />
-          <div class="mh-cart__row2">
-            <input class="mh-input" placeholder="City" [(ngModel)]="shipping.city" (ngModelChange)="addressEdited()" />
-            <input class="mh-input" placeholder="State" [(ngModel)]="shipping.state" (ngModelChange)="addressEdited()" />
-          </div>
-          <div class="mh-cart__row2">
-            <input class="mh-input" placeholder="ZIP / Postal code" [(ngModel)]="shipping.zip" (ngModelChange)="addressEdited()" />
-            <input class="mh-input" placeholder="Phone" [(ngModel)]="shipping.phone" (ngModelChange)="addressEdited()" />
-          </div>
-        </div>
-
         <p class="mh-error" *ngIf="error">{{ error }}</p>
         <button class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing" (click)="checkout()">
-          {{ placing ? 'Opening secure payment…' : 'Pay securely' }}
+          {{ placing ? 'Processing...' : 'Checkout' }}
         </button>
       </aside>
     </div>
   </ng-template>
 </section>
+
+<dialog #addressDialog class="mh-address-dialog" aria-labelledby="address-title" (cancel)="placing && $event.preventDefault()">
+  <div class="mh-address-dialog__head">
+    <div><span class="mh-eyebrow">MONK HAGEN / CHECKOUT</span><h2 id="address-title">Where should we send it?</h2><p class="mh-address-intro">Your next favourite. Delivered to your door.</p></div>
+    <button type="button" class="mh-address-close" aria-label="Close address selection" [disabled]="placing" (click)="closeAddressDialog()">&#215;</button>
+  </div>
+  <ol class="mh-checkout-steps" aria-label="Checkout progress"><li class="is-complete"><span>&#10003;</span> Bag</li><li aria-current="step"><span>02</span> Address</li><li><span>03</span> Payment</li></ol>
+  <p class="mh-address-loading" *ngIf="loadingAddresses" role="status">Loading your addresses...</p>
+  <form #addressForm="ngForm" (ngSubmit)="continueCheckout()">
+    <fieldset [disabled]="placing || loadingAddresses">
+      <legend class="mh-address-legend">{{ addresses.length ? 'YOUR SAVED ADDRESSES' : 'YOUR DELIVERY DETAILS' }}</legend>
+      <label class="mh-address-option" *ngFor="let address of addresses">
+        <input type="radio" name="savedAddress" [value]="address.id" [ngModel]="selectedAddressId" (ngModelChange)="selectAddress($event)" />
+        <span class="mh-address-copy"><span class="mh-address-meta"><span class="mh-address-tag">{{ address.addressType }}</span><span class="mh-address-default" *ngIf="address.isDefault">Default</span></span>
+          <strong class="mh-address-name">{{ address.fullName }}</strong>
+          <span class="mh-address-lines">{{ address.addressLine1 }}<span *ngIf="address.addressLine2">, {{ address.addressLine2 }}</span><span *ngIf="address.landmark">, {{ address.landmark }}</span><br />{{ address.city }}, {{ address.state }} &mdash; {{ address.postalCode }}<br />{{ address.country }}</span>
+          <span class="mh-address-phone">{{ address.phone }}</span>
+        </span>
+      </label>
+      <button type="button" class="mh-address-add" *ngIf="!addingAddress" (click)="newAddress()"><span aria-hidden="true">+</span> Add a new address</button>
+      <div class="mh-cart__ship" *ngIf="addingAddress">
+        <h3>A new place for your favourites.</h3><p class="mh-cart__hint">All fields are required. We will save this address for your next visit.</p>
+        <label>Full name *<input placeholder="Your full name" class="mh-input" name="fullName" autocomplete="name" [(ngModel)]="shipping.name" required minlength="2" maxlength="100" /></label>
+        <label>Address (house, street, area) *<input placeholder="House / flat, street and area" class="mh-input" name="street" autocomplete="street-address" [(ngModel)]="shipping.address" required minlength="5" maxlength="255" /></label>
+        <div class="mh-cart__row2">
+          <label>City *<input class="mh-input" name="city" autocomplete="address-level2" [(ngModel)]="shipping.city" required minlength="2" maxlength="100" /></label>
+          <label>State *<input class="mh-input" name="state" autocomplete="address-level1" [(ngModel)]="shipping.state" required minlength="2" maxlength="100" /></label>
+          <label>PIN code *<input class="mh-input" name="pin" autocomplete="postal-code" inputmode="numeric" [(ngModel)]="shipping.zip" required pattern="[1-9][0-9]{5}" maxlength="6" /></label>
+          <label>Mobile number *<input class="mh-input" name="phone" autocomplete="tel-national" inputmode="tel" [(ngModel)]="shipping.phone" required pattern="[6-9][0-9]{9}" maxlength="10" /></label>
+        </div>
+        <p class="mh-cart__hint">Use a 6-digit PIN code and a 10-digit Indian mobile number.</p>
+      </div>
+    </fieldset>
+    <p class="mh-error" role="alert" *ngIf="error">{{ error }}</p>
+    <button type="button" class="mh-btn mh-btn--ghost" *ngIf="error && !placing" (click)="loadAddresses()">Reload addresses</button>
+    <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small>Shipping is on us</small></span><strong>&#8377;{{ grandTotal | number }}</strong></div>
+    <button type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing || loadingAddresses || (!selectedAddressId && !addingAddress)">{{ placing ? 'Preparing payment...' : 'Continue' }} <span aria-hidden="true">&#8594;</span></button><p class="mh-address-payment">Next: secure payment with Razorpay</p></footer>
+  </form>
+</dialog>

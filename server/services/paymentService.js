@@ -4,10 +4,9 @@ const { getRazorpay } = require('../config/razorpay');
 const { sendOrderConfirmation } = require('./orderConfirmationEmail');
 const Shipment = require('../models/Shipment');
 const shipping = require('./shippingService');
+const addressValidationError = require('./addressValidation');
 
 const CURRENCY = 'INR';
-const FREE_SHIPPING_THRESHOLD_PAISE = 299900;
-const STANDARD_SHIPPING_PAISE = 9900;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function httpError(status, message) {
@@ -95,6 +94,12 @@ async function createPaymentOrder(userId, { addressId, checkoutToken }) {
     );
     const address = addressResult.rows[0];
     if (!address) throw httpError(400, 'Select a shipping address saved to your account.');
+    const invalidAddress = addressValidationError({
+      fullName: address.full_name, addressLine1: address.address_line1,
+      city: address.city, state: address.state, phone: address.phone,
+      postalCode: address.postal_code, country: address.country
+    });
+    if (invalidAddress) throw httpError(400, invalidAddress);
 
     const itemsResult = await client.query(
       `SELECT ci.product_id, ci.variant_id, ci.quantity,
@@ -121,7 +126,7 @@ async function createPaymentOrder(userId, { addressId, checkoutToken }) {
       }
       subtotalPaise += toPaise(item.unit_price) * item.quantity;
     }
-    const shippingPaise = subtotalPaise >= FREE_SHIPPING_THRESHOLD_PAISE ? 0 : STANDARD_SHIPPING_PAISE;
+    const shippingPaise = 0;
     const totalPaise = subtotalPaise + shippingPaise;
     const localOrderNumber = orderNumber();
 

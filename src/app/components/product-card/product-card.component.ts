@@ -6,6 +6,7 @@ import { CartService } from '../../services/cart.service';
 import { AuthService } from '../../services/auth.service';
 import { ProductService } from '../../services/product.service';
 import { cachedMediaUrl } from '../../utils/media-url';
+import { sortSizes } from '../../utils/size-order';
 
 @Component({
   selector: 'app-product-card',
@@ -92,7 +93,7 @@ export class ProductCardComponent implements OnInit, OnDestroy {
     this.loadingSizes = true;
     this.productService.getProduct(this.product.id).subscribe({
       next: (product) => {
-        this.quickProduct = product;
+        this.quickProduct = { ...product, sizes: sortSizes(product.sizes) };
         this.loadingSizes = false;
         this.showSizePicker = true;
         if (this.availableSizes.length === 0) {

@@ -1,6 +1,7 @@
 const { pool } = require('../config/db');
 const User = require('../models/User');
 const asyncHandler = require('../middleware/asyncHandler');
+const addressValidationError = require('../services/addressValidation');
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,8 @@ exports.getDefaultAddress = asyncHandler(async (req, res) => {
 });
 
 exports.addAddress = asyncHandler(async (req, res) => {
+  const validationError = addressValidationError(req.body);
+  if (validationError) return res.status(400).json({ message: validationError });
   const { fullName, phone, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
   if (!fullName || !phone || !addressLine1 || !city || !state || !postalCode) {
     return res.status(400).json({ message: 'fullName, phone, addressLine1, city, state and postalCode are required.' });
@@ -90,6 +93,8 @@ exports.addAddress = asyncHandler(async (req, res) => {
 });
 
 exports.updateAddress = asyncHandler(async (req, res) => {
+  const validationError = addressValidationError(req.body);
+  if (validationError) return res.status(400).json({ message: validationError });
   const { id } = req.params;
   const { rows: owned } = await pool.query(
     'SELECT id FROM customer_addresses WHERE id = $1 AND user_id = $2', [id, req.user.id]

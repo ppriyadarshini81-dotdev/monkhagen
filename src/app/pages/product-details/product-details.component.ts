@@ -5,6 +5,7 @@ import { Product } from '../../models/product.model';
 import { ProductService } from '../../services/product.service';
 import { CartService } from '../../services/cart.service';
 import { AuthService } from '../../services/auth.service';
+import { sortSizes } from '../../utils/size-order';
 
 @Component({
   selector: 'app-product-details',
@@ -44,7 +45,10 @@ export class ProductDetailsComponent implements OnInit {
       this.notFound = false;
       this.productService.getProduct(slug).subscribe({
         next: (product) => {
-          this.product = product;
+          this.product = {
+            ...product,
+            sizes: sortSizes(product.sizes)
+          };
           this.selectedSize = null;
           this.selectedColor = product.colors[0] ?? null;
           this.activeImage = 0;
