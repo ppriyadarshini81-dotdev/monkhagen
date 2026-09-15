@@ -2,8 +2,15 @@ const { pool } = require('../config/db');
 const User = require('../models/User');
 const { signToken } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
+const { developmentOtpCode } = require('../config/security');
 
-// Calls MSG91 if configured; otherwise logs to console for local development.
+function otpUnavailable() {
+  const error = new Error('OTP authentication provider is not configured.');
+  error.status = 503;
+  return error;
+}
+
+// Calls MSG91 when configured; local fallback requires an explicit fixed code.
 async function msg91Send(phone) {
   const { MSG91_AUTH_KEY, MSG91_TEMPLATE_ID } = process.env;
   if (MSG91_AUTH_KEY && MSG91_TEMPLATE_ID) {
@@ -12,9 +19,9 @@ async function msg91Send(phone) {
       { method: 'POST', headers: { authkey: MSG91_AUTH_KEY } }
     );
     if (!res.ok) throw new Error('MSG91 send OTP failed.');
-  } else {
-    console.log(`[DEV OTP] send → +91${phone}  (MSG91 not configured — check MSG91 widget in your frontend)`);
-  }
+  } else if (developmentOtpCode()) {
+    console.log(`[DEV OTP] requested for +91${phone}`);
+  } else throw otpUnavailable();
 }
 
 async function msg91Verify(phone, otp) {
@@ -27,8 +34,9 @@ async function msg91Verify(phone, otp) {
     const data = await res.json();
     return data.type === 'success';
   }
-  // Dev fallback: accept any 6-digit number
-  return /^\d{6}$/.test(String(otp));
+  const developmentCode = developmentOtpCode();
+  if (!developmentCode) throw otpUnavailable();
+  return String(otp) === developmentCode;
 }
 
 // POST /api/auth/send-otp

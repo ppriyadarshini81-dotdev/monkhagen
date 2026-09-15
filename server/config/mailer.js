@@ -25,7 +25,7 @@ function getMailConfig() {
       pass: process.env.SMTP_PASS
     },
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to: process.env.CONTACT_EMAIL || 'officialmail.monkhagen@gmail.com'
+    to: process.env.CONTACT_EMAIL || 'official@monkhagen.in'
   };
 }
 

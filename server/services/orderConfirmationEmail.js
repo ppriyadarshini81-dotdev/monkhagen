@@ -51,6 +51,7 @@ async function sendOrderConfirmation(orderId) {
     await transporter.sendMail({
       from: config.from,
       to: order.customer_email,
+      bcc: config.to,
       subject: `Payment confirmed - ${order.order_number}`,
       text: [
         `Hello ${order.customer_name || order.full_name || 'Customer'},`,

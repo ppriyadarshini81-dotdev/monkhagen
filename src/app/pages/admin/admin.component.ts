@@ -12,6 +12,7 @@ import { VariantOptionService } from '../../services/variant-option.service';
 import { OrderService, Order } from '../../services/order.service';
 import { UploadService } from '../../services/upload.service';
 import { AuthService } from '../../services/auth.service';
+import { ShippingService } from '../../services/shipping.service';
 
 interface ProductForm {
   id?: string;
@@ -58,6 +59,7 @@ export class AdminComponent implements OnInit {
   orders: Order[] = [];
   ordersLoading = false;
   ordersError = '';
+  shippingBusyOrderId = '';
   message = '';
   error = '';
 
@@ -87,6 +89,7 @@ export class AdminComponent implements OnInit {
     private variantOptionService: VariantOptionService,
     private orderService: OrderService,
     private uploadService: UploadService,
+    private shippingService: ShippingService,
     public auth: AuthService
   ) {}
 
@@ -163,6 +166,7 @@ export class AdminComponent implements OnInit {
       SHIPPING_PACKAGE_NOT_CONFIGURED: 'Configure the pickup location and package measurements in the backend.',
       SHIPROCKET_NOT_CONFIGURED: 'Check the Shiprocket configuration in the backend.',
       SHIPROCKET_AUTH_FAILED: 'Shiprocket authentication failed. Check the backend credentials.',
+      SHIPROCKET_PERMISSION_DENIED: 'Shiprocket accepted the login but denied shipment creation. Check the API user permissions and account status.',
       SHIPPING_VALIDATION: 'Check the saved address, order items and package details.',
       SHIPROCKET_TIMEOUT: 'Shiprocket did not respond in time.',
       SHIPROCKET_UNAVAILABLE: 'Shiprocket is temporarily unavailable.',
@@ -171,6 +175,30 @@ export class AdminComponent implements OnInit {
     const message = messages[code] || 'The shipping operation could not be completed. Check the order in Shiprocket.';
     return order.shipment?.shippingStatus === 'needs_review'
       ? `${message} Review the order in Shiprocket before retrying to avoid duplicates.` : message;
+  }
+
+  canRetryShipment(order: Order): boolean {
+    return order.paymentStatus === 'paid' &&
+      !order.shipment?.shiprocketShipmentId;
+  }
+
+  retryShipment(order: Order): void {
+    if (!this.canRetryShipment(order) || this.shippingBusyOrderId) return;
+    this.shippingBusyOrderId = order.id;
+    this.message = '';
+    this.error = '';
+    this.shippingService.createShipment(order.id).subscribe({
+      next: () => {
+        this.shippingBusyOrderId = '';
+        this.message = 'Shipment created in Shiprocket.';
+        this.loadOrders();
+      },
+      error: (err) => {
+        this.shippingBusyOrderId = '';
+        this.error = err?.error?.message || 'Could not create the Shiprocket shipment.';
+        this.loadOrders();
+      }
+    });
   }
 
   newProduct(): void {

@@ -123,7 +123,10 @@ const Shipment = {
     const { rows } = await pool.query(
       `SELECT order_id FROM shipments
        WHERE shiprocket_order_id IS NULL AND pending_operation IS NULL
-         AND shipping_status IN ('pending','retry_pending','needs_configuration')
+         AND shipping_status IN ('pending','retry_pending')
+         AND last_error_code IS DISTINCT FROM 'SHIPROCKET_AUTH_FAILED'
+         AND last_error_code IS DISTINCT FROM 'SHIPROCKET_NOT_CONFIGURED'
+         AND last_error_code IS DISTINCT FROM 'SHIPROCKET_PERMISSION_DENIED'
          AND next_attempt_at <= NOW()
        ORDER BY next_attempt_at LIMIT 10`
     );

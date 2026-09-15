@@ -1,11 +1,13 @@
 const multer = require('multer');
-const { uploadFile, ALLOWED_MIME, MAX_IMAGE_SIZE } = require('../config/r2');
+const { uploadFile, ALLOWED_MIME, MAX_VIDEO_SIZE } = require('../config/r2');
 const asyncHandler = require('../middleware/asyncHandler');
 
 // Multer stores files in memory; R2 upload happens in the handler
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_IMAGE_SIZE },
+  // Multer needs one transport ceiling. uploadFile applies the stricter 10 MB
+  // image limit and the 200 MB video limit after MIME detection.
+  limits: { fileSize: MAX_VIDEO_SIZE, files: 8 },
   fileFilter: (_req, file, cb) => {
     if (ALLOWED_MIME.has(file.mimetype)) {
       cb(null, true);

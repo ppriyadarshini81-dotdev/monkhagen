@@ -14,8 +14,8 @@ const pool = new Pool({
       : false
 });
 
-async function initSchema() {
-  await pool.query(`
+async function initSchema(database = pool) {
+  await database.query(`
     CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
     /* =========================================================
@@ -552,7 +552,7 @@ async function initSchema() {
   `);
 
   // Preserve existing text badges while moving product editing to badge IDs.
-  await pool.query(`
+  await database.query(`
     CREATE TABLE IF NOT EXISTS badges (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name VARCHAR(100) UNIQUE NOT NULL,
@@ -564,7 +564,7 @@ async function initSchema() {
       ADD COLUMN IF NOT EXISTS badge_id UUID REFERENCES badges(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS idx_products_badge ON products(badge_id);
   `);
-  await pool.query(`
+  await database.query(`
     INSERT INTO badges (name)
     SELECT DISTINCT TRIM(badge)
     FROM products
@@ -578,7 +578,7 @@ async function initSchema() {
   `);
 
   // Normalize existing size/color text into admin-managed option tables.
-  await pool.query(`
+  await database.query(`
     CREATE TABLE IF NOT EXISTS sizes (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       name VARCHAR(50) UNIQUE NOT NULL,
@@ -600,7 +600,7 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_product_variants_size ON product_variants(size_id);
     CREATE INDEX IF NOT EXISTS idx_product_variants_color ON product_variants(color_id);
   `);
-  await pool.query(`
+  await database.query(`
     INSERT INTO sizes (name)
     SELECT DISTINCT TRIM(size) FROM product_variants WHERE TRIM(size) <> ''
     ON CONFLICT (name) DO NOTHING;
@@ -619,7 +619,7 @@ async function initSchema() {
   `);
 
   // Explicit one-to-many product selections, independent of stock variants.
-  await pool.query(`
+  await database.query(`
     CREATE TABLE IF NOT EXISTS product_size_details (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
@@ -639,7 +639,7 @@ async function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_product_color_details_product
       ON product_color_details(product_id);
   `);
-  await pool.query(`
+  await database.query(`
     INSERT INTO product_size_details (product_id, size_id)
     SELECT DISTINCT product_id, size_id
     FROM product_variants
@@ -654,12 +654,12 @@ async function initSchema() {
   `);
 
   // Safe migrations — add Google auth columns to existing deployments
-  await pool.query(`
+  await database.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS google_uid    VARCHAR(128);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_birth DATE;
   `);
-  await pool.query(`
+  await database.query(`
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS awb_number   VARCHAR(100);
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS courier_name VARCHAR(100);
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_url TEXT;
@@ -667,7 +667,7 @@ async function initSchema() {
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;
   `);
   // Razorpay payment lifecycle and idempotency metadata. All changes are additive.
-  await pool.query(`
+  await database.query(`
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS cart_id UUID REFERENCES carts(id) ON DELETE SET NULL;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS checkout_token UUID;
     ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_signature TEXT;
@@ -689,7 +689,7 @@ async function initSchema() {
       processed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
-  await pool.query(`
+  await database.query(`
     CREATE TABLE IF NOT EXISTS credit_accounts (
       user_id     UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
       balance     NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (balance >= 0),
@@ -707,23 +707,41 @@ async function initSchema() {
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
-  await pool.query(`
+  await database.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS uq_users_google_uid
       ON users (google_uid)
       WHERE google_uid IS NOT NULL;
     CREATE INDEX IF NOT EXISTS idx_credit_transactions_user
       ON credit_transactions(user_id);
-  `).catch(() => {});
+  `);
 }
 
-async function applyShippingMigration() {
+async function applyShippingMigration(database = pool) {
   const sql = readFileSync(path.join(__dirname, '..', 'migrations', '001_shipments.sql'), 'utf8');
-  const client = await pool.connect();
+  await database.query(sql);
+}
+
+async function runMigration(name, migrate, databasePool = pool) {
+  const client = await databasePool.connect();
   try {
     await client.query('BEGIN');
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('monkhagen:shipping-migration'))");
-    await client.query(sql);
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('monkhagen:schema-migrations'))");
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        name VARCHAR(255) PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    const existing = await client.query(
+      'SELECT 1 FROM schema_migrations WHERE name = $1',
+      [name]
+    );
+    if (existing.rows.length === 0) {
+      await migrate(client);
+      await client.query('INSERT INTO schema_migrations (name) VALUES ($1)', [name]);
+    }
     await client.query('COMMIT');
+    return existing.rows.length === 0;
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
@@ -742,10 +760,14 @@ async function connectDB() {
       }`
     );
 
-    await initSchema();
-    await applyShippingMigration();
+    const baseApplied = await runMigration('000_base_schema', initSchema);
+    const shippingApplied = await runMigration('001_shipments', applyShippingMigration);
 
-    console.log('Database schema initialized successfully');
+    console.log(
+      baseApplied || shippingApplied
+        ? 'Database migrations applied successfully'
+        : 'Database schema is up to date'
+    );
   } catch (err) {
     console.error(
       'PostgreSQL connection error:',
@@ -760,5 +782,6 @@ module.exports = {
   pool,
   connectDB,
   initSchema,
-  applyShippingMigration
+  applyShippingMigration,
+  runMigration
 };

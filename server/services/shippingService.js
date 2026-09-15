@@ -52,9 +52,18 @@ function createShippingService({ repository = Shipment, api = shiprocket } = {})
       const recognized = error.code?.startsWith('SHIPROCKET_');
       const uncertain = !recognized || error.uncertain;
       const code = recognized ? error.code : 'SHIPPING_PERSISTENCE_FAILED';
+      const needsConfiguration = [
+        'SHIPROCKET_AUTH_FAILED',
+        'SHIPROCKET_NOT_CONFIGURED',
+        'SHIPROCKET_PERMISSION_DENIED'
+      ].includes(code);
       await repository.patch(client, orderId, {
         ...(uncertain ? {} : { pending_operation: null, operation_started_at: null }),
-        ...(operation === 'create' ? { shipping_status: uncertain ? 'needs_review' : 'retry_pending' } : {}),
+        ...(operation === 'create' ? {
+          shipping_status: uncertain
+            ? 'needs_review'
+            : needsConfiguration ? 'needs_configuration' : 'retry_pending'
+        } : {}),
         last_error_code: code,
         next_attempt_at: new Date(Date.now() + 5 * 60000)
       }).catch(() => {}); // Durable operation intent remains if saving the failure also fails.

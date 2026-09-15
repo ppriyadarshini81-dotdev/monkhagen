@@ -1,0 +1,41 @@
+const DEVELOPMENT_JWT_SECRET = 'monk-hagen-dev-secret-change-me';
+
+function jwtSecret(environment = process.env) {
+  const configured = environment.JWT_SECRET?.trim();
+  if (
+    environment.NODE_ENV === 'production' &&
+    (!configured || configured === DEVELOPMENT_JWT_SECRET || configured.length < 32)
+  ) {
+    throw new Error('JWT_SECRET must be configured with at least 32 characters in production.');
+  }
+  return configured || DEVELOPMENT_JWT_SECRET;
+}
+
+function allowedCorsOrigins(environment = process.env) {
+  const configured = (environment.CORS_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  if (configured.length) return configured;
+  if (environment.NODE_ENV === 'production') {
+    throw new Error('CORS_ORIGINS must contain at least one allowed origin in production.');
+  }
+  return ['http://localhost:4200', 'http://127.0.0.1:4200'];
+}
+
+function legacyOtpEnabled(environment = process.env) {
+  return environment.ENABLE_LEGACY_OTP === 'true';
+}
+
+function developmentOtpCode(environment = process.env) {
+  if (environment.NODE_ENV === 'production') return null;
+  const code = environment.DEV_OTP_CODE?.trim();
+  return /^\d{6}$/.test(code || '') ? code : null;
+}
+
+module.exports = {
+  allowedCorsOrigins,
+  developmentOtpCode,
+  jwtSecret,
+  legacyOtpEnabled
+};

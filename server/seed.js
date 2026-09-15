@@ -117,6 +117,9 @@ const products = [
 ];
 
 async function seed() {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Refusing to seed a production database.');
+  }
   await connectDB();
   console.log('Clearing existing data…');
   // Explicit delete order respects FK constraints
@@ -153,7 +156,7 @@ async function seed() {
   console.log('\nSeed complete ✓');
   console.log('Admin       : admin@monkhagen.com / admin123');
   console.log('Super Admin : super@monkhagen.com / super123');
-  console.log('Customers   : login via OTP (phone number)');
+  console.log('Customers   : login with Google');
   await pool.end();
   process.exit(0);
 }

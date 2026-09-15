@@ -22,14 +22,26 @@ const paymentRoutes = require('./routes/payments');
 const webhookRoutes = require('./routes/webhooks');
 const shippingRoutes = require('./routes/shipping');
 const { startShippingWorker } = require('./services/shippingWorker');
+const { startEmailWorker } = require('./services/emailWorker');
+const { allowedCorsOrigins } = require('./config/security');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const corsOrigins = allowedCorsOrigins();
+
 // Connect to PostgreSQL.
 const databaseReady = connectDB();
 
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    // Requests without Origin are same-origin, server-to-server, or command-line clients.
+    if (!origin || corsOrigins.includes(origin)) return callback(null, true);
+    const error = new Error('Origin is not allowed by CORS.');
+    error.status = 403;
+    return callback(error);
+  }
+}));
 // Razorpay signatures must be verified against the untouched request bytes.
 // This route must remain before express.json().
 app.use('/api/webhooks/razorpay', express.raw({ type: 'application/json', limit: '1mb' }), webhookRoutes);
@@ -76,5 +88,6 @@ databaseReady.then(() => {
   app.listen(PORT, () => {
     console.log(`Monk Hagen server running at http://localhost:${PORT}`);
     startShippingWorker();
+    startEmailWorker();
   });
 });

@@ -24,7 +24,7 @@ Restart the backend after setting `.env`. Package defaults describe **one entire
 
 ## Database and startup
 
-`server/migrations/001_shipments.sql` adds `shipments`. `server/config/db.js` applies the file transactionally after the existing schema initialization, under an advisory migration lock. The file is repeatable and can also be applied through your normal PostgreSQL migration tooling. Startup now waits for the database/migration before listening or processing shipping work.
+`server/migrations/001_shipments.sql` adds `shipments`. `server/config/db.js` records it in `schema_migrations` and applies it transactionally under an advisory migration lock. The file is repeatable and can also be applied through your normal PostgreSQL migration tooling. Startup waits for pending migrations before listening or processing shipping work; completed migrations are skipped on later starts.
 
 The table stores:
 
@@ -42,7 +42,7 @@ Existing `orders.awb_number`, `courier_name`, and `tracking_url` fields are sync
 1. Razorpay checkout verification validates the signature and fetches a captured payment from Razorpay. Signed paid webhooks must also contain captured payment details with amount/currency.
 2. In one PostgreSQL transaction, payment becomes paid, inventory is deducted, the cart is converted, and a shipment work item is inserted.
 3. Only after commit does the backend attempt Shiprocket order creation. A worker checks queued work every 30 seconds, including after a restart.
-4. Missing package configuration leaves `needs_configuration`. Missing credentials/authentication or other safe-to-retry provider failures leave `retry_pending`; retry is delayed five minutes. Saved-order validation failures leave `validation_failed` for admin correction/retry.
+4. Missing package configuration, invalid provider authentication, or denied API-user permissions leave `needs_configuration` and require a controlled admin retry after correction. Other safe-to-retry provider failures leave `retry_pending`; retry is delayed five minutes. Saved-order validation failures leave `validation_failed` for admin correction/retry.
 5. Admin selects a courier using serviceability information, assigns AWB, generates pickup, and generates the label. These operations are intentionally explicit, not automatically booked by the payment callback.
 
 The application already supports COD through `POST /api/orders`, although the current cart UI uses Razorpay. This endpoint now explicitly accepts only COD and queues its shipment inside order creation. This integration does not add a COD frontend option. Prepaid requests must go through Razorpay; frontend `paymentStatus`/`paid` values are ignored by shipping.

@@ -13,6 +13,8 @@ function providerError(status, code, uncertain = false) {
   return shippingError(status === 401 || status === 403 ? 503 : status === 504 ? 504 : 502,
     code, code === 'SHIPROCKET_AUTH_FAILED'
       ? 'Shipping authentication failed. Contact the store administrator.'
+      : code === 'SHIPROCKET_PERMISSION_DENIED'
+        ? 'Shiprocket denied shipment creation. Check the API user permissions and account status.'
       : 'The shipping provider could not complete this request. Please try again later.', uncertain);
 }
 
@@ -65,7 +67,10 @@ function createShiprocketClient({ fetchImpl = (...args) => fetch(...args), now =
       }
       if (response.status === 401) return { status: 401, data: null };
       if (!response.ok) {
-        const error = providerError(response.status, 'SHIPROCKET_REQUEST_FAILED',
+        const code = response.status === 403 && path !== '/auth/login'
+          ? 'SHIPROCKET_PERMISSION_DENIED'
+          : 'SHIPROCKET_REQUEST_FAILED';
+        const error = providerError(response.status, code,
           mutation && (response.status >= 500 || [408, 409, 422].includes(response.status)));
         error.upstreamStatus = response.status;
         throw error;

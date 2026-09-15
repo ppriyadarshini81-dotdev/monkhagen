@@ -134,12 +134,18 @@ test('database failure after remote creation never permits an automatic duplicat
   assert.equal(fixture.calls.length, 1);
 });
 
-test('authentication/configuration failure leaves a safely retryable shipment', async () => {
-  const fixture = setup({ request: async () => { throw shippingError(503, 'SHIPROCKET_NOT_CONFIGURED', 'Not configured'); } });
-  await assert.rejects(fixture.service.createShipment(ORDER_ID, parcel));
-  assert.equal(fixture.getRow().pending_operation, null);
-  assert.equal(fixture.getRow().shipping_status, 'retry_pending');
-  assert.ok(fixture.getRow().next_attempt_at > new Date());
+test('authentication, configuration and permission failures require a controlled admin retry', async () => {
+  for (const code of [
+    'SHIPROCKET_NOT_CONFIGURED',
+    'SHIPROCKET_AUTH_FAILED',
+    'SHIPROCKET_PERMISSION_DENIED'
+  ]) {
+    const fixture = setup({ request: async () => { throw shippingError(503, code, 'Configuration required'); } });
+    await assert.rejects(fixture.service.createShipment(ORDER_ID, parcel));
+    assert.equal(fixture.getRow().pending_operation, null);
+    assert.equal(fixture.getRow().shipping_status, 'needs_configuration');
+    assert.ok(fixture.getRow().next_attempt_at > new Date());
+  }
 });
 
 test('AWB, pickup and label enforce prerequisites and reuse successful results', async () => {

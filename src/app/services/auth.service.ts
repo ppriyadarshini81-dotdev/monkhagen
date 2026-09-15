@@ -33,7 +33,7 @@ export class AuthService {
   }
 
   get isAdmin(): boolean {
-    return this.currentUser?.role === 'admin';
+    return ['admin', 'super_admin'].includes(this.currentUser?.role || '');
   }
 
   login(email: string, password: string): Observable<AuthResponse> {

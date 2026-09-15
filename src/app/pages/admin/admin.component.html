@@ -329,6 +329,13 @@
         <div><dt>Pickup</dt><dd>{{ !o.shipment?.pickupStatus || o.shipment?.pickupStatus === 'pending' ? 'Not scheduled' : statusLabel(o.shipment?.pickupStatus) }}</dd></div>
       </dl>
       <p class="mh-order__shipping-error" *ngIf="shipmentError(o) as shippingError">{{ shippingError }}</p>
+      <button
+        *ngIf="canRetryShipment(o)"
+        class="mh-btn mh-btn--ghost"
+        type="button"
+        [disabled]="!!shippingBusyOrderId"
+        (click)="retryShipment(o)"
+      >{{ shippingBusyOrderId === o.id ? 'Retrying...' : 'Retry shipment' }}</button>
       <span class="mh-order__date">{{ o.createdAt | date: 'medium' }}</span>
     </div>
   </div>

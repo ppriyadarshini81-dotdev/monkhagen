@@ -16,7 +16,10 @@ function errorHandler(err, req, res, _next) {
 
   // Multer file-size error
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ message: 'Image exceeds the 5 MB limit.' });
+    return res.status(400).json({ message: 'File exceeds the 200 MB upload limit.' });
+  }
+  if (err.code === 'LIMIT_FILE_COUNT') {
+    return res.status(400).json({ message: 'A maximum of 8 files may be uploaded at once.' });
   }
 
   console.error('Request failed:', {

@@ -1,141 +1,153 @@
 # Monk Hagen
-<<<<<<< Updated upstream
-Monk Hagen e-commerce website
-=======
 
-Premium streetwear storefront — Angular 20 frontend with a Node.js/Express + MongoDB API in the same application.
+Monk Hagen is a premium streetwear storefront built as one Angular application with an Express API.
 
 ## Stack
-Angular 20 · Node.js 22 · Express · MongoDB + Mongoose · JWT auth · Cloudinary (product images)
 
-## Pages
-Home (video hero bar + categories, arrivals, testimonials, newsletter), Products (category image blocks + filters), Product Details, Cart + Checkout, Login/Register, Admin dashboard, About Us.
+- Angular 20 standalone components
+- Node.js 20.19+ and Express 4
+- PostgreSQL with the `pg` driver
+- Firebase Google sign-in and application JWTs
+- Razorpay payments and signed webhooks
+- Shiprocket fulfillment and tracking
+- Cloudflare R2 media storage
+- Nodemailer for contact and order-confirmation email
 
-## Backend structure
-```
+## Features
+
+- Public home, catalog, product-detail, about, contact, and refund-policy pages
+- Product variants by managed size and color, stock, categories, badges, and images
+- Authenticated PostgreSQL cart and saved customer addresses
+- Razorpay checkout with server-side capture verification and idempotency
+- Retried customer confirmations with blind-copy notifications to the store inbox
+- Customer profile, orders, tracking, returns, and store credits
+- Admin management for catalog data, inventory, orders, and media
+- Durable Shiprocket shipment queue with explicit AWB, pickup, label, and reconciliation operations
+
+## Project layout
+
+```text
+src/app/
+  components/     Shared header, footer, and product cards
+  pages/          Lazy-loaded storefront, account, cart, login, and admin pages
+  services/       HTTP clients, authentication, cart, payment, and UI state
+  models/         Frontend API contracts
+
 server/
-  config/      db (mongoose) + cloudinary
-  models/      Product, Category, User, Order  (schema validation)
-  controllers/ product, category, auth, order, upload
-  middleware/  auth (JWT), error handler, asyncHandler
-  routes/      products, categories, auth, orders, upload
-  seed.js      seeds categories, products, demo users
-  index.js     app bootstrap
+  config/         PostgreSQL and third-party service configuration
+  controllers/    HTTP request handlers
+  middleware/     JWT authorization and error handling
+  models/         PostgreSQL query/data-access modules
+  routes/         Express API routes
+  services/       Payments, email, address validation, and shipping workflows
+  migrations/     Versioned SQL migrations
+  tests/          Node test-runner suites
 ```
 
-## Setup
+## Configuration
 
-1. Use Node.js 22 (Angular 20 requires Node v20.19+ or v22.12+):
+Create a root `.env` file. It is ignored by Git. Production deployments must set:
 
-   ```bash
-   nvm use 22
-   ```
+```dotenv
+NODE_ENV=production
+PORT=3000
 
-2. Install dependencies:
+DB_HOST=
+DB_PORT=5432
+DB_NAME=monkhagen
+DB_USER=
+DB_PASSWORD=
 
-   ```bash
-   npm install
-   ```
+# At least 32 characters. The server refuses to start without it in production.
+JWT_SECRET=
+JWT_EXPIRES_IN=7d
 
-3. Configure the existing root `.env` file for the backend. Set the PostgreSQL
-   `DB_*` variables, `JWT_SECRET`, and the credentials required by your integrations.
-   The backend reads this file with dotenv; keep it out of version control.
+# Comma-separated browser origins, for example https://monkhagen.com
+CORS_ORIGINS=
 
-4. Seed the database:
+FIREBASE_PROJECT_ID=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY=
+ADMIN_GOOGLE_EMAIL=
 
-   ```bash
-   npm run seed
-   ```
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=monkhagen-media
+R2_PUBLIC_URL=
 
-## Run it
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
 
-### Development (frontend + API together)
+SMTP_HOST=
+SMTP_PORT=
+SMTP_SECURE=
+SMTP_USER=
+SMTP_PASS=
+SMTP_FROM=
+CONTACT_EMAIL=official@monkhagen.in
+```
+
+The `CONTACT_EMAIL` address receives contact-form submissions and a blind copy of each paid-order confirmation. For Zoho-hosted `@monkhagen.in` mailboxes, use `smtp.zoho.in`, port `465`, `SMTP_SECURE=true`, and a Zoho application-specific password when two-factor authentication is enabled.
+
+Shiprocket variables and operational setup are documented in [docs/shiprocket.md](docs/shiprocket.md).
+
+Google is the normal customer sign-in path. Deprecated OTP routes are disabled by default. For a temporary legacy integration, set `ENABLE_LEGACY_OTP=true` and configure MSG91. Local development without MSG91 additionally requires an explicit six-digit `DEV_OTP_CODE`; this fallback is unavailable in production.
+
+## Install and run
+
+Use Node.js 20.19 or newer, then run:
 
 ```bash
+npm install
 npm run dev
 ```
 
-- Angular dev server: http://localhost:4200 (proxies `/api` to the backend)
-- Express API: http://localhost:3000
+- Angular development server: `http://localhost:4200`
+- Express API: `http://localhost:3000`
+- Health check: `http://localhost:3000/api/health`
 
-### Production-style (build + serve from Node)
+Angular proxies `/api` to Express during development. For a production-style local run:
 
 ```bash
 npm run start:prod
 ```
 
-Then open http://localhost:3000 — Express serves the built Angular app and the API.
+Express serves the compiled Angular browser bundle and the API from port 3000.
 
-## API endpoints
-- `GET/POST/PUT/DELETE /api/products` (+ `/categories`, `/:idOrSlug`)
-- `GET/POST/PUT/DELETE /api/categories`
-- `POST /api/auth/register|login`, `GET /api/auth/me`
-- `POST /api/orders`, `GET /api/orders/mine`, `GET /api/orders` (admin)
-- `POST /api/upload` (admin, Cloudinary)
+## Database migrations and seed data
 
-## Demo accounts
-- Admin: `admin@monkhagen.com` / `admin123`
-- Customer: `demo@monkhagen.com` / `demo123`
+On startup, the backend creates `schema_migrations`, acquires a PostgreSQL advisory lock, and applies each pending migration exactly once. Existing installations are upgraded through the same idempotent migrations.
 
-> Set a strong `JWT_SECRET` and add Cloudinary credentials before deploying.
-
----
-
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 20.3.30.
-
-## Development server
-
-To start a local development server, run:
+To populate disposable development data:
 
 ```bash
-ng serve
+npm run seed
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+Warning: seeding deletes existing application data and installs predictable development admin credentials. Never run it against a production database.
 
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+## Tests
 
 ```bash
-ng generate component component-name
+npm test
+npm run test:shipping
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+The optional PostgreSQL shipping test creates an isolated schema inside a transaction and rolls it back:
 
-```bash
-ng generate --help
+```powershell
+$env:SHIPPING_DB_TESTS = '1'
+node --test server/tests/shippingDatabase.test.js
 ```
 
-## Building
+## API overview
 
-To build the project run:
+- `/api/products`, `/api/categories`, `/api/badges`, `/api/sizes`, `/api/colors`
+- `/api/auth`, `/api/account`, `/api/cart`, `/api/orders`
+- `/api/payments` and `/api/webhooks/razorpay`
+- `/api/shipping`
+- `/api/upload`, `/api/media`, `/api/contact`
 
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
->>>>>>> Stashed changes
+All catalog mutations, uploads, order administration, and fulfillment operations require an administrator JWT. Customer account, cart, payment, and order operations require an authenticated customer JWT.

@@ -89,4 +89,6 @@ async function deleteFile(keyOrUrl) {
   }
 }
 
-module.exports = { s3, uploadFile, deleteFile, ALLOWED_MIME, MAX_IMAGE_SIZE };
+module.exports = {
+  s3, uploadFile, deleteFile, ALLOWED_MIME, MAX_IMAGE_SIZE, MAX_VIDEO_SIZE
+};

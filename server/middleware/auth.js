@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { jwtSecret } = require('../config/security');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'monk-hagen-dev-secret-change-me';
+const JWT_SECRET = jwtSecret();
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 function signToken(user) {
