@@ -5,6 +5,10 @@ import { Observable } from 'rxjs';
 export interface Order {
   id: string;
   orderNumber?: string;
+  userId?: string;
+  subtotal?: number;
+  discountAmount?: number;
+  shippingAmount?: number;
   totalAmount?: number;
   total?: number;
   status: string;
@@ -19,8 +23,33 @@ export interface Order {
     pickupStatus: string;
     lastErrorCode: string | null;
   };
+  address?: {
+    fullName?: string;
+    phone?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    landmark?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
+  } | null;
   createdAt: string;
-  items: { name?: string; productName: string; quantity: number; price?: number; unitPrice: number }[];
+  updatedAt?: string;
+  items: {
+    id?: string;
+    productId?: string;
+    variantId?: string;
+    name?: string;
+    productName: string;
+    sku?: string;
+    size?: string;
+    color?: string;
+    quantity: number;
+    price?: number;
+    unitPrice: number;
+    totalPrice?: number;
+  }[];
 }
 
 @Injectable({ providedIn: 'root' })

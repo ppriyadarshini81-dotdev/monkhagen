@@ -2,6 +2,7 @@ const { pool } = require('../config/db');
 const User = require('../models/User');
 const asyncHandler = require('../middleware/asyncHandler');
 const addressValidationError = require('../services/addressValidation');
+const shipping = require('../services/shippingService');
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
@@ -171,7 +172,8 @@ function fmtOrderItem(i) {
     color: i.color || null,
     quantity: i.quantity,
     unitPrice: Number(i.unit_price),
-    totalPrice: Number(i.total_price)
+    totalPrice: Number(i.total_price),
+    imageUrl: i.image_url || null
   };
 }
 
@@ -202,9 +204,13 @@ function fmtOrder(o, items, addr) {
     totalAmount: Number(o.total_amount),
     items: (items || []).map(fmtOrderItem),
     address: fmtOrderAddr(addr),
-    awbNumber: o.awb_number || null,
-    courierName: o.courier_name || null,
-    trackingUrl: o.tracking_url || null,
+    awbNumber: o.shipment_awb_code || o.awb_number || null,
+    courierName: o.shipment_courier_name || o.courier_name || null,
+    trackingUrl: o.shipment_tracking_url || o.tracking_url || null,
+    shippingStatus: o.shipment_shipping_status || 'not_created',
+    trackingStatus: o.shipment_tracking_status || null,
+    pickupStatus: o.shipment_pickup_status || null,
+    estimatedDelivery: o.shipment_estimated_delivery || null,
     shippedAt: o.shipped_at || null,
     deliveredAt: o.delivered_at || null,
     createdAt: o.created_at,
@@ -214,7 +220,15 @@ function fmtOrder(o, items, addr) {
 
 async function enrichOrder(o) {
   const [itemsRes, addrRes] = await Promise.all([
-    pool.query('SELECT * FROM order_items WHERE order_id = $1', [o.id]),
+    pool.query(
+      `SELECT oi.*,
+         (SELECT pi.image_url FROM product_images pi
+          WHERE pi.product_id = oi.product_id
+          ORDER BY pi.is_primary DESC, pi.display_order, pi.created_at
+          LIMIT 1) AS image_url
+       FROM order_items oi WHERE oi.order_id = $1 ORDER BY oi.created_at, oi.id`,
+      [o.id]
+    ),
     pool.query('SELECT * FROM order_addresses WHERE order_id = $1', [o.id])
   ]);
   return fmtOrder(o, itemsRes.rows, addrRes.rows[0]);
@@ -222,7 +236,17 @@ async function enrichOrder(o) {
 
 exports.getOrders = asyncHandler(async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC',
+    `SELECT o.*,
+       s.awb_code AS shipment_awb_code,
+       s.courier_name AS shipment_courier_name,
+       s.tracking_url AS shipment_tracking_url,
+       s.shipping_status AS shipment_shipping_status,
+       s.tracking_status AS shipment_tracking_status,
+       s.pickup_status AS shipment_pickup_status,
+       s.estimated_delivery AS shipment_estimated_delivery
+     FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
+     WHERE o.user_id = $1 AND o.payment_status = 'paid'
+     ORDER BY o.created_at DESC`,
     [req.user.id]
   );
   const orders = await Promise.all(rows.map(enrichOrder));
@@ -231,7 +255,16 @@ exports.getOrders = asyncHandler(async (req, res) => {
 
 exports.getOrder = asyncHandler(async (req, res) => {
   const { rows } = await pool.query(
-    'SELECT * FROM orders WHERE id = $1 AND user_id = $2',
+    `SELECT o.*,
+       s.awb_code AS shipment_awb_code,
+       s.courier_name AS shipment_courier_name,
+       s.tracking_url AS shipment_tracking_url,
+       s.shipping_status AS shipment_shipping_status,
+       s.tracking_status AS shipment_tracking_status,
+       s.pickup_status AS shipment_pickup_status,
+       s.estimated_delivery AS shipment_estimated_delivery
+     FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
+     WHERE o.id = $1 AND o.user_id = $2 AND o.payment_status = 'paid'`,
     [req.params.orderId, req.user.id]
   );
   if (!rows[0]) return res.status(404).json({ message: 'Order not found.' });
@@ -239,22 +272,7 @@ exports.getOrder = asyncHandler(async (req, res) => {
 });
 
 exports.getTracking = asyncHandler(async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT order_status, awb_number, courier_name, tracking_url, shipped_at, delivered_at, updated_at
-     FROM orders WHERE id = $1 AND user_id = $2`,
-    [req.params.orderId, req.user.id]
-  );
-  if (!rows[0]) return res.status(404).json({ message: 'Order not found.' });
-  const r = rows[0];
-  res.json({
-    status: r.order_status,
-    awbNumber: r.awb_number || null,
-    courierName: r.courier_name || null,
-    trackingUrl: r.tracking_url || null,
-    shippedAt: r.shipped_at || null,
-    deliveredAt: r.delivered_at || null,
-    updatedAt: r.updated_at
-  });
+  res.json(await shipping.tracking(req.params.orderId, req.user));
 });
 
 // ── Returns ───────────────────────────────────────────────────────────────────

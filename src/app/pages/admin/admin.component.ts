@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, OnInit } from '@angular/core';
+import { Component, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Product } from '../../models/product.model';
 import { Category } from '../../models/category.model';
@@ -50,6 +50,7 @@ type OptionType = 'sizes' | 'colors';
   styleUrl: './admin.component.css'
 })
 export class AdminComponent implements OnInit {
+  @ViewChild('orderDialog') orderDialog?: ElementRef<HTMLDialogElement>;
   tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' = 'products';
   products: Product[] = [];
   categories: Category[] = [];
@@ -60,6 +61,9 @@ export class AdminComponent implements OnInit {
   ordersLoading = false;
   ordersError = '';
   shippingBusyOrderId = '';
+  selectedOrder: Order | null = null;
+  orderSearch = '';
+  orderFilter = 'all';
   message = '';
   error = '';
 
@@ -141,12 +145,79 @@ export class AdminComponent implements OnInit {
     this.ordersLoading = true;
     this.ordersError = '';
     this.orderService.allOrders().subscribe({
-      next: (o) => { this.orders = o; this.ordersLoading = false; },
+      next: (o) => {
+        this.orders = o;
+        if (this.selectedOrder) {
+          this.selectedOrder = o.find((order) => order.id === this.selectedOrder?.id) || null;
+        }
+        this.ordersLoading = false;
+      },
       error: () => {
         this.ordersError = 'Could not refresh orders. Please try again.';
         this.ordersLoading = false;
       }
     });
+  }
+
+  get visibleOrders(): Order[] {
+    const query = this.orderSearch.trim().toLowerCase();
+    return this.orders.filter((order) => {
+      const hasShipmentIssue = Boolean(order.shipment?.lastErrorCode);
+      const matchesFilter = this.orderFilter === 'all' ||
+        (this.orderFilter === 'attention' && hasShipmentIssue) ||
+        (this.orderFilter === 'unfulfilled' && order.paymentStatus === 'paid' && !order.shipment?.awbCode) ||
+        (this.orderFilter === 'shipped' && Boolean(order.shipment?.awbCode));
+      if (!matchesFilter) return false;
+      if (!query) return true;
+      const searchable = [
+        order.orderNumber,
+        order.id,
+        order.address?.fullName,
+        order.address?.phone,
+        order.address?.city,
+        ...order.items.map((item) => item.productName)
+      ].filter(Boolean).join(' ').toLowerCase();
+      return searchable.includes(query);
+    });
+  }
+
+  orderReference(order: Order): string {
+    const reference = order.orderNumber || order.id.slice(0, 8).toUpperCase();
+    return reference.startsWith('#') ? reference : `#${reference}`;
+  }
+
+  orderItemCount(order: Order): number {
+    return order.items.reduce((total, item) => total + item.quantity, 0);
+  }
+
+  orderItemSummary(order: Order): string {
+    if (!order.items.length) return 'No items';
+    const first = order.items[0].productName;
+    return order.items.length > 1 ? `${first} +${order.items.length - 1} more` : first;
+  }
+
+  statusClass(status: string | null | undefined): string {
+    const value = (status || '').toLowerCase();
+    if (['paid', 'confirmed', 'awb_assigned', 'pickup_scheduled', 'shipped', 'delivered'].includes(value)) return 'is-success';
+    if (['failed', 'cancelled', 'validation_failed', 'needs_review', 'needs_configuration'].includes(value)) return 'is-danger';
+    if (['pending', 'placed', 'retry_pending', 'not_created'].includes(value)) return 'is-warning';
+    return 'is-info';
+  }
+
+  openOrder(order: Order): void {
+    this.selectedOrder = order;
+    queueMicrotask(() => {
+      const dialog = this.orderDialog?.nativeElement;
+      if (dialog && !dialog.open) dialog.showModal();
+    });
+  }
+
+  closeOrderDialog(): void {
+    this.orderDialog?.nativeElement.close();
+  }
+
+  clearSelectedOrder(): void {
+    this.selectedOrder = null;
   }
 
   statusLabel(status: string | null | undefined): string {

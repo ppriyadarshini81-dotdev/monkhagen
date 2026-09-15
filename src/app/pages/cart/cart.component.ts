@@ -23,8 +23,11 @@ export class CartComponent {
   shipping = { name: '', address: '', city: '', state: '', zip: '', phone: '' };
   addresses: Address[] = [];
   selectedAddressId = '';
+  lastSelectedAddressId = '';
+  addressAttempted = false;
   placing = false;
   error = '';
+  checkoutError = '';
   orderId: string | null = null;
 
   constructor(
@@ -37,6 +40,8 @@ export class CartComponent {
   checkout(): void {
     if (this.placing) return;
     this.error = '';
+    this.checkoutError = '';
+    this.addressAttempted = false;
     this.addressDialog.nativeElement.showModal();
     this.loadAddresses();
   }
@@ -51,7 +56,10 @@ export class CartComponent {
         else this.newAddress();
         this.loadingAddresses = false;
       },
-      error: () => { this.loadingAddresses = false; this.error = 'Could not load your saved addresses. Please retry.'; }
+      error: () => {
+        this.loadingAddresses = false;
+        this.checkoutError = 'Could not load your saved addresses. Please retry.';
+      }
     });
   }
 
@@ -65,11 +73,14 @@ export class CartComponent {
 
   continueCheckout(): void {
     if (this.placing || this.loadingAddresses) return;
-    this.error = '';
-    if (this.shipping.name.trim().length < 2 || this.shipping.address.trim().length < 5 ||
-        this.shipping.city.trim().length < 2 || this.shipping.state.trim().length < 2 ||
-        !/^[1-9]\d{5}$/.test(this.shipping.zip.trim()) || !/^[6-9]\d{9}$/.test(this.shipping.phone.trim())) {
-      this.error = 'Enter a full name, complete address, city, state, valid 6-digit PIN and 10-digit Indian mobile number. For an invalid saved address, add a corrected address.';
+    this.checkoutError = '';
+    if (!this.selectedAddressId && !this.addingAddress) {
+      this.checkoutError = 'Select a saved delivery address or add a new one.';
+      return;
+    }
+    if (this.addingAddress && ['name', 'address', 'city', 'state', 'zip', 'phone']
+        .some((field) => Boolean(this.addressFieldError(field)))) {
+      this.addressAttempted = true;
       return;
     }
     this.placing = true;
@@ -82,6 +93,7 @@ export class CartComponent {
       next: (address) => {
         this.addresses = [...this.addresses, address];
         this.selectedAddressId = address.id;
+        this.lastSelectedAddressId = address.id;
         this.addingAddress = false;
         this.startPayment(address.id);
       },
@@ -92,6 +104,9 @@ export class CartComponent {
   selectAddress(addressId: string): void {
     this.addingAddress = false;
     this.selectedAddressId = addressId;
+    this.lastSelectedAddressId = addressId;
+    this.addressAttempted = false;
+    this.checkoutError = '';
     const address = this.addresses.find((item) => item.id === addressId);
     if (!address) return;
     this.shipping = {
@@ -107,11 +122,49 @@ export class CartComponent {
   newAddress(): void {
     this.selectedAddressId = '';
     this.addingAddress = true;
+    this.addressAttempted = false;
+    this.checkoutError = '';
     this.shipping = { name: '', address: '', city: '', state: '', zip: '', phone: '' };
   }
 
+  cancelNewAddress(): void {
+    const fallback = this.addresses.find((address) => address.id === this.lastSelectedAddressId) ||
+      this.addresses.find((address) => address.isDefault) || this.addresses[0];
+    if (fallback) this.selectAddress(fallback.id);
+  }
+
+  addressFieldError(field: string): string {
+    const values: Record<string, string> = {
+      name: this.shipping.name,
+      address: this.shipping.address,
+      city: this.shipping.city,
+      state: this.shipping.state,
+      zip: this.shipping.zip,
+      phone: this.shipping.phone
+    };
+    const value = values[field]?.trim() || '';
+    if (!value) {
+      const labels: Record<string, string> = {
+        name: 'Full name', address: 'Delivery address', city: 'City', state: 'State',
+        zip: 'PIN code', phone: 'Mobile number'
+      };
+      return `${labels[field] || 'This field'} is required.`;
+    }
+    if (field === 'name' && value.length < 2) return 'Enter the recipient’s full name.';
+    if (field === 'address' && value.length < 5) return 'Enter a complete house, street and area.';
+    if (field === 'city' && value.length < 2) return 'Enter a valid city.';
+    if (field === 'state' && value.length < 2) return 'Enter a valid state.';
+    if (field === 'zip' && !/^[1-9]\d{5}$/.test(value)) return 'Enter a valid 6-digit Indian PIN code.';
+    if (field === 'phone' && !/^[6-9]\d{9}$/.test(value)) return 'Enter a valid 10-digit Indian mobile number.';
+    return '';
+  }
+
   closeAddressDialog(): void {
-    if (!this.placing) this.addressDialog.nativeElement.close();
+    if (!this.placing) {
+      this.checkoutError = '';
+      this.addressAttempted = false;
+      this.addressDialog.nativeElement.close();
+    }
   }
 
   updateQuantity(item: CartItem, quantity: number): void {
@@ -186,7 +239,8 @@ export class CartComponent {
   }
 
   private fail(message: string): void {
-    this.error = message;
+    if (this.addressDialog?.nativeElement.open) this.checkoutError = message;
+    else this.error = message;
     this.placing = false;
   }
 }

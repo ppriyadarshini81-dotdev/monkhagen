@@ -38,6 +38,7 @@ export interface OrderItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  imageUrl: string | null;
 }
 
 export interface OrderAddress {
@@ -66,6 +67,10 @@ export interface Order {
   awbNumber: string | null;
   courierName: string | null;
   trackingUrl: string | null;
+  shippingStatus: string;
+  trackingStatus: string | null;
+  pickupStatus: string | null;
+  estimatedDelivery: string | null;
   shippedAt: string | null;
   deliveredAt: string | null;
   createdAt: string;
@@ -73,13 +78,22 @@ export interface Order {
 }
 
 export interface TrackingInfo {
-  status: string;
-  awbNumber: string | null;
+  orderId: string;
+  available: boolean;
+  awbCode: string | null;
   courierName: string | null;
+  shippingStatus: string;
+  trackingStatus: string | null;
   trackingUrl: string | null;
-  shippedAt: string | null;
-  deliveredAt: string | null;
-  updatedAt: string;
+  estimatedDelivery: string | null;
+  pickupStatus: string | null;
+  events: {
+    date: string | null;
+    status: string | null;
+    activity: string | null;
+    location: string | null;
+  }[];
+  lastCheckedAt: string | null;
 }
 
 export interface ReturnItem {

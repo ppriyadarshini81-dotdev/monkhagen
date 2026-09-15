@@ -304,39 +304,178 @@
   </div>
 
   <!-- ORDERS -->
-  <div *ngIf="tab === 'orders'">
-    <div class="mh-admin__actions">
-      <button class="mh-btn mh-btn--ghost" (click)="loadOrders()" [disabled]="ordersLoading">{{ ordersLoading ? 'Refreshing...' : 'Refresh orders' }}</button>
-    </div>
-    <p role="alert" *ngIf="ordersError">{{ ordersError }}</p>
-    <p class="mh-empty" *ngIf="!ordersLoading && !ordersError && orders.length === 0">No orders yet.</p>
-    <div class="mh-order mh-card" *ngFor="let o of orders">
-      <div class="mh-order__head">
-        <strong>Order #{{ o.id }}</strong>
-        <span class="mh-order__status">{{ statusLabel(o.status) }}</span>
-        <span class="mh-order__total">₹{{ o.totalAmount | number }}</span>
+  <div class="mh-orders" *ngIf="tab === 'orders'">
+    <div class="mh-orders__toolbar">
+      <div>
+        <span class="mh-eyebrow">Fulfillment</span>
+        <h2>Orders at a glance</h2>
+        <p>Open an order to see customer, payment and shipment details.</p>
       </div>
-      <ul>
-        <li *ngFor="let it of o.items">{{ it.quantity }} × {{ it.productName }} — ₹{{ it.unitPrice | number }}</li>
-      </ul>
-      <dl class="mh-order__shipping">
-        <div><dt>Payment</dt><dd>{{ statusLabel(o.paymentStatus) }} ({{ o.paymentMethod === 'cod' ? 'COD' : statusLabel(o.paymentMethod) }})</dd></div>
-        <div><dt>Shipment</dt><dd>{{ statusLabel(o.shipment?.shippingStatus) }}</dd></div>
-        <div><dt>Shiprocket order ID</dt><dd>{{ o.shipment?.shiprocketOrderId || 'Not created' }}</dd></div>
-        <div><dt>Shiprocket shipment ID</dt><dd>{{ o.shipment?.shiprocketShipmentId || 'Not created' }}</dd></div>
-        <div><dt>AWB</dt><dd>{{ o.shipment?.awbCode || 'Not assigned' }}</dd></div>
-        <div><dt>Courier</dt><dd>{{ o.shipment?.courierName || 'Not assigned' }}</dd></div>
-        <div><dt>Pickup</dt><dd>{{ !o.shipment?.pickupStatus || o.shipment?.pickupStatus === 'pending' ? 'Not scheduled' : statusLabel(o.shipment?.pickupStatus) }}</dd></div>
-      </dl>
-      <p class="mh-order__shipping-error" *ngIf="shipmentError(o) as shippingError">{{ shippingError }}</p>
-      <button
-        *ngIf="canRetryShipment(o)"
-        class="mh-btn mh-btn--ghost"
-        type="button"
-        [disabled]="!!shippingBusyOrderId"
-        (click)="retryShipment(o)"
-      >{{ shippingBusyOrderId === o.id ? 'Retrying...' : 'Retry shipment' }}</button>
-      <span class="mh-order__date">{{ o.createdAt | date: 'medium' }}</span>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="loadOrders()" [disabled]="ordersLoading">
+        {{ ordersLoading ? 'Refreshing...' : 'Refresh orders' }}
+      </button>
+    </div>
+
+    <div class="mh-orders__filters" *ngIf="orders.length">
+      <label class="mh-orders__search">
+        <span aria-hidden="true"></span>
+        <input type="search" [(ngModel)]="orderSearch" placeholder="Search order, customer or product" aria-label="Search orders" />
+      </label>
+      <div class="mh-orders__filter-buttons" aria-label="Filter orders">
+        <button type="button" [class.active]="orderFilter === 'all'" (click)="orderFilter = 'all'">All</button>
+        <button type="button" [class.active]="orderFilter === 'attention'" (click)="orderFilter = 'attention'">Needs attention</button>
+        <button type="button" [class.active]="orderFilter === 'unfulfilled'" (click)="orderFilter = 'unfulfilled'">Awaiting shipment</button>
+        <button type="button" [class.active]="orderFilter === 'shipped'" (click)="orderFilter = 'shipped'">Shipped</button>
+      </div>
+    </div>
+
+    <p class="mh-error" role="alert" *ngIf="ordersError">{{ ordersError }}</p>
+    <p class="mh-empty" *ngIf="!ordersLoading && !ordersError && orders.length === 0">No orders yet.</p>
+    <p class="mh-empty" *ngIf="!ordersLoading && orders.length && visibleOrders.length === 0">No orders match these filters.</p>
+
+    <div class="mh-order-cards" *ngIf="visibleOrders.length">
+      <button class="mh-order-card" type="button" *ngFor="let o of visibleOrders" (click)="openOrder(o)">
+        <span class="mh-order-card__top">
+          <span class="mh-order-card__identity">
+            <small>Order</small>
+            <strong>{{ orderReference(o) }}</strong>
+            <span>{{ o.createdAt | date: 'dd MMM y' }} &middot; {{ o.createdAt | date: 'h:mm a' }}</span>
+          </span>
+          <span class="mh-order-card__amount">
+            <small>Order total</small>
+            <strong>&#8377;{{ (o.totalAmount ?? o.total ?? 0) | number }}</strong>
+          </span>
+        </span>
+
+        <span class="mh-order-card__content">
+          <span class="mh-order-card__customer">
+            <span class="mh-order-card__avatar">{{ o.address?.fullName?.charAt(0) || '?' }}</span>
+            <span>
+              <small>Customer</small>
+              <strong>{{ o.address?.fullName || 'Customer unavailable' }}</strong>
+              <span>{{ o.address?.city || o.address?.phone || 'Address unavailable' }}</span>
+            </span>
+          </span>
+          <span class="mh-order-card__items">
+            <small>{{ orderItemCount(o) }} {{ orderItemCount(o) === 1 ? 'item' : 'items' }}</small>
+            <strong>{{ orderItemSummary(o) }}</strong>
+          </span>
+          <span class="mh-order-card__fulfillment">
+            <small>Fulfillment</small>
+            <span class="mh-status" [ngClass]="statusClass(o.shipment?.shippingStatus)">{{ statusLabel(o.shipment?.shippingStatus) }}</span>
+            <span class="mh-order-card__warning" *ngIf="o.shipment?.lastErrorCode">Action required</span>
+          </span>
+        </span>
+
+        <span class="mh-order-card__foot">
+          <span>
+            <span class="mh-status" [ngClass]="statusClass(o.paymentStatus)">{{ statusLabel(o.paymentStatus) }}</span>
+            <small>{{ o.paymentMethod === 'cod' ? 'Cash on delivery' : statusLabel(o.paymentMethod) }}</small>
+          </span>
+          <strong>View order <span aria-hidden="true">&#8594;</span></strong>
+        </span>
+      </button>
     </div>
   </div>
 </section>
+
+<dialog #orderDialog class="mh-order-dialog" (close)="clearSelectedOrder()">
+  <ng-container *ngIf="selectedOrder as order">
+    <div class="mh-order-dialog__head">
+      <div>
+        <span class="mh-eyebrow">Order details</span>
+        <h2>{{ orderReference(order) }}</h2>
+        <p>Placed {{ order.createdAt | date: 'medium' }}</p>
+      </div>
+      <button class="mh-order-dialog__close" type="button" (click)="closeOrderDialog()" aria-label="Close order details">&times;</button>
+    </div>
+
+    <div class="mh-order-dialog__body">
+      <div class="mh-order-progress" aria-label="Fulfillment progress">
+        <div [class.is-complete]="order.paymentStatus === 'paid'">
+          <span>1</span><strong>Payment</strong><small>{{ statusLabel(order.paymentStatus) }}</small>
+        </div>
+        <div [class.is-complete]="!!order.shipment?.shiprocketShipmentId">
+          <span>2</span><strong>Shipment</strong><small>{{ order.shipment?.shiprocketShipmentId ? 'Created' : 'Waiting' }}</small>
+        </div>
+        <div [class.is-complete]="!!order.shipment?.awbCode">
+          <span>3</span><strong>AWB</strong><small>{{ order.shipment?.awbCode ? 'Assigned' : 'Waiting' }}</small>
+        </div>
+        <div [class.is-complete]="!!order.shipment?.pickupStatus && order.shipment?.pickupStatus !== 'pending'">
+          <span>4</span><strong>Pickup</strong><small>{{ !order.shipment?.pickupStatus || order.shipment?.pickupStatus === 'pending' ? 'Not scheduled' : statusLabel(order.shipment?.pickupStatus) }}</small>
+        </div>
+      </div>
+
+      <p class="mh-order-alert" *ngIf="shipmentError(order) as shippingError">
+        <strong>Shipment needs attention</strong><span>{{ shippingError }}</span>
+      </p>
+
+      <div class="mh-order-dialog__grid">
+        <section class="mh-order-panel mh-order-panel--items">
+          <div class="mh-order-panel__title"><h3>Items</h3><span>{{ orderItemCount(order) }} total</span></div>
+          <div class="mh-order-item" *ngFor="let item of order.items">
+            <div>
+              <strong>{{ item.productName }}</strong>
+              <small>
+                <ng-container *ngIf="item.size">Size {{ item.size }}</ng-container>
+                <ng-container *ngIf="item.size && item.color"> &middot; </ng-container>
+                <ng-container *ngIf="item.color">{{ item.color }}</ng-container>
+                <ng-container *ngIf="item.sku"> &middot; {{ item.sku }}</ng-container>
+              </small>
+            </div>
+            <span>{{ item.quantity }} &times; &#8377;{{ item.unitPrice | number }}</span>
+            <strong>&#8377;{{ (item.totalPrice ?? (item.unitPrice * item.quantity)) | number }}</strong>
+          </div>
+          <dl class="mh-order-totals">
+            <div><dt>Subtotal</dt><dd>&#8377;{{ (order.subtotal ?? order.totalAmount ?? order.total ?? 0) | number }}</dd></div>
+            <div *ngIf="order.discountAmount"><dt>Discount</dt><dd>&minus;&#8377;{{ order.discountAmount | number }}</dd></div>
+            <div><dt>Shipping</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Free' }}</dd></div>
+            <div class="mh-order-totals__grand"><dt>Total</dt><dd>&#8377;{{ (order.totalAmount ?? order.total ?? 0) | number }}</dd></div>
+          </dl>
+        </section>
+
+        <div class="mh-order-dialog__side">
+          <section class="mh-order-panel">
+            <div class="mh-order-panel__title"><h3>Customer &amp; delivery</h3></div>
+            <address *ngIf="order.address; else noAddress">
+              <strong>{{ order.address.fullName }}</strong><span>{{ order.address.phone }}</span>
+              <span>{{ order.address.addressLine1 }}</span><span *ngIf="order.address.addressLine2">{{ order.address.addressLine2 }}</span>
+              <span *ngIf="order.address.landmark">Landmark: {{ order.address.landmark }}</span>
+              <span>{{ order.address.city }}<ng-container *ngIf="order.address.state">, {{ order.address.state }}</ng-container> {{ order.address.postalCode }}</span>
+              <span *ngIf="order.address.country">{{ order.address.country }}</span>
+            </address>
+            <ng-template #noAddress><p class="mh-order-muted">Delivery address unavailable.</p></ng-template>
+          </section>
+
+          <section class="mh-order-panel">
+            <div class="mh-order-panel__title"><h3>Payment</h3><span class="mh-status" [ngClass]="statusClass(order.paymentStatus)">{{ statusLabel(order.paymentStatus) }}</span></div>
+            <dl class="mh-order-meta">
+              <div><dt>Method</dt><dd>{{ order.paymentMethod === 'cod' ? 'Cash on delivery' : statusLabel(order.paymentMethod) }}</dd></div>
+              <div><dt>Order status</dt><dd>{{ statusLabel(order.status) }}</dd></div>
+            </dl>
+          </section>
+
+          <section class="mh-order-panel">
+            <div class="mh-order-panel__title"><h3>Shiprocket</h3><span class="mh-status" [ngClass]="statusClass(order.shipment?.shippingStatus)">{{ statusLabel(order.shipment?.shippingStatus) }}</span></div>
+            <dl class="mh-order-meta">
+              <div><dt>Order ID</dt><dd>{{ order.shipment?.shiprocketOrderId || 'Not created' }}</dd></div>
+              <div><dt>Shipment ID</dt><dd>{{ order.shipment?.shiprocketShipmentId || 'Not created' }}</dd></div>
+              <div><dt>AWB</dt><dd>{{ order.shipment?.awbCode || 'Not assigned' }}</dd></div>
+              <div><dt>Courier</dt><dd>{{ order.shipment?.courierName || 'Not assigned' }}</dd></div>
+            </dl>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="mh-order-dialog__foot">
+      <small>Internal ID: {{ order.id }}</small>
+      <div>
+        <button class="mh-btn mh-btn--ghost" type="button" (click)="closeOrderDialog()">Close</button>
+        <button *ngIf="canRetryShipment(order)" class="mh-btn mh-btn--gold" type="button" [disabled]="!!shippingBusyOrderId" (click)="retryShipment(order)">
+          {{ shippingBusyOrderId === order.id ? 'Creating shipment...' : 'Create shipment' }}
+        </button>
+      </div>
+    </div>
+  </ng-container>
+</dialog>
