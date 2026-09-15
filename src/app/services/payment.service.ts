@@ -38,6 +38,8 @@ declare global {
 @Injectable({ providedIn: 'root' })
 export class PaymentService {
   private readonly api = '/api/payments';
+  private readonly razorpayScriptUrl = 'https://checkout.razorpay.com/v1/checkout.js';
+  private razorpayLoader?: Promise<void>;
 
   constructor(private http: HttpClient) {}
 
@@ -49,10 +51,12 @@ export class PaymentService {
     return this.http.post<VerifiedPayment>(`${this.api}/verify`, { localOrderId, ...result });
   }
 
-  openCheckout(
+  async openCheckout(
     order: PaymentOrder,
     prefill: { name?: string; email?: string; contact?: string }
   ): Promise<RazorpaySuccess> {
+    await this.loadRazorpay();
+
     return new Promise((resolve, reject) => {
       if (!window.Razorpay) {
         reject(new Error('Secure payment checkout could not be loaded. Please refresh and try again.'));
@@ -86,5 +90,37 @@ export class PaymentService {
       });
       checkout.open();
     });
+  }
+
+  private loadRazorpay(): Promise<void> {
+    if (window.Razorpay) return Promise.resolve();
+    if (this.razorpayLoader) return this.razorpayLoader;
+
+    this.razorpayLoader = new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = this.razorpayScriptUrl;
+      script.async = true;
+      script.dataset['razorpayCheckout'] = 'true';
+
+      script.addEventListener('load', () => {
+        if (window.Razorpay) {
+          resolve();
+          return;
+        }
+        reject(new Error('Secure payment checkout could not be initialized. Please try again.'));
+      }, { once: true });
+
+      script.addEventListener('error', () => {
+        reject(new Error('Secure payment checkout could not be loaded. Check your connection and try again.'));
+      }, { once: true });
+
+      document.head.appendChild(script);
+    }).catch((error: unknown) => {
+      document.querySelector<HTMLScriptElement>('script[data-razorpay-checkout="true"]')?.remove();
+      this.razorpayLoader = undefined;
+      throw error;
+    });
+
+    return this.razorpayLoader;
   }
 }
