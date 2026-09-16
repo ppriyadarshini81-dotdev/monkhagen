@@ -2,17 +2,27 @@ const { Pool } = require('pg');
 const { readFileSync } = require('fs');
 const path = require('path');
 
-const pool = new Pool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT) || 5432,
-  database: process.env.DB_NAME || 'monkhagen',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-  ssl:
-    process.env.NODE_ENV === 'production'
-      ? { rejectUnauthorized: false }
+function createPoolConfig(environment = process.env) {
+  const connectionString = environment.DATABASE_URL?.trim();
+  if (connectionString) {
+    // Neon supplies TLS and channel-binding requirements in DATABASE_URL.
+    // Do not override them with a separate ssl object.
+    return { connectionString };
+  }
+
+  return {
+    host: environment.DB_HOST || 'localhost',
+    port: Number(environment.DB_PORT) || 5432,
+    database: environment.DB_NAME || 'monkhagen',
+    user: environment.DB_USER || 'postgres',
+    password: environment.DB_PASSWORD || '',
+    ssl: environment.NODE_ENV === 'production'
+      ? { rejectUnauthorized: true }
       : false
-});
+  };
+}
+
+const pool = new Pool(createPoolConfig());
 
 async function initSchema(database = pool) {
   await database.query(`
@@ -763,15 +773,12 @@ async function runMigration(name, migrate, databasePool = pool) {
 
 async function connectDB() {
   try {
-    await pool.query('SELECT 1');
+    await pool.query('SELECT NOW()');
 
-    console.log(
-      `PostgreSQL connected: ${
-        process.env.DB_HOST || 'localhost'
-      }/${
-        process.env.DB_NAME || 'monkhagen'
-      }`
-    );
+    const source = process.env.DATABASE_URL?.trim()
+      ? 'DATABASE_URL'
+      : 'individual DB_* variables';
+    console.log(`PostgreSQL connected using ${source}`);
 
     const baseApplied = await runMigration('000_base_schema', initSchema);
     const shippingApplied = await runMigration('001_shipments', applyShippingMigration);
@@ -794,6 +801,7 @@ async function connectDB() {
 
 module.exports = {
   pool,
+  createPoolConfig,
   connectDB,
   initSchema,
   applyShippingMigration,

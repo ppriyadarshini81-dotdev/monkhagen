@@ -115,6 +115,10 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.currentVideo = index;
   }
 
+  trackProduct(_index: number, product: Product): string {
+    return product.id;
+  }
+
   private advanceInstagram(direction: 1 | -1): void {
     const maxOffset = Math.max(0, this.instaFeed.length - this.instaVisible);
     if (direction === 1) {

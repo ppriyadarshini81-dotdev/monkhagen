@@ -5,7 +5,13 @@
   (mouseleave)="onMouseLeave()"
 >
   <div class="mh-pcard__media">
-    <img [src]="currentImage" [alt]="product.name" loading="lazy" />
+    <img
+      [src]="currentImage"
+      [alt]="product.name"
+      loading="lazy"
+      decoding="async"
+      (load)="preloadHoverImage()"
+    />
     <span class="mh-pcard__badge" *ngIf="product.badge">{{ product.badge }}</span>
 
     <button

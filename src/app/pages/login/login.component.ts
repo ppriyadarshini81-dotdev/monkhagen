@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component } from '@angular/core';
+import { Component, ElementRef, ViewChild } from '@angular/core';
 import { FormsModule, NgForm } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -16,6 +16,8 @@ type EmailMode = 'signin' | 'register' | 'forgot';
   styleUrl: './login.component.css'
 })
 export class LoginComponent {
+  @ViewChild('accountCreatedDialog') accountCreatedDialog!: ElementRef<HTMLDialogElement>;
+  readonly registrationPasswordPattern = /^(?=.*[^a-zA-Z0-9\s]).{8,}$/;
   mode: EmailMode = 'signin';
   name = '';
   email = '';
@@ -26,6 +28,7 @@ export class LoginComponent {
   loading = false;
   submitted = false;
   showPassword = false;
+  showConfirmPassword = false;
   private readonly redirectUrl: string;
 
   constructor(
@@ -47,6 +50,13 @@ export class LoginComponent {
     this.password = '';
     this.confirmPassword = '';
     this.submitted = false;
+    this.showPassword = false;
+    this.showConfirmPassword = false;
+  }
+
+  closeAccountCreatedDialog(): void {
+    this.accountCreatedDialog.nativeElement.close();
+    this.setMode('signin');
   }
 
   async submitEmail(form: NgForm): Promise<void> {
@@ -57,8 +67,10 @@ export class LoginComponent {
     if (form.invalid) return;
 
     const email = this.email.trim().toLowerCase();
-    if (this.mode === 'register' && this.password !== this.confirmPassword) {
-      this.error = 'Passwords do not match.';
+    if (this.mode === 'register' && (
+      !this.registrationPasswordPattern.test(this.password) ||
+      this.password !== this.confirmPassword
+    )) {
       return;
     }
 
@@ -66,9 +78,15 @@ export class LoginComponent {
     try {
       if (this.mode === 'register') {
         await this.firebase.createEmailAccount(this.name.trim(), email, this.password);
-        this.setMode('signin');
-        this.email = email;
-        this.notice = 'Account created. Check your inbox to verify your email, then sign in.';
+        this.name = '';
+        this.email = '';
+        this.password = '';
+        this.confirmPassword = '';
+        this.showPassword = false;
+        this.showConfirmPassword = false;
+        this.submitted = false;
+        form.resetForm({ name: '', email: '', password: '', confirmPassword: '' });
+        this.accountCreatedDialog.nativeElement.showModal();
         return;
       }
 

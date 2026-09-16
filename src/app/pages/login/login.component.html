@@ -1,7 +1,7 @@
 <section class="mh-auth">
   <img
     class="mh-auth__background"
-    src="https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/banner2.png"
+    src="https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/hagen_under_150kb.webp"
     alt=""
     aria-hidden="true"
     loading="eager"
@@ -28,6 +28,7 @@
       <button type="button" role="tab" [attr.aria-selected]="mode === 'register'" [class.is-active]="mode === 'register'" (click)="setMode('register')">Create account</button>
     </div>
 
+    <div class="mh-auth__content">
     <p class="mh-auth__notice" *ngIf="notice" role="status">{{ notice }}</p>
     <p class="mh-error" *ngIf="error" role="alert">{{ error }}</p>
 
@@ -71,27 +72,43 @@
             #passwordControl="ngModel"
             [attr.autocomplete]="mode === 'register' ? 'new-password' : 'current-password'"
             [minlength]="mode === 'register' ? 8 : 6"
+            [pattern]="mode === 'register' ? registrationPasswordPattern : ''"
+            [attr.aria-invalid]="passwordControl.invalid && (passwordControl.touched || submitted)"
+            aria-describedby="password-feedback"
             required
           />
           <button type="button" (click)="showPassword = !showPassword" [attr.aria-label]="showPassword ? 'Hide password' : 'Show password'">
             {{ showPassword ? 'Hide' : 'Show' }}
           </button>
         </span>
-        <small class="mh-field-hint" *ngIf="mode === 'register'">Use at least 8 characters.</small>
-        <small class="mh-field-error" *ngIf="passwordControl.invalid && (passwordControl.touched || submitted)">Enter a valid password.</small>
+        <small class="mh-field-hint" *ngIf="mode === 'register'">Use at least 8 characters, including a special character (e.g. @, #, !).</small>
+        <small id="password-feedback" class="mh-field-error" *ngIf="passwordControl.invalid && (passwordControl.touched || submitted)">
+          {{ mode === 'register' ? 'Password must contain at least 8 characters and a special character.' : 'Enter a valid password.' }}
+        </small>
       </label>
 
       <label *ngIf="mode === 'register'">
         <span>Confirm password</span>
+        <span class="mh-auth__password">
         <input
-          [type]="showPassword ? 'text' : 'password'"
+          [type]="showConfirmPassword ? 'text' : 'password'"
           name="confirmPassword"
           [(ngModel)]="confirmPassword"
+          #confirmPasswordControl="ngModel"
           autocomplete="new-password"
           minlength="8"
+          [pattern]="registrationPasswordPattern"
+          [attr.aria-invalid]="(confirmPasswordControl.invalid || password !== confirmPassword) && (confirmPasswordControl.touched || submitted)"
+          aria-describedby="confirm-password-feedback"
           required
         />
-        <small class="mh-field-error" *ngIf="submitted && password !== confirmPassword">Passwords do not match.</small>
+        <button type="button" (click)="showConfirmPassword = !showConfirmPassword" [attr.aria-label]="showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'">
+          {{ showConfirmPassword ? 'Hide' : 'Show' }}
+        </button>
+        </span>
+        <small id="confirm-password-feedback" class="mh-field-error" *ngIf="(confirmPasswordControl.invalid || password !== confirmPassword) && (confirmPasswordControl.touched || submitted)">
+          {{ !confirmPassword ? 'Please confirm your password.' : password !== confirmPassword ? 'Passwords do not match.' : 'Use at least 8 characters, including a special character.' }}
+        </small>
       </label>
 
       <button class="mh-auth__forgot" type="button" *ngIf="mode === 'signin'" (click)="setMode('forgot')">Forgot password?</button>
@@ -103,7 +120,7 @@
 
     <button class="mh-auth__back" type="button" *ngIf="mode === 'forgot'" (click)="setMode('signin')">&#8592; Back to sign in</button>
 
-    <ng-container *ngIf="mode !== 'forgot'">
+    <ng-container *ngIf="mode === 'signin'">
       <div class="mh-auth__divider"><span>or</span></div>
       <button
         class="mh-btn mh-btn--google mh-btn--block"
@@ -120,7 +137,20 @@
         Continue with Google
       </button>
     </ng-container>
+    </div>
 
     <p class="mh-auth__terms">By continuing, you agree to the Monk Hagen terms and privacy policy.</p>
   </div>
 </section>
+
+<dialog #accountCreatedDialog class="mh-account-success" aria-labelledby="account-success-title" aria-describedby="account-success-description" (cancel)="$event.preventDefault()">
+  <div class="mh-account-success__icon" aria-hidden="true">
+    <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
+  </div>
+  <h2 id="account-success-title">Account created successfully</h2>
+  <p id="account-success-description">A verification email has been sent to your email address. Please verify your email before signing in.</p>
+  <p class="mh-account-success__hint">Check your inbox or spam folder for the verification link.</p>
+  <div class="mh-account-success__actions">
+    <button class="mh-btn mh-btn--primary" type="button" autofocus (click)="closeAccountCreatedDialog()">Okay</button>
+  </div>
+</dialog>

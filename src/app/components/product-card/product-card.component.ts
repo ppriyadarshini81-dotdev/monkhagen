@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnDestroy, OnInit } from '@angular/core';
+import { Component, Input, OnDestroy } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { CartService } from '../../services/cart.service';
@@ -15,7 +15,7 @@ import { sortSizes } from '../../utils/size-order';
   templateUrl: './product-card.component.html',
   styleUrl: './product-card.component.css'
 })
-export class ProductCardComponent implements OnInit, OnDestroy {
+export class ProductCardComponent implements OnDestroy {
   @Input({ required: true }) product!: Product;
   @Input() cycleImages = false;
   added = false;
@@ -26,6 +26,7 @@ export class ProductCardComponent implements OnInit, OnDestroy {
   quickProduct?: Product;
   currentImageIndex = 0;
   private imageTimer?: ReturnType<typeof setInterval>;
+  private hoverImagePreload?: HTMLImageElement;
 
   constructor(
     private cart: CartService,
@@ -39,17 +40,27 @@ export class ProductCardComponent implements OnInit, OnDestroy {
     return cachedMediaUrl(image);
   }
 
-  ngOnInit(): void {
-    this.startImageTimer(2000);
-  }
-
   onMouseEnter(): void {
-    this.startImageTimer(3000);
+    if (this.cycleImages && this.product.images.length > 1) {
+      this.currentImageIndex = 1;
+    }
+    this.startImageTimer(1800);
   }
 
   onMouseLeave(): void {
-    this.startImageTimer(2000);
+    this.stopImageTimer();
+    this.currentImageIndex = 0;
     if (!this.adding) this.showSizePicker = false;
+  }
+
+  preloadHoverImage(): void {
+    if (this.hoverImagePreload || !this.cycleImages || this.product.images.length < 2) {
+      return;
+    }
+
+    this.hoverImagePreload = new Image();
+    this.hoverImagePreload.decoding = 'async';
+    this.hoverImagePreload.src = cachedMediaUrl(this.product.images[1]);
   }
 
   get availableSizes(): string[] {
@@ -62,15 +73,22 @@ export class ProductCardComponent implements OnInit, OnDestroy {
   }
 
   private startImageTimer(delay: number): void {
-    if (this.imageTimer) clearInterval(this.imageTimer);
+    this.stopImageTimer();
     if (!this.cycleImages || this.product.images.length < 2) return;
     this.imageTimer = setInterval(() => {
       this.currentImageIndex = (this.currentImageIndex + 1) % this.product.images.length;
     }, delay);
   }
 
+  private stopImageTimer(): void {
+    if (!this.imageTimer) return;
+    clearInterval(this.imageTimer);
+    this.imageTimer = undefined;
+  }
+
   ngOnDestroy(): void {
-    if (this.imageTimer) clearInterval(this.imageTimer);
+    this.stopImageTimer();
+    this.hoverImagePreload = undefined;
   }
 
   quickAdd(event: Event): void {
