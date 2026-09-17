@@ -40,10 +40,13 @@
     <button [class.active]="tab === 'orders'" (click)="tab = 'orders'">
       Orders ({{ orders.length }})
     </button>
+    <button [class.active]="tab === 'content'" (click)="tab = 'content'">Product page content</button>
   </div>
 
   <p class="mh-admin__msg" *ngIf="message">{{ message }}</p>
   <p class="mh-error" *ngIf="error">{{ error }}</p>
+
+  <app-product-page-content-editor *ngIf="tab === 'content'"></app-product-page-content-editor>
 
   <!-- PRODUCTS -->
   <div *ngIf="tab === 'products'">
@@ -73,7 +76,7 @@
           <input class="mh-input" type="number" min="0" step="1" [(ngModel)]="form.stock" />
         </div>
         <div class="mh-admin__full">
-          <label class="mh-label">Description</label>
+          <label class="mh-label">Product details</label>
           <textarea class="mh-textarea" rows="3" [(ngModel)]="form.description"></textarea>
         </div>
         <div>

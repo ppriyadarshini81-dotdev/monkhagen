@@ -1,0 +1,53 @@
+<section class="mh-content-editor mh-card">
+  <header>
+    <h2>Product page content</h2>
+    <p>Manage the shared size guide, care instructions and delivery information here. Changes apply to every product page.</p>
+    <p>Product details are different for each item: edit them in <strong>Products → Edit → Product details</strong>.</p>
+  </header>
+
+  <p *ngIf="loading" role="status">Loading content…</p>
+  <p class="mh-error" *ngIf="error" role="alert">{{ error }}</p>
+  <p class="mh-content-editor__success" *ngIf="message" role="status">{{ message }}</p>
+  <button class="mh-btn mh-btn--ghost" type="button" *ngIf="!content && !loading" (click)="loadContent()">Retry loading</button>
+
+  <form *ngIf="content && !loading" #contentForm="ngForm" (ngSubmit)="save(contentForm)" novalidate>
+    <fieldset [disabled]="saving || uploading">
+      <label for="size-chart-url">Size guide image URL</label>
+      <input id="size-chart-url" class="mh-input" type="url" name="sizeChartImageUrl"
+             [(ngModel)]="content.sizeChartImageUrl" #chartControl="ngModel" maxlength="2048"
+             placeholder="https://…/size-guide.webp"
+             [attr.aria-invalid]="sizeChartInvalid && (chartControl.touched || submitted)"
+             aria-describedby="size-chart-feedback" />
+      <small id="size-chart-feedback" class="mh-error" *ngIf="sizeChartInvalid && (chartControl.touched || submitted)">Enter a valid HTTPS image URL without credentials.</small>
+      <small>Paste an image URL or upload a chart to R2. Leave blank to hide the size guide.</small>
+      <label class="mh-content-editor__upload">
+        {{ uploading ? 'Uploading…' : 'Upload size chart (R2)' }}
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" (change)="uploadSizeChart($event)" hidden />
+      </label>
+      <img class="mh-content-editor__preview" *ngIf="content.sizeChartImageUrl && !sizeChartInvalid"
+           [src]="content.sizeChartImageUrl" alt="Size guide preview" />
+
+      <label for="care-instructions">CARE / KEEP IT FRESH</label>
+      <textarea id="care-instructions" class="mh-textarea" name="careInstructions"
+                [(ngModel)]="content.careInstructions" maxlength="10000" rows="6"
+                placeholder="Enter the care instructions, one step per line."></textarea>
+      <small>Line breaks are preserved. Leave blank to hide the care section.</small>
+
+      <label for="delivery-estimate">Estimated delivery *</label>
+      <input id="delivery-estimate" class="mh-input" name="deliveryEstimate"
+             [(ngModel)]="content.deliveryEstimate" #deliveryControl="ngModel" required maxlength="200"
+             [attr.aria-invalid]="!content.deliveryEstimate.trim() && (deliveryControl.touched || submitted)"
+             aria-describedby="delivery-feedback" />
+      <small id="delivery-feedback" class="mh-error" *ngIf="!content.deliveryEstimate.trim() && (deliveryControl.touched || submitted)">Enter an estimated delivery time.</small>
+
+      <label for="delivery-note">Delivery disclaimer</label>
+      <textarea id="delivery-note" class="mh-textarea" name="deliveryNote"
+                [(ngModel)]="content.deliveryNote" maxlength="2000" rows="3"></textarea>
+
+      <div class="mh-content-editor__actions">
+        <button class="mh-btn mh-btn--gold" type="submit">{{ saving ? 'Saving…' : 'Save shared content' }}</button>
+        <button class="mh-btn mh-btn--ghost" type="button" (click)="discard(contentForm)">Discard changes</button>
+      </div>
+    </fieldset>
+  </form>
+</section>

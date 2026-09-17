@@ -13,6 +13,7 @@ import { OrderService, Order } from '../../services/order.service';
 import { UploadService } from '../../services/upload.service';
 import { AuthService } from '../../services/auth.service';
 import { ShippingService } from '../../services/shipping.service';
+import { ProductPageContentEditorComponent } from '../../components/product-page-content-editor/product-page-content-editor.component';
 
 interface ProductForm {
   id?: string;
@@ -45,13 +46,13 @@ type OptionType = 'sizes' | 'colors';
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ProductPageContentEditorComponent],
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.css'
 })
 export class AdminComponent implements OnInit {
   @ViewChild('orderDialog') orderDialog?: ElementRef<HTMLDialogElement>;
-  tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' = 'products';
+  tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' | 'content' = 'products';
   products: Product[] = [];
   categories: Category[] = [];
   badges: Badge[] = [];

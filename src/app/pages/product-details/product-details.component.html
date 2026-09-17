@@ -39,13 +39,10 @@
       <h1>{{ product.name }}</h1>
       <div class="mh-pd__meta">
         <span class="mh-pd__price">₹{{ product.price | number }}</span>
-        <span class="mh-pd__rating">★ {{ product.rating || '—' }}</span>
-        <span class="mh-pd__stock" [class.low]="product.stock < 10">
-          {{ product.stock > 0 ? product.stock + ' in stock' : 'Sold out' }}
-        </span>
+        <button class="mh-pd__size-link" type="button" *ngIf="pageContent?.sizeChartImageUrl"
+          (click)="openSizeChart()" aria-haspopup="dialog">Size chart</button>
+        <span class="mh-pd__stock" *ngIf="product.stock === 0">Sold out</span>
       </div>
-
-      <p class="mh-pd__desc">{{ product.description }}</p>
 
       <div class="mh-pd__opt" *ngIf="product.colors.length">
         <span class="mh-label">Color</span>
@@ -90,14 +87,45 @@
 
       <p class="mh-error" *ngIf="addError">{{ addError }}</p>
 
-      <ul class="mh-pd__perks">
-        <li>Free shipping</li>
-        <li>Heavyweight premium fabric</li>
-        <li>Limited run | never restocked</li>
-      </ul>
+      <div class="mh-pd__delivery" *ngIf="pageContent?.deliveryEstimate">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 5h11v12H3V5Zm11 5h4l3 4v3h-7M7 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm11 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /></svg>
+        <div>
+          <span>Estimated delivery</span>
+          <strong>{{ pageContent?.deliveryEstimate }}</strong>
+          <p *ngIf="pageContent?.deliveryNote">{{ pageContent?.deliveryNote }}</p>
+        </div>
+      </div>
+
+      <div class="mh-pd__details">
+        <details *ngIf="product.description" open>
+          <summary>Product details</summary>
+          <div class="mh-pd__detail-body"><p class="mh-pd__desc">{{ product.description }}</p></div>
+        </details>
+        <details *ngIf="careItems.length">
+          <summary>CARE / KEEP IT FRESH</summary>
+          <div class="mh-pd__detail-body">
+            <ul class="mh-pd__care"><li *ngFor="let item of careItems">{{ item }}</li></ul>
+          </div>
+        </details>
+      </div>
+      <div class="mh-pd__content-error" *ngIf="contentError" role="status">
+        <p>{{ contentError }}</p>
+        <button type="button" class="mh-link" (click)="loadPageContent()" [disabled]="contentLoading">{{ contentLoading ? 'Loading…' : 'Retry' }}</button>
+      </div>
     </div>
   </div>
 </section>
+
+<dialog #sizeChartDialog class="mh-pd__chart-dialog" aria-labelledby="size-chart-title" (click)="closeOnBackdrop($event)">
+  <div class="mh-pd__chart-panel">
+    <header>
+      <h2 id="size-chart-title">Size chart</h2>
+      <button type="button" class="mh-pd__chart-close" (click)="closeSizeChart()" aria-label="Close size chart" autofocus>&times;</button>
+    </header>
+    <img *ngIf="sizeChartDialog.open && pageContent?.sizeChartImageUrl" class="mh-pd__size-chart"
+      [src]="pageContent?.sizeChartImageUrl" alt="Monk Hagen size chart" decoding="async" />
+  </div>
+</dialog>
 
 <div class="mh-pd__state mh-container" *ngIf="loading">Loading…</div>
 

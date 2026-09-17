@@ -16,12 +16,14 @@
 
 .mh-admin__tabs {
   display: flex;
+  overflow-x: auto;
   gap: 8px;
   margin: 26px 0 18px;
   border-bottom: 1px solid var(--mh-line);
 }
 
 .mh-admin__tabs button {
+  flex-shrink: 0;
   background: none;
   border: none;
   color: var(--mh-text-dim);

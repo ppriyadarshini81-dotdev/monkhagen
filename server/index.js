@@ -7,6 +7,7 @@ const { connectDB } = require('./config/db');
 const { notFound, errorHandler } = require('./middleware/error');
 
 const productRoutes = require('./routes/products');
+const productPageContentRoutes = require('./routes/productPageContent');
 const categoryRoutes = require('./routes/categories');
 const badgeRoutes = require('./routes/badges');
 const sizeRoutes = require('./routes/sizes');
@@ -49,6 +50,7 @@ app.use(express.json({ limit: '2mb' }));
 
 // API routes
 app.use('/api/products', productRoutes);
+app.use('/api/product-page-content', productPageContentRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/badges', badgeRoutes);
 app.use('/api/sizes', sizeRoutes);

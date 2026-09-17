@@ -744,6 +744,16 @@ async function applyFirebaseAuthMigration(database = pool) {
   await database.query(sql);
 }
 
+async function applyProductPageContentMigration(database = pool) {
+  const sql = readFileSync(path.join(__dirname, '..', 'migrations', '003_product_page_content.sql'), 'utf8');
+  await database.query(sql);
+}
+
+async function applySizeChartCareMigration(database = pool) {
+  const sql = readFileSync(path.join(__dirname, '..', 'migrations', '004_size_chart_care_content.sql'), 'utf8');
+  await database.query(sql);
+}
+
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
   try {
@@ -783,9 +793,11 @@ async function connectDB() {
     const baseApplied = await runMigration('000_base_schema', initSchema);
     const shippingApplied = await runMigration('001_shipments', applyShippingMigration);
     const firebaseAuthApplied = await runMigration('002_firebase_auth', applyFirebaseAuthMigration);
+    const productPageContentApplied = await runMigration('003_product_page_content', applyProductPageContentMigration);
+    const sizeChartCareApplied = await runMigration('004_size_chart_care_content', applySizeChartCareMigration);
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
@@ -806,5 +818,7 @@ module.exports = {
   initSchema,
   applyShippingMigration,
   applyFirebaseAuthMigration,
+  applyProductPageContentMigration,
+  applySizeChartCareMigration,
   runMigration
 };

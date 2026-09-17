@@ -1,0 +1,15 @@
+.mh-content-editor { padding: 28px; margin-bottom: 24px; }
+.mh-content-editor h2 { margin: 0 0 12px; font-size: 26px; }
+.mh-content-editor header p { color: var(--mh-text-dim); font-size: 14px; line-height: 1.6; margin: 8px 0; }
+.mh-content-editor form { margin-top: 24px; }
+.mh-content-editor fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; min-width: 0; }
+.mh-content-editor fieldset > label { margin-top: 14px; font-size: 13px; font-weight: 600; }
+.mh-content-editor small { color: var(--mh-text-dim); font-size: 12px; line-height: 1.5; }
+.mh-content-editor small.mh-error { color: #b42318; }
+.mh-content-editor input[aria-invalid="true"] { border-color: #b42318; }
+.mh-content-editor__success { color: #16834b; font-size: 14px; }
+.mh-content-editor .mh-content-editor__upload { width: fit-content; padding: 10px 16px; border: 1px dashed var(--mh-line); border-radius: 10px; cursor: pointer; }
+.mh-content-editor fieldset:disabled { opacity: .7; }
+.mh-content-editor__preview { display: block; max-width: 100%; max-height: 280px; width: auto; object-fit: contain; border: 1px solid var(--mh-line); border-radius: 10px; }
+.mh-content-editor__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }
+@media (max-width: 520px) { .mh-content-editor { padding: 20px; } }
