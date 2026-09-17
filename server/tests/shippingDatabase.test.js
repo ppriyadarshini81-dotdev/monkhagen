@@ -40,10 +40,9 @@ test('PostgreSQL migration is repeatable, queue insertion is transactional, and 
       await client.query('ROLLBACK TO SAVEPOINT duplicates');
       await assert.rejects(client.query('INSERT INTO shipments (order_id, package_weight) VALUES ($1,-1)', [other]), error => error.code === '23514');
       await client.query('ROLLBACK TO SAVEPOINT duplicates');
-      await Shipment.withLock(orderId, async () => {
-        await assert.rejects(Shipment.withLock(orderId, async () => {}), error => error.code === 'SHIPPING_BUSY');
-      });
-      await Shipment.withLock(orderId, async () => {});
+      // Durable lease behavior is covered by shippingLeaseSecurity.test.js.
+      // Never call another pooled connection from this rollback-only fixture:
+      // its writes would escape this isolated test schema and transaction.
     } finally {
       await client.query('ROLLBACK');
       client.release();

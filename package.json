@@ -11,6 +11,8 @@
     "server": "node server/index.js",
     "server:dev": "nodemon server/index.js",
     "seed": "node server/seed.js",
+    "db:migrate": "node server/migrate.js",
+    "security:maintenance": "node server/maintenance.js",
     "dev": "concurrently -k -n API,NG -c blue,green \"npm:server:dev\" \"npm:start\"",
     "start:prod": "npm run build && node server/index.js"
   },

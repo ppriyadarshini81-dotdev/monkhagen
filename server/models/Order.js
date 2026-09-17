@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const Shipment = require('./Shipment');
+const inventory = require('../services/inventoryService');
 
 function genOrderNumber() {
   const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -48,6 +49,8 @@ function formatOrder(row, items = [], address = null) {
     totalAmount: Number(row.total_amount),
     paymentMethod: row.payment_method,
     paymentStatus: row.payment_status,
+    fulfillmentHoldReason: row.fulfillment_hold_reason || null,
+    refundedAmount: Number(row.refunded_amount || 0),
     status: row.order_status,
     razorpayOrderId: row.razorpay_order_id || null,
     razorpayPaymentId: row.razorpay_payment_id || null,
@@ -67,47 +70,46 @@ async function enrichOrder(row) {
 }
 
 const Order = {
-  async create({ userId, items, address, subtotal, discountAmount = 0, shippingAmount = 0, totalAmount, paymentMethod }) {
+  async createCod(userId, { addressId, checkoutToken } = {}) {
+    if (checkoutToken != null && !inventory.UUID.test(checkoutToken)) throw inventory.error(400, 'Invalid checkout attempt.');
     const client = await pool.connect();
+    let order;
     try {
       await client.query('BEGIN');
-      const orderNumber = genOrderNumber();
-      const { rows } = await client.query(
-        `INSERT INTO orders (user_id, order_number, subtotal, discount_amount, shipping_amount, total_amount, payment_method)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [userId, orderNumber, subtotal, discountAmount, shippingAmount, totalAmount, paymentMethod || 'cod']
-      );
-      const order = rows[0];
-
-      await client.query(
-        `INSERT INTO order_addresses
-           (order_id, full_name, phone, address_line1, address_line2, landmark, city, state, postal_code, country)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [order.id, address.fullName, address.phone, address.addressLine1,
-         address.addressLine2 || null, address.landmark || null,
-         address.city, address.state, address.postalCode, address.country || 'India']
-      );
-
-      for (const item of items) {
-        await client.query(
-          `INSERT INTO order_items
-             (order_id, product_id, variant_id, product_name, sku, size, color, quantity, unit_price, total_price)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-          [order.id, item.productId, item.variantId, item.productName,
-           item.sku || null, item.size || null, item.color || null,
-           item.quantity, item.unitPrice, item.totalPrice]
-        );
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`checkout:${userId}`]);
+      await inventory.releaseExpiredReservations(client);
+      if (checkoutToken) {
+        const previous = await client.query("SELECT * FROM orders WHERE user_id = $1 AND checkout_token = $2 AND payment_method = 'cod' FOR UPDATE", [userId, checkoutToken]);
+        if (previous.rows[0]) {
+          order = previous.rows[0];
+        }
       }
-
-      if (!paymentMethod || paymentMethod === 'cod') await Shipment.enqueue(client, order.id);
+      if (!order) {
+      const snapshot = await inventory.checkoutSnapshot(client, userId, addressId);
+      const pending = await client.query(`SELECT id FROM orders WHERE cart_id = $1 AND inventory_reserved_at IS NOT NULL
+        AND inventory_released_at IS NULL AND payment_status = 'pending' FOR UPDATE`, [snapshot.cart.id]);
+      if (pending.rows.length) throw inventory.error(409, 'A prepaid checkout for this cart is pending. Retry it or wait for it to expire.');
+      await inventory.deduct(client, snapshot.items);
+      const amount = (snapshot.amount / 100).toFixed(2);
+      const result = await client.query(`INSERT INTO orders
+        (user_id, cart_id, checkout_token, order_number, subtotal, discount_amount, shipping_amount, total_amount,
+         payment_method, payment_status, order_status, inventory_deducted_at)
+        VALUES ($1,$2,$3,$4,$5,0,0,$5,'cod','pending','confirmed',NOW()) RETURNING *`,
+        [userId, snapshot.cart.id, checkoutToken || null, genOrderNumber(), amount]);
+      order = result.rows[0];
+      await inventory.snapshotAddress(client, order.id, snapshot.address);
+      await inventory.snapshotItems(client, order.id, snapshot.items);
+      await client.query("UPDATE carts SET status = 'converted', updated_at = NOW() WHERE id = $1 AND user_id = $2 AND status = 'active'", [snapshot.cart.id, userId]);
+      await Shipment.enqueue(client, order.id);
+      }
       await client.query('COMMIT');
-      return enrichOrder(order);
     } catch (err) {
-      await client.query('ROLLBACK');
+      await client.query('ROLLBACK').catch(() => {});
       throw err;
     } finally {
       client.release();
     }
+    return enrichOrder(order);
   },
 
   async findByUser(userId) {
@@ -125,7 +127,7 @@ const Order = {
       'awbCode', COALESCE(s.awb_code, o.awb_number),
       'courierName', COALESCE(s.courier_name, o.courier_name),
       'pickupStatus', COALESCE(s.pickup_status, 'pending'),
-      'lastErrorCode', s.last_error_code
+      'lastErrorCode', COALESCE(s.last_error_code, o.fulfillment_hold_reason)
     ) AS shipment FROM orders o
     LEFT JOIN shipments s ON s.order_id = o.id ORDER BY o.created_at DESC`);
     return Promise.all(rows.map(async row => ({ ...await enrichOrder(row), shipment: row.shipment })));
@@ -134,11 +136,22 @@ const Order = {
   async findByIdAndUpdateStatus(id, status) {
     const VALID = ['placed','confirmed','processing','shipped','delivered','cancelled','return_requested','returned'];
     if (!VALID.includes(status)) return null;
-    const { rows } = await pool.query(
-      `UPDATE orders SET order_status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
-      [status, id]
-    );
-    return rows[0] ? enrichOrder(rows[0]) : null;
+    const client = await pool.connect();
+    let updated;
+    try {
+      await client.query('BEGIN');
+      const found = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [id]);
+      if (found.rows[0]) {
+        if (status === 'cancelled') await inventory.releaseReservation(client, found.rows[0]);
+        const result = await client.query(`UPDATE orders SET order_status = $1,
+          fulfillment_hold_reason = CASE WHEN $1 = 'cancelled' THEN COALESCE(fulfillment_hold_reason, 'ORDER_CANCELLED_REVIEW')
+            ELSE fulfillment_hold_reason END, updated_at = NOW() WHERE id = $2 RETURNING *`, [status, id]);
+        updated = result.rows[0];
+      }
+      await client.query('COMMIT');
+    } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
+    finally { client.release(); }
+    return updated ? enrichOrder(updated) : null;
   },
 
   async deleteMany() {

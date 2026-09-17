@@ -64,15 +64,25 @@ function packageDetails(input = {}, env = process.env) {
   };
 }
 
-function assertShippable(order) {
+function assertFulfillmentSafe(order) {
+  if (order?.fulfillment_hold_reason) {
+    throw shippingError(409, 'ORDER_FULFILLMENT_HELD', 'This order requires inventory or payment review before shipping.');
+  }
   if (!order) throw shippingError(404, 'ORDER_NOT_FOUND', 'Order not found.');
-  if (!['placed', 'confirmed', 'processing'].includes(order.order_status)) {
+  if (['cancelled', 'returned'].includes(order.order_status)) {
     throw shippingError(409, 'ORDER_NOT_SHIPPABLE', 'This order is not eligible for shipment creation.');
   }
   if (order.payment_method === 'cod' && ['pending', 'paid'].includes(order.payment_status)) return;
   if (order.payment_method !== 'razorpay' || order.payment_status !== 'paid' ||
       !order.razorpay_order_id || !order.razorpay_payment_id || !order.paid_at) {
     throw shippingError(409, 'PAYMENT_NOT_VERIFIED', 'A captured and verified payment is required before shipping a prepaid order.');
+  }
+}
+
+function assertShippable(order) {
+  assertFulfillmentSafe(order);
+  if (!['placed', 'confirmed', 'processing'].includes(order.order_status)) {
+    throw shippingError(409, 'ORDER_NOT_SHIPPABLE', 'This order is not eligible for shipment creation.');
   }
 }
 
@@ -160,5 +170,5 @@ function normalizeTracking(data) {
   };
 }
 
-module.exports = { uuid, positive, providerId, serviceabilityInput, packageDetails, assertShippable,
+module.exports = { uuid, positive, providerId, serviceabilityInput, packageDetails, assertFulfillmentSafe, assertShippable,
   buildOrderPayload, normalizeCouriers, normalizeTracking, optionalNumber, safeUrl };

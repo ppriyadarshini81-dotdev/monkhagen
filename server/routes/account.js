@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/accountController');
 const { authenticate } = require('../middleware/auth');
+const { returnLimiter } = require('../middleware/rateLimit');
 
 // All account routes require authentication
 router.use(authenticate);
@@ -24,7 +25,7 @@ router.get('/orders/:orderId/tracking',  ctrl.getTracking);
 
 // Returns
 router.get('/returns',   ctrl.getReturns);
-router.post('/returns',  ctrl.createReturn);
+router.post('/returns', returnLimiter, ctrl.createReturn);
 
 // Credits
 router.get('/credits',              ctrl.getCredits);

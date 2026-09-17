@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { jwtSecret, adminGoogleEmail } = require('../config/security');
+const { adminLimiter } = require('./rateLimit');
 
 const JWT_SECRET = jwtSecret();
 const ADMIN_GOOGLE_EMAIL = adminGoogleEmail();
@@ -52,7 +53,7 @@ function requireAdmin(req, res, next) {
   if (!req.user || !['admin', 'super_admin'].includes(req.user.role)) {
     return res.status(403).json({ message: 'Admin access required.' });
   }
-  next();
+  return adminLimiter(req, res, next);
 }
 
 module.exports = { signToken, authenticate, requireAdmin, JWT_SECRET };

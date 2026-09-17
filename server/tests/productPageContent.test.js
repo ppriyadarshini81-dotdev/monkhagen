@@ -1,6 +1,7 @@
 const { test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+require('./helpers/rateLimitStore');
 const { pool, applyProductPageContentMigration, applySizeChartCareMigration } = require('../config/db');
 const Content = require('../models/ProductPageContent');
 const User = require('../models/User');

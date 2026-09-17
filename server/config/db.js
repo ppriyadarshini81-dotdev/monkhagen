@@ -2,6 +2,7 @@ const { Pool } = require('pg');
 const { readFileSync } = require('fs');
 const path = require('path');
 const { adminGoogleEmail } = require('./security');
+const { assertProductionDatabaseRole } = require('./databasePermissions');
 
 function createPoolConfig(environment = process.env) {
   const connectionString = environment.DATABASE_URL?.trim();
@@ -768,6 +769,10 @@ async function applyGoogleAdminMigration(database = pool) {
   `, [adminGoogleEmail()]);
 }
 
+async function applySecurityIntegrityMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '006_security_integrity.sql'), 'utf8'));
+}
+
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
   try {
@@ -795,7 +800,7 @@ async function runMigration(name, migrate, databasePool = pool) {
   } finally { client.release(); }
 }
 
-async function connectDB() {
+async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {}) {
   try {
     await pool.query('SELECT NOW()');
 
@@ -804,23 +809,28 @@ async function connectDB() {
       : 'individual DB_* variables';
     console.log(`PostgreSQL connected using ${source}`);
 
+    if (!migrate) {
+      await assertProductionDatabaseRole(pool);
+      console.log('Production database role verified; migrations are managed separately.');
+      return;
+    }
+
     const baseApplied = await runMigration('000_base_schema', initSchema);
     const shippingApplied = await runMigration('001_shipments', applyShippingMigration);
     const firebaseAuthApplied = await runMigration('002_firebase_auth', applyFirebaseAuthMigration);
     const productPageContentApplied = await runMigration('003_product_page_content', applyProductPageContentMigration);
     const sizeChartCareApplied = await runMigration('004_size_chart_care_content', applySizeChartCareMigration);
     const googleAdminApplied = await runMigration('005_google_only_admin', applyGoogleAdminMigration);
+    const integrityApplied = await runMigration('006_security_integrity', applySecurityIntegrityMigration);
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
   } catch (err) {
-    console.error(
-      'PostgreSQL connection error:',
-      err.message
-    );
+    console.error('Database startup failed:', { code: err.code || 'DB_STARTUP_FAILED' });
+    if (err.code === 'DB_ROLE_UNSAFE') console.error('Use a restricted application database role in production; migrate separately.');
 
     process.exit(1);
   }
@@ -836,5 +846,6 @@ module.exports = {
   applyProductPageContentMigration,
   applySizeChartCareMigration,
   applyGoogleAdminMigration,
+  applySecurityIntegrityMigration,
   runMigration
 };

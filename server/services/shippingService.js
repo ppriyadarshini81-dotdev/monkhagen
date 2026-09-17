@@ -1,6 +1,6 @@
 const Shipment = require('../models/Shipment');
 const { shiprocket, shippingError } = require('../config/shiprocket');
-const { uuid, providerId, serviceabilityInput, packageDetails, assertShippable,
+const { uuid, providerId, serviceabilityInput, packageDetails, assertShippable, assertFulfillmentSafe,
   buildOrderPayload, normalizeCouriers, normalizeTracking, optionalNumber, safeUrl } = require('./shippingMapping');
 
 const REVIEW_MESSAGE = 'A previous shipping operation has an uncertain outcome. Reconcile it with Shiprocket before retrying.';
@@ -183,6 +183,7 @@ function createShippingService({ repository = Shipment, api = shiprocket } = {})
       const row = await repository.find(client, orderId);
       requireAwb(row);
       if (row.label_url) return repository.format(row);
+      assertFulfillmentSafe(await repository.order(client, orderId));
       const updated = await mutate(client, orderId, row, 'label', async () => {
         const result = await api.request('/courier/generate/label', {
           method: 'POST', body: { shipment_id: [Number(row.shiprocket_shipment_id)] }

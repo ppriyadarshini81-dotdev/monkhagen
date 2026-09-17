@@ -1,83 +1,15 @@
 const Order = require('../models/Order');
-const Product = require('../models/Product');
-const Cart = require('../models/Cart');
 const asyncHandler = require('../middleware/asyncHandler');
-const { pool } = require('../config/db');
 const shipping = require('../services/shippingService');
 
 // POST /api/orders — checkout
 exports.create = asyncHandler(async (req, res) => {
-  const { addressId, paymentMethod = 'cod' } = req.body;
-  if (paymentMethod !== 'cod') {
-    return res.status(400).json({ message: 'This endpoint supports COD only. Use Razorpay checkout for prepaid orders.' });
-  }
-  const savedCart = await Cart.getWithItems(req.user.id);
-  if (savedCart.items.length === 0) {
-    return res.status(400).json({ message: 'Cart is empty.' });
-  }
-  const { rows: addressRows } = await pool.query(
-    `SELECT * FROM customer_addresses WHERE id = $1 AND user_id = $2`,
-    [addressId, req.user.id]
-  );
-  const savedAddress = addressRows[0];
-  if (!savedAddress) return res.status(400).json({ message: 'Select a saved shipping address.' });
-  const address = {
-    fullName: savedAddress.full_name,
-    phone: savedAddress.phone,
-    addressLine1: savedAddress.address_line1,
-    addressLine2: savedAddress.address_line2,
-    landmark: savedAddress.landmark,
-    city: savedAddress.city,
-    state: savedAddress.state,
-    postalCode: savedAddress.postal_code,
-    country: savedAddress.country
-  };
-
-  // Prices are always calculated from DB — never trust client-submitted totals
-  let subtotal = 0;
-  const lineItems = [];
-  for (const item of savedCart.items) {
-    const variant = await Product.findVariantById(item.variantId);
-    if (!variant) {
-      return res.status(400).json({ message: `Variant ${item.variantId} not found.` });
-    }
-    if (variant.stock < item.quantity) {
-      return res.status(400).json({
-        message: `Insufficient stock for ${variant.productName} (${variant.size}/${variant.color}).`
-      });
-    }
-    const qty = Math.max(1, Number(item.quantity) || 1);
-    subtotal += variant.price * qty;
-    lineItems.push({
-      productId: variant.productId,
-      variantId: variant.id,
-      productName: variant.productName,
-      sku: variant.sku,
-      size: variant.size,
-      color: variant.color,
-      quantity: qty,
-      unitPrice: variant.price,
-      totalPrice: variant.price * qty
-    });
-  }
-
-  // Keep legacy COD checkout server-priced; Razorpay uses /api/payments/create-order.
-  const shippingAmount = 0;
-  const order = await Order.create({
-    userId: req.user.id,
-    items: lineItems,
-    address,
-    subtotal,
-    shippingAmount,
-    totalAmount: subtotal + shippingAmount,
-    paymentMethod
-  });
-
-  await Cart.markConverted(req.user.id).catch(() => {});
+  const { paymentMethod = 'cod' } = req.body;
+  if (paymentMethod !== 'cod') return res.status(400).json({ message: 'Use Razorpay checkout for prepaid orders.' });
+  const order = await Order.createCod(req.user.id, req.body);
   void shipping.processPendingOrder(order.id);
   res.status(201).json(order);
 });
-
 // GET /api/orders/mine
 exports.mine = asyncHandler(async (req, res) => {
   const orders = await Order.findByUser(req.user.id);

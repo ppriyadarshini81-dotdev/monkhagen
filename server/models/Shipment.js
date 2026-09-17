@@ -1,5 +1,14 @@
 const { pool } = require('../config/db');
 const { shippingError } = require('../config/shiprocket');
+const { randomUUID } = require('node:crypto');
+
+async function assertLease(client) {
+  if (!client.shipmentLease) return;
+  const lease = client.shipmentLease;
+  const result = await client.query(`SELECT 1 FROM operation_leases
+    WHERE lock_key = $1 AND owner_token = $2 AND expires_at > clock_timestamp() FOR UPDATE`, [lease.key, lease.token]);
+  if (!result.rows.length) throw shippingError(409, 'SHIPPING_BUSY', 'Shipping operation ownership changed. Review before retrying.');
+}
 
 const COLUMNS = new Set([
   'shiprocket_order_id', 'shiprocket_shipment_id', 'awb_code', 'courier_id', 'courier_name',
@@ -68,16 +77,33 @@ const Shipment = {
     if (entries.some(([key]) => !COLUMNS.has(key))) throw new Error('Unsupported shipment field.');
     const values = entries.map(([key, value]) => key === 'tracking_events' ? JSON.stringify(value) : value);
     values.push(orderId);
+    const orderParameter = values.length;
+    let fence = '';
+    if (client.shipmentLease) {
+      values.push(client.shipmentLease.key, client.shipmentLease.token);
+      fence = `AND EXISTS (SELECT 1 FROM operation_leases WHERE lock_key = $${values.length - 1}
+        AND owner_token = $${values.length} AND expires_at > clock_timestamp())`;
+    }
+    if (['create','awb','pickup','label'].includes(changes.pending_operation)) {
+      const statuses = changes.pending_operation === 'label'
+        ? "('placed','confirmed','processing','shipped','delivered')" : "('placed','confirmed','processing')";
+      fence += ` AND EXISTS (SELECT 1 FROM orders o WHERE o.id = $${orderParameter}
+        AND o.fulfillment_hold_reason IS NULL AND o.order_status IN ${statuses}
+        AND ((o.payment_method = 'cod' AND o.payment_status IN ('pending','paid'))
+          OR (o.payment_method = 'razorpay' AND o.payment_status = 'paid'))) `;
+    }
     const { rows } = await client.query(
       `UPDATE shipments SET ${entries.map(([key], index) => `${key} = $${index + 1}`).join(', ')}, updated_at = NOW()
-       WHERE order_id = $${values.length} RETURNING *`, values
+       WHERE order_id = $${orderParameter} ${fence} RETURNING *`, values
     );
+    if ((client.shipmentLease || fence) && !rows.length) throw shippingError(409, 'SHIPPING_BUSY', 'Shipping operation ownership or order eligibility changed. Review before retrying.');
     return rows[0];
   },
 
   async save(client, orderId, changes, delivery = {}) {
     await client.query('BEGIN');
     try {
+      await assertLease(client);
       const row = await this.patch(client, orderId, changes);
       // Preserve compatibility with /api/account/orders and /api/account/orders/:id/tracking.
       await client.query(
@@ -103,32 +129,45 @@ const Shipment = {
 
   async withLock(orderId, fn) {
     const client = await pool.connect();
-    let locked = false;
-    let destroy = false;
+    const lease = { key: `shiprocket:${orderId}`, token: randomUUID() };
+    let locked = false, heartbeat;
     try {
-      const result = await client.query('SELECT pg_try_advisory_lock(hashtext($1)) AS locked', [`shiprocket:${orderId}`]);
-      locked = result.rows[0].locked;
+      const result = await client.query(`INSERT INTO operation_leases (lock_key, owner_token, expires_at)
+        VALUES ($1,$2,clock_timestamp() + INTERVAL '5 minutes')
+        ON CONFLICT (lock_key) DO UPDATE SET owner_token = EXCLUDED.owner_token, expires_at = EXCLUDED.expires_at
+        WHERE operation_leases.expires_at <= clock_timestamp() RETURNING owner_token`, [lease.key, lease.token]);
+      locked = result.rows.length > 0;
       if (!locked) throw shippingError(409, 'SHIPPING_BUSY', 'A shipping operation is already running for this order.');
+      client.shipmentLease = lease;
+      heartbeat = setInterval(() => {
+        void pool.query(`UPDATE operation_leases SET expires_at = clock_timestamp() + INTERVAL '5 minutes'
+          WHERE lock_key = $1 AND owner_token = $2 AND expires_at > clock_timestamp()`, [lease.key, lease.token]).catch(() => {});
+      }, 30000);
+      heartbeat.unref();
       return await fn(client);
     } finally {
+      clearInterval(heartbeat);
       if (locked) {
-        try { await client.query('SELECT pg_advisory_unlock(hashtext($1))', [`shiprocket:${orderId}`]); }
-        catch { destroy = true; }
+        await client.query('DELETE FROM operation_leases WHERE lock_key = $1 AND owner_token = $2', [lease.key, lease.token]).catch(() => {});
       }
-      client.release(destroy);
+      delete client.shipmentLease;
+      client.release();
     }
   },
 
   async pending() {
     const { rows } = await pool.query(
-      `SELECT order_id FROM shipments
-       WHERE shiprocket_order_id IS NULL AND pending_operation IS NULL
-         AND shipping_status IN ('pending','retry_pending')
-         AND last_error_code IS DISTINCT FROM 'SHIPROCKET_AUTH_FAILED'
-         AND last_error_code IS DISTINCT FROM 'SHIPROCKET_NOT_CONFIGURED'
-         AND last_error_code IS DISTINCT FROM 'SHIPROCKET_PERMISSION_DENIED'
-         AND next_attempt_at <= NOW()
-       ORDER BY next_attempt_at LIMIT 10`
+      `SELECT s.order_id FROM shipments s JOIN orders o ON o.id = s.order_id
+       WHERE s.shiprocket_order_id IS NULL AND s.pending_operation IS NULL
+         AND s.shipping_status IN ('pending','retry_pending') AND o.fulfillment_hold_reason IS NULL
+         AND o.order_status IN ('placed','confirmed','processing')
+         AND ((o.payment_method = 'razorpay' AND o.payment_status = 'paid')
+           OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid')))
+         AND s.last_error_code IS DISTINCT FROM 'SHIPROCKET_AUTH_FAILED'
+         AND s.last_error_code IS DISTINCT FROM 'SHIPROCKET_NOT_CONFIGURED'
+         AND s.last_error_code IS DISTINCT FROM 'SHIPROCKET_PERMISSION_DENIED'
+         AND s.next_attempt_at <= NOW()
+       ORDER BY s.next_attempt_at LIMIT 10`
     );
     return rows.map(row => row.order_id);
   }

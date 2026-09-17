@@ -1,17 +1,11 @@
 const router = require('express').Router();
-const { rateLimit } = require('express-rate-limit');
+const { createLimiter } = require('../middleware/rateLimit');
 const ctrl = require('../controllers/authController');
 const firebaseCtrl = require('../controllers/firebaseAuthController');
 const { authenticate } = require('../middleware/auth');
 const { legacyOtpEnabled } = require('../config/security');
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: { message: 'Too many sign-in attempts. Please try again later.' }
-});
+const authLimiter = createLimiter('authentication', { windowMs: 15 * 60000, limit: 10 });
 
 router.get('/me', authenticate, ctrl.me);
 

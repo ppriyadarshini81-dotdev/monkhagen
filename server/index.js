@@ -24,6 +24,7 @@ const webhookRoutes = require('./routes/webhooks');
 const shippingRoutes = require('./routes/shipping');
 const { startShippingWorker } = require('./services/shippingWorker');
 const { startEmailWorker } = require('./services/emailWorker');
+const { startMaintenanceWorker } = require('./services/securityMaintenance');
 const { allowedCorsOrigins } = require('./config/security');
 
 const app = express();
@@ -91,5 +92,6 @@ databaseReady.then(() => {
     console.log(`Monk Hagen server running at http://localhost:${PORT}`);
     startShippingWorker();
     startEmailWorker();
+    startMaintenanceWorker();
   });
 });

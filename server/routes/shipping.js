@@ -1,13 +1,10 @@
 const router = require('express').Router();
-const { rateLimit } = require('express-rate-limit');
+const { createLimiter } = require('../middleware/rateLimit');
 const ctrl = require('../controllers/shippingController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 router.use(authenticate);
-router.use(rateLimit({
-  windowMs: 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false,
-  message: { message: 'Too many shipping requests. Please try again shortly.' }
-}));
+router.use(createLimiter('shipping', { windowMs: 60000, limit: 30, authenticated: true }));
 
 router.post('/serviceability', ctrl.serviceability);
 router.get('/:orderId/tracking', ctrl.tracking);

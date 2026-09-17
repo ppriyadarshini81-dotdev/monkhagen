@@ -1,6 +1,7 @@
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+require('./helpers/rateLimitStore');
 const jwt = require('jsonwebtoken');
 process.env.JWT_SECRET = require('node:crypto').randomBytes(64).toString('hex');
 process.env.ADMIN_GOOGLE_EMAIL = 'administrator@example.com';

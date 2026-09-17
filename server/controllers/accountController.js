@@ -3,6 +3,7 @@ const User = require('../models/User');
 const asyncHandler = require('../middleware/asyncHandler');
 const addressValidationError = require('../services/addressValidation');
 const shipping = require('../services/shippingService');
+const returns = require('../services/returnService');
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
@@ -197,6 +198,8 @@ function fmtOrder(o, items, addr) {
     orderNumber: o.order_number,
     status: o.order_status,
     paymentStatus: o.payment_status,
+    fulfillmentHoldReason: o.fulfillment_hold_reason || null,
+    refundedAmount: Number(o.refunded_amount || 0),
     paymentMethod: o.payment_method,
     subtotal: Number(o.subtotal),
     discountAmount: Number(o.discount_amount),
@@ -277,8 +280,6 @@ exports.getTracking = asyncHandler(async (req, res) => {
 
 // ── Returns ───────────────────────────────────────────────────────────────────
 
-const RETURN_WINDOW_DAYS = 7;
-
 function fmtReturn(rr) {
   return {
     id: rr.id,
@@ -315,61 +316,7 @@ exports.getReturns = asyncHandler(async (req, res) => {
 });
 
 exports.createReturn = asyncHandler(async (req, res) => {
-  const { orderId, reason, comments, items } = req.body;
-  if (!orderId || !reason || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ message: 'orderId, reason and items are required.' });
-  }
-
-  const { rows: oRows } = await pool.query(
-    'SELECT * FROM orders WHERE id = $1 AND user_id = $2', [orderId, req.user.id]
-  );
-  if (!oRows[0]) return res.status(404).json({ message: 'Order not found.' });
-
-  const order = oRows[0];
-  if (order.order_status !== 'delivered') {
-    return res.status(400).json({ message: 'Only delivered orders are eligible for return.' });
-  }
-
-  const deliveredAt = order.delivered_at || order.updated_at;
-  const daysSince = (Date.now() - new Date(deliveredAt).getTime()) / (1000 * 60 * 60 * 24);
-  if (daysSince > RETURN_WINDOW_DAYS) {
-    return res.status(400).json({ message: `Return window of ${RETURN_WINDOW_DAYS} days has expired.` });
-  }
-
-  const { rows: existing } = await pool.query(
-    `SELECT id FROM return_requests WHERE order_id = $1 AND status NOT IN ('rejected','cancelled')`,
-    [orderId]
-  );
-  if (existing.length) return res.status(409).json({ message: 'A return request for this order already exists.' });
-
-  const returnNumber = `RET-${Date.now().toString(36).toUpperCase()}`;
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const { rows: rrRows } = await client.query(
-      `INSERT INTO return_requests (order_id, user_id, return_number, reason, comments)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [orderId, req.user.id, returnNumber, reason, comments || null]
-    );
-    const rr = rrRows[0];
-    for (const item of items) {
-      await client.query(
-        `INSERT INTO return_items (return_request_id, order_item_id, quantity, reason)
-         VALUES ($1,$2,$3,$4)`,
-        [rr.id, item.orderItemId, item.quantity || 1, item.reason || null]
-      );
-    }
-    await client.query(
-      `UPDATE orders SET order_status = 'return_requested', updated_at = NOW() WHERE id = $1`, [orderId]
-    );
-    await client.query('COMMIT');
-    res.status(201).json(fmtReturn({ ...rr, items: [] }));
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  res.status(201).json(fmtReturn(await returns.createReturn(req.user.id, req.body)));
 });
 
 // ── Credits ───────────────────────────────────────────────────────────────────
