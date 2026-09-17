@@ -1,0 +1,77 @@
+.mh-policy {
+  max-width: 760px;
+  padding: 64px 20px 80px;
+}
+
+.mh-policy__header {
+  margin-bottom: 48px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--mh-line);
+}
+
+.mh-policy__header h1 {
+  font-size: clamp(28px, 4vw, 42px);
+  margin: 12px 0 10px;
+}
+
+.mh-policy__meta {
+  font-size: 13px;
+  color: var(--mh-text-dim);
+  margin-bottom: 16px;
+}
+
+.mh-policy__intro {
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--mh-text-dim);
+}
+
+.mh-policy__section {
+  margin-bottom: 36px;
+}
+
+.mh-policy__section h2 {
+  font-family: var(--mh-font);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-bottom: 12px;
+  color: var(--mh-text);
+}
+
+.mh-policy__section p {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--mh-text-dim);
+  margin-bottom: 8px;
+}
+
+.mh-policy__section ul {
+  margin: 8px 0 12px 20px;
+  padding: 0;
+  list-style: disc;
+}
+
+.mh-policy__section ul li {
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--mh-text-dim);
+  margin-bottom: 4px;
+}
+
+.mh-policy__section a {
+  color: var(--mh-accent);
+  text-decoration: underline;
+}
+
+.mh-policy__footer {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--mh-line);
+  font-size: 14px;
+}
+
+.mh-policy__tagline {
+  color: var(--mh-text-dim);
+  margin-top: 4px;
+}

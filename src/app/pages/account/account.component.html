@@ -1,0 +1,23 @@
+<div class="mh-acct mh-container">
+  <aside class="mh-acct__sidebar">
+    <div class="mh-acct__avatar">
+      <img *ngIf="user?.profileImage" [src]="user!.profileImage!" [alt]="user!.name || ''" />
+      <span *ngIf="!user?.profileImage" class="mh-acct__initials">{{ initials }}</span>
+    </div>
+    <div class="mh-acct__name">{{ user?.name || 'My Account' }}</div>
+    <div class="mh-acct__email">{{ user?.email }}</div>
+
+    <nav class="mh-acct__nav">
+      <a routerLink="/account/profile"      routerLinkActive="active">Profile</a>
+      <a routerLink="/account/orders"       routerLinkActive="active">My Orders</a>
+      <a routerLink="/account/addresses"    routerLinkActive="active">Addresses</a>
+      <a routerLink="/account/returns"      routerLinkActive="active">Returns</a>
+      <a routerLink="/account/credits"      routerLinkActive="active">Credits</a>
+      <button class="mh-acct__logout" (click)="logout()">Logout</button>
+    </nav>
+  </aside>
+
+  <main class="mh-acct__content">
+    <router-outlet></router-outlet>
+  </main>
+</div>

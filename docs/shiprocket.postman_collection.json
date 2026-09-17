@@ -1,0 +1,80 @@
+{
+  "info": {
+    "name": "Monk Hagen Shipping",
+    "description": "Backend-only Shiprocket integration. token is a Monk Hagen JWT, never a Shiprocket token. Configure variables locally. AWB/pickup operations affect your real Shiprocket account.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "token", "value": "" },
+    { "key": "orderId", "value": "" },
+    { "key": "pickupLocation", "value": "" },
+    { "key": "pickupPostcode", "value": "110001" },
+    { "key": "deliveryPostcode", "value": "560001" },
+    { "key": "courierId", "value": "" },
+    { "key": "shiprocketOrderId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Serviceability (authenticated)",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/shipping/serviceability",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"pickup_postcode\": \"{{pickupPostcode}}\",\n  \"delivery_postcode\": \"{{deliveryPostcode}}\",\n  \"weight\": 0.5,\n  \"cod\": false\n}", "options": { "raw": { "language": "json" } } }
+      }
+    },
+    {
+      "name": "2. Create or retrieve shipment with configured defaults (admin)",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/shipping/create-shipment",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"orderId\": \"{{orderId}}\"\n}", "options": { "raw": { "language": "json" } } }
+      }
+    },
+    {
+      "name": "2b. Create shipment with measured package (admin)",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/shipping/create-shipment",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"pickup_location\": \"{{pickupLocation}}\",\n  \"weight\": 0.5,\n  \"length\": 25,\n  \"breadth\": 20,\n  \"height\": 5\n}", "options": { "raw": { "language": "json" } } }
+      }
+    },
+    {
+      "name": "3. Assign AWB (admin)",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/shipping/{{orderId}}/assign-awb",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"courier_id\": \"{{courierId}}\"\n}", "options": { "raw": { "language": "json" } } }
+      }
+    },
+    {
+      "name": "4. Generate pickup (admin; books a real pickup)",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/shipping/{{orderId}}/generate-pickup",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } }
+      }
+    },
+    {
+      "name": "5. Generate label (admin)",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/shipping/{{orderId}}/generate-label",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{}", "options": { "raw": { "language": "json" } } }
+      }
+    },
+    {
+      "name": "6. Tracking (order owner or admin)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/shipping/{{orderId}}/tracking" }
+    },
+    {
+      "name": "Recovery: reconcile uncertain operation (admin)",
+      "request": {
+        "method": "POST", "url": "{{baseUrl}}/api/shipping/{{orderId}}/reconcile",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"shiprocket_order_id\": \"{{shiprocketOrderId}}\"\n}", "options": { "raw": { "language": "json" } } }
+      }
+    }
+  ]
+}

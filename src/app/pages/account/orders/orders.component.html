@@ -1,0 +1,146 @@
+<section class="mh-orders-page">
+  <header class="mh-orders-page__head">
+    <span class="mh-eyebrow">Order history</span>
+    <h2>My Orders</h2>
+    <p>View confirmed purchases and follow every delivery.</p>
+  </header>
+
+  <div *ngIf="loading" class="mh-orders-empty">Loading your orders...</div>
+  <div *ngIf="!loading && loadError" class="mh-orders-empty mh-orders-empty--error">{{ loadError }}</div>
+  <div *ngIf="!loading && !loadError && orders.length === 0" class="mh-orders-empty">
+    <strong>No confirmed orders yet</strong>
+    <span>Your successfully paid orders will appear here.</span>
+  </div>
+
+  <div class="mh-orders-list" *ngIf="!loading && orders.length">
+    <article class="mh-customer-order" *ngFor="let order of orders">
+      <header class="mh-customer-order__head">
+        <div>
+          <span>Order confirmed</span>
+          <h3>#{{ order.orderNumber }}</h3>
+          <small>{{ order.createdAt | date: 'dd MMMM y, h:mm a' }}</small>
+        </div>
+        <div class="mh-customer-order__amount">
+          <small>Total paid</small>
+          <strong>&#8377;{{ order.totalAmount | number }}</strong>
+        </div>
+      </header>
+
+      <div class="mh-customer-order__products">
+        <div class="mh-order-product" *ngFor="let item of order.items.slice(0, 2)">
+          <span class="mh-order-product__image">
+            <img *ngIf="item.imageUrl; else imageFallback" [src]="item.imageUrl" [alt]="item.productName" />
+            <ng-template #imageFallback><span>{{ item.productName.charAt(0) }}</span></ng-template>
+          </span>
+          <span class="mh-order-product__copy">
+            <strong>{{ item.productName }}</strong>
+            <small>
+              <ng-container *ngIf="item.size">Size {{ item.size }}</ng-container>
+              <ng-container *ngIf="item.size && item.color"> &middot; </ng-container>
+              <ng-container *ngIf="item.color">{{ item.color }}</ng-container>
+              &middot; Qty {{ item.quantity }}
+            </small>
+          </span>
+        </div>
+        <span class="mh-customer-order__more" *ngIf="order.items.length > 2">+{{ order.items.length - 2 }} more</span>
+      </div>
+
+      <div class="mh-delivery-progress" [attr.aria-label]="deliveryLabel(order)">
+        <div [class.is-complete]="orderStage(order) >= 1"><span></span><small>Confirmed</small></div>
+        <div [class.is-complete]="orderStage(order) >= 2"><span></span><small>Preparing</small></div>
+        <div [class.is-complete]="orderStage(order) >= 3"><span></span><small>Shipped</small></div>
+        <div [class.is-complete]="orderStage(order) >= 4"><span></span><small>Delivered</small></div>
+      </div>
+
+      <footer class="mh-customer-order__foot">
+        <span class="mh-delivery-state"><i></i>{{ deliveryLabel(order) }}</span>
+        <div>
+          <button type="button" class="mh-order-action mh-order-action--quiet" (click)="openDetails(order)">View details</button>
+          <button type="button" class="mh-order-action mh-order-action--primary" (click)="openTracking(order)">Track order <span aria-hidden="true">&#8594;</span></button>
+        </div>
+      </footer>
+    </article>
+  </div>
+</section>
+
+<dialog #detailsDialog class="mh-customer-dialog mh-order-details-dialog" aria-labelledby="order-details-title" (close)="clearDetails()">
+  <ng-container *ngIf="selectedOrder as order">
+    <header class="mh-customer-dialog__head">
+      <div><span class="mh-eyebrow">Order details</span><h2 id="order-details-title">#{{ order.orderNumber }}</h2><p>Confirmed {{ order.createdAt | date: 'medium' }}</p></div>
+      <button type="button" class="mh-customer-dialog__close" aria-label="Close order details" (click)="closeDetails()">&times;</button>
+    </header>
+    <div class="mh-customer-dialog__body">
+      <section class="mh-detail-section">
+        <div class="mh-detail-section__head"><h3>Items in this order</h3><span>{{ order.items.length }} {{ order.items.length === 1 ? 'product' : 'products' }}</span></div>
+        <div class="mh-detail-product" *ngFor="let item of order.items">
+          <span class="mh-detail-product__image">
+            <img *ngIf="item.imageUrl; else detailFallback" [src]="item.imageUrl" [alt]="item.productName" />
+            <ng-template #detailFallback><span>{{ item.productName.charAt(0) }}</span></ng-template>
+          </span>
+          <span class="mh-detail-product__copy"><strong>{{ item.productName }}</strong><small>{{ item.size || 'One size' }}<ng-container *ngIf="item.color"> &middot; {{ item.color }}</ng-container><ng-container *ngIf="item.sku"> &middot; {{ item.sku }}</ng-container></small><span>Qty {{ item.quantity }} &times; &#8377;{{ item.unitPrice | number }}</span></span>
+          <strong>&#8377;{{ item.totalPrice | number }}</strong>
+        </div>
+      </section>
+
+      <div class="mh-detail-grid">
+        <section class="mh-detail-section">
+          <div class="mh-detail-section__head"><h3>Delivery address</h3></div>
+          <address *ngIf="order.address">
+            <strong>{{ order.address.fullName }}</strong><span>{{ order.address.phone }}</span>
+            <span>{{ order.address.addressLine1 }}<ng-container *ngIf="order.address.addressLine2">, {{ order.address.addressLine2 }}</ng-container></span>
+            <span>{{ order.address.city }}, {{ order.address.state }} &mdash; {{ order.address.postalCode }}</span><span>{{ order.address.country }}</span>
+          </address>
+        </section>
+        <section class="mh-detail-section">
+          <div class="mh-detail-section__head"><h3>Payment summary</h3><span>Paid</span></div>
+          <dl class="mh-detail-totals">
+            <div><dt>Subtotal</dt><dd>&#8377;{{ order.subtotal | number }}</dd></div>
+            <div *ngIf="order.discountAmount"><dt>Discount</dt><dd>&minus;&#8377;{{ order.discountAmount | number }}</dd></div>
+            <div><dt>Delivery</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Complimentary' }}</dd></div>
+            <div><dt>Total paid</dt><dd>&#8377;{{ order.totalAmount | number }}</dd></div>
+          </dl>
+        </section>
+      </div>
+    </div>
+    <footer class="mh-customer-dialog__foot"><small>Payment verified via {{ statusLabel(order.paymentMethod) }}</small><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
+  </ng-container>
+</dialog>
+
+<dialog #trackingDialog class="mh-customer-dialog mh-tracking-dialog" aria-labelledby="tracking-title" (close)="clearTracking()">
+  <ng-container *ngIf="trackingOrder as order">
+    <header class="mh-customer-dialog__head">
+      <div><span class="mh-eyebrow">Delivery tracking</span><h2 id="tracking-title">Track your order</h2><p>#{{ order.orderNumber }}</p></div>
+      <button type="button" class="mh-customer-dialog__close" aria-label="Close tracking" (click)="closeTracking()">&times;</button>
+    </header>
+    <div class="mh-customer-dialog__body">
+      <div class="mh-tracking-loading" *ngIf="trackingLoading"><span></span><p>Checking the latest delivery update...</p></div>
+      <p class="mh-tracking-error" role="alert" *ngIf="trackingError">{{ trackingError }}</p>
+
+      <ng-container *ngIf="!trackingLoading && !trackingError">
+        <section class="mh-tracking-summary">
+          <span class="mh-tracking-summary__icon">&#10003;</span>
+          <div><small>Current status</small><h3>{{ tracking?.trackingStatus || deliveryLabel(order) }}</h3><p *ngIf="tracking?.estimatedDelivery">Estimated delivery: {{ tracking?.estimatedDelivery | date: 'mediumDate' }}</p><p *ngIf="!tracking?.estimatedDelivery">We’ll show an estimated date as soon as the courier provides one.</p></div>
+        </section>
+
+        <div class="mh-delivery-progress mh-delivery-progress--dialog">
+          <div [class.is-complete]="trackingStage(order, tracking) >= 1"><span></span><small>Confirmed</small></div>
+          <div [class.is-complete]="trackingStage(order, tracking) >= 2"><span></span><small>Preparing</small></div>
+          <div [class.is-complete]="trackingStage(order, tracking) >= 3"><span></span><small>Shipped</small></div>
+          <div [class.is-complete]="trackingStage(order, tracking) >= 4"><span></span><small>Delivered</small></div>
+        </div>
+
+        <dl class="mh-tracking-meta" *ngIf="tracking?.awbCode || tracking?.courierName">
+          <div><dt>Courier</dt><dd>{{ tracking?.courierName || 'To be assigned' }}</dd></div>
+          <div><dt>Tracking number</dt><dd>{{ tracking?.awbCode || 'To be assigned' }}</dd></div>
+        </dl>
+
+        <section class="mh-tracking-history" *ngIf="tracking?.events?.length; else awaitingEvents">
+          <h3>Shipment journey</h3>
+          <ol><li *ngFor="let event of tracking?.events"><span></span><div><strong>{{ event.activity || event.status || 'Shipment update' }}</strong><small *ngIf="event.location">{{ event.location }}</small><time *ngIf="event.date">{{ event.date | date: 'medium' }}</time></div></li></ol>
+        </section>
+        <ng-template #awaitingEvents><div class="mh-tracking-await"><strong>Tracking updates will appear here</strong><p>{{ tracking?.awbCode ? 'The courier has not published a scan yet.' : 'Your order is confirmed and is being prepared for shipment.' }}</p></div></ng-template>
+      </ng-container>
+    </div>
+    <footer class="mh-customer-dialog__foot"><small *ngIf="tracking?.lastCheckedAt">Updated {{ tracking?.lastCheckedAt | date: 'short' }}</small><span *ngIf="!tracking?.lastCheckedAt"></span><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeTracking()">Close</button><a *ngIf="tracking?.trackingUrl" class="mh-order-action mh-order-action--primary" [href]="tracking?.trackingUrl" target="_blank" rel="noopener">Courier tracking</a></div></footer>
+  </ng-container>
+</dialog>

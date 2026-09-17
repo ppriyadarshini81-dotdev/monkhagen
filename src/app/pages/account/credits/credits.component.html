@@ -1,0 +1,25 @@
+<section class="mh-acct-section">
+  <h2>Credits</h2>
+
+  <div class="mh-credits__balance mh-card">
+    <span class="mh-eyebrow">Available Credits</span>
+    <div class="mh-credits__amount">₹{{ balance | number:'1.2-2' }}</div>
+    <p class="mh-text-dim" style="font-size:13px">Credits are applied automatically at checkout.</p>
+  </div>
+
+  <h3 style="margin:24px 0 12px;font-size:15px;">Transaction History</h3>
+  <div *ngIf="loading" class="mh-empty">Loading…</div>
+  <div *ngIf="!loading && transactions.length === 0" class="mh-empty">No transactions yet.</div>
+
+  <div class="mh-credit-list" *ngIf="!loading && transactions.length > 0">
+    <div class="mh-credit-row" *ngFor="let t of transactions">
+      <div class="mh-credit-row__info">
+        <span class="mh-credit-row__reason">{{ t.reason }}</span>
+        <span class="mh-credit-row__date">{{ t.createdAt | date:'mediumDate' }}</span>
+      </div>
+      <span class="mh-credit-row__amount" [class.credit]="t.type === 'CREDIT'" [class.debit]="t.type === 'DEBIT'">
+        {{ t.type === 'CREDIT' ? '+' : '-' }}₹{{ t.amount | number }}
+      </span>
+    </div>
+  </div>
+</section>

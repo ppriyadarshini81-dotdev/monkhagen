@@ -1,0 +1,197 @@
+<!-- ====== IMAGE HERO CAROUSEL ====== -->
+<section class="mh-hero" aria-label="Monk Hagen collection" aria-roledescription="carousel">
+  <div class="mh-hero__viewport">
+    <div class="mh-hero__track"
+         [class.mh-hero__track--instant]="!heroAnimating"
+         [style.transform]="'translate3d(-' + heroPosition * 100 + '%, 0, 0)'"
+         (transitionend)="onHeroTransitionEnd($event)">
+      <img *ngFor="let slide of heroSlides; let i = index"
+           class="mh-hero__slide"
+           [src]="slide"
+           [alt]="i < posters.length ? 'Monk Hagen collection banner ' + (i + 1) : ''"
+           [attr.aria-hidden]="i !== heroPosition"
+           loading="eager"
+           [attr.fetchpriority]="i === 0 ? 'high' : 'low'"
+           decoding="async" />
+    </div>
+    <div class="mh-hero__scrim"></div>
+  </div>
+
+  <div class="mh-container mh-hero__content"> 
+  </div>
+
+  <div class="mh-hero__dots">
+    <button
+      type="button"
+      *ngFor="let slide of posters; let i = index"
+      [class.active]="i === currentSlide"
+      [attr.aria-current]="i === currentSlide ? 'true' : null"
+      (click)="selectSlide(i)"
+      [attr.aria-label]="'Show banner ' + (i + 1)"
+    ></button>
+  </div>
+</section>
+
+<!-- ====== FEATURED ====== -->
+<section class="mh-section mh-container">
+  <div class="mh-sec-head">
+    <div>
+      <span class="mh-eyebrow">This Season</span>
+      <h2>Featured Pieces</h2>
+    </div>
+    <a class="mh-link" routerLink="/products">View all →</a>
+  </div>
+
+  <div class="mh-grid" *ngIf="!loading; else loadingTpl">
+    <app-product-card
+      *ngFor="let p of featured; trackBy: trackProduct"
+      [product]="p"
+      [cycleImages]="true"
+    ></app-product-card>
+  </div>
+  <ng-template #loadingTpl>
+    <div class="mh-skeleton-grid">
+      <div class="mh-skeleton" *ngFor="let n of [1,2,3,4]"></div>
+    </div>
+  </ng-template>
+</section>
+
+<!-- ====== SHOP BY CATEGORY ====== -->
+<section class="mh-section mh-container" *ngIf="categories.length">
+  <div class="mh-sec-head">
+    <div>
+      <span class="mh-eyebrow">Find your fit</span>
+      <h2>Shop by Category</h2>
+    </div>
+    <a class="mh-link" routerLink="/products">All categories →</a>
+  </div>
+
+  <div class="mh-cats">
+    <a class="mh-cat" routerLink="/products" *ngFor="let cat of categories">
+      <img [src]="cat.image" [alt]="cat.name" loading="lazy" />
+      <div class="mh-cat__overlay">
+        <h3>{{ cat.name }}</h3>
+        <span *ngIf="cat.productCount != null">{{ cat.productCount }} items</span>
+      </div>
+    </a>
+  </div>
+</section>
+
+<!-- ====== CATEGORY SPLIT (temporarily hidden)
+<section class="mh-split mh-container">
+  <a class="mh-split__card" routerLink="/products">
+    <img [src]="media.home.categoryHoodies" alt="Hoodies" />
+    <div class="mh-split__label"><span>Outerwear</span><h3>Hoodies & Jackets</h3></div>
+  </a>
+  <a class="mh-split__card" routerLink="/products">
+    <img [src]="media.home.categoryTees" alt="Tees" />
+    <div class="mh-split__label"><span>Essentials</span><h3>Heavyweight Tees</h3></div>
+  </a>
+</section>
+====== -->
+
+<!-- ====== NEW ARRIVALS ====== -->
+<section class="mh-section mh-container" *ngIf="newArrivals.length">
+  <div class="mh-sec-head">
+    <div>
+      <span class="mh-eyebrow">Fresh in</span>
+      <h2>New Arrivals</h2>
+    </div>
+    <a class="mh-link" routerLink="/products">Shop new →</a>
+  </div>
+  <div class="mh-grid">
+    <app-product-card
+      *ngFor="let p of newArrivals; trackBy: trackProduct"
+      [product]="p"
+      [cycleImages]="true"
+    ></app-product-card>
+  </div>
+</section>
+
+<!-- ====== EDITORIAL BANNER ====== -->
+<section class="mh-editorial" aria-label="Monk Hagen lookbook video">
+  <video class="mh-editorial__video"
+         src="https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Instagram/insta3.mp4"
+         autoplay [muted]="true" loop playsinline preload="metadata"></video>
+</section>
+
+<!-- ====== INSTAGRAM FEED ====== -->
+<section class="mh-insta">
+  <div class="mh-insta__track">
+    <button class="mh-insta__arrow mh-insta__arrow--prev" type="button" (click)="instaPrev()" aria-label="Previous Instagram posts">&#8592;</button>
+
+    <a *ngFor="let post of instaSlice"
+       [href]="post.url" target="_blank" rel="noopener"
+       class="mh-insta__post">
+      <img *ngIf="post.type === 'image'" [src]="post.src" alt="Instagram post" loading="lazy" />
+      <video *ngIf="post.type === 'video'" [src]="post.src" aria-label="Instagram video"
+             autoplay [muted]="true" loop playsinline preload="metadata"></video>
+      <div class="mh-insta__overlay">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
+      </div>
+    </a>
+
+    <button class="mh-insta__arrow mh-insta__arrow--next" type="button" (click)="instaNext()" aria-label="Next Instagram posts">&#8594;</button>
+  </div>
+
+  <div class="mh-insta__cta">
+    <a [href]="instaUrl" target="_blank" rel="noopener" class="mh-btn mh-btn--ghost mh-insta__btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
+      @{{ 'monkhagen' }}
+    </a>
+  </div>
+</section>
+
+<!-- ====== PERKS BAR ====== -->
+<section class="mh-perks mh-container">
+  <div class="mh-perk" *ngFor="let perk of perks">
+    <span class="mh-perk__icon">{{ perk.icon }}</span>
+    <div>
+      <strong>{{ perk.title }}</strong>
+      <p>{{ perk.text }}</p>
+    </div>
+  </div>
+</section>
+
+<!-- ====== TESTIMONIALS ====== -->
+<section class="mh-section mh-container mh-testimonial-section">
+  <div class="mh-sec-head mh-sec-head--center">
+    <div>
+      <span class="mh-eyebrow">Word on the street</span>
+      <h2>What the founder says</h2>
+    </div>
+  </div>
+  <div class="mh-testimonials">
+    <figure class="mh-testimonial mh-card" *ngFor="let t of testimonials">
+      <blockquote>"{{ t.quote }}"</blockquote>
+    </figure>
+  </div>
+</section>
+
+<!-- ====== NEWSLETTER ====== -->
+<section class="mh-newsletter">
+  <div class="mh-container mh-newsletter__inner">
+    <div>
+      <span class="mh-eyebrow">Join the list</span>
+      <h2>Get early access to drops.</h2>
+      <p>Be first in line. New releases sell out fast and never come back.</p>
+    </div>
+    <form class="mh-newsletter__form" (ngSubmit)="$event.preventDefault()">
+      <input class="mh-input" type="email" placeholder="you@email.com" />
+      <button class="mh-btn mh-btn--gold" type="submit">Notify Me</button>
+    </form>
+  </div>
+</section>
+
+<!-- ====== STORY CTA ====== -->
+<section class="mh-storycta">
+  <div class="mh-container mh-storycta__inner">
+    <span class="mh-eyebrow">The Monk Hagen Code</span>
+    <h2>Less, but heavier.</h2>
+    <p>
+      We make limited runs of premium pieces and never restock. When it's gone,
+      it's gone. Quality over quantity — always.
+    </p>
+    <a class="mh-btn mh-btn--gold" routerLink="/about">Read the Story</a>
+  </div>
+</section>

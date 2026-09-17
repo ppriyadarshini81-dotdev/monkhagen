@@ -1,0 +1,58 @@
+<a
+  class="mh-pcard"
+  [routerLink]="['/product', product.slug]"
+  (mouseenter)="onMouseEnter()"
+  (mouseleave)="onMouseLeave()"
+>
+  <div class="mh-pcard__media">
+    <div class="mh-pcard__image-track"
+         [class.mh-pcard__image-track--instant]="!imageAnimating"
+         [style.transform]="'translate3d(-' + currentImageIndex * 100 + '%, 0, 0)'"
+         (transitionend)="onImageTransitionEnd($event)">
+      <img *ngFor="let image of imageSlides; let i = index"
+           [attr.src]="i === 0 || imagesActivated ? image : null"
+           [alt]="i === 0 ? product.name : ''"
+           [attr.aria-hidden]="i !== 0"
+           [attr.loading]="i === 0 ? 'lazy' : 'eager'"
+           decoding="async"
+           (load)="onImageLoaded(i)" />
+    </div>
+    <span class="mh-pcard__badge" *ngIf="product.badge">{{ product.badge }}</span>
+
+    <button
+      class="mh-pcard__add"
+      type="button"
+      *ngIf="!showSizePicker"
+      [disabled]="loadingSizes"
+      (click)="quickAdd($event)"
+    >
+      {{ loadingSizes ? 'Loading sizes...' : (added ? 'Added ✓' : 'Quick Add') }}
+    </button>
+
+    <div
+      class="mh-pcard__sizes"
+      *ngIf="showSizePicker"
+      (click)="$event.preventDefault(); $event.stopPropagation()"
+    >
+      <span>Choose a size</span>
+      <div class="mh-pcard__size-list">
+        <button
+          type="button"
+          *ngFor="let size of availableSizes"
+          [disabled]="adding"
+          (click)="selectSize($event, size)"
+        >{{ size }}</button>
+      </div>
+      <small *ngIf="addError">{{ addError }}</small>
+    </div>
+  </div>
+
+  <div class="mh-pcard__body">
+    <span class="mh-pcard__cat">{{ product.category }}</span>
+    <h3 class="mh-pcard__name">{{ product.name }}</h3>
+    <div class="mh-pcard__foot">
+      <span class="mh-pcard__price">₹{{ product.price | number }}</span>
+      <span class="mh-pcard__rating">★ {{ product.rating || '—' }}</span>
+    </div>
+  </div>
+</a>

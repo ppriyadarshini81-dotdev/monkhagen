@@ -1,0 +1,133 @@
+.mh-acct {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 40px;
+  padding: 48px 20px;
+  min-height: calc(100vh - var(--mh-header-h));
+  align-items: start;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.mh-acct__sidebar {
+  position: sticky;
+  top: calc(var(--mh-header-h) + 24px);
+  background: var(--mh-bg-elev);
+  border: 1px solid var(--mh-line);
+  border-radius: var(--mh-radius);
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.mh-acct__avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  margin: 0 auto 12px;
+  overflow: hidden;
+  background: var(--mh-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mh-acct__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mh-acct__initials {
+  color: #fff;
+  font-weight: 700;
+  font-size: 22px;
+}
+
+.mh-acct__name {
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.mh-acct__email {
+  font-size: 12px;
+  color: var(--mh-text-dim);
+  margin-bottom: 20px;
+  word-break: break-all;
+}
+
+.mh-acct__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+
+.mh-acct__nav a {
+  display: block;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--mh-text-dim);
+  transition: background 0.15s ease, color 0.15s ease;
+  text-decoration: none;
+}
+
+.mh-acct__nav a:hover,
+.mh-acct__nav a.active {
+  background: var(--mh-bg-elev-2);
+  color: var(--mh-text);
+}
+
+.mh-acct__nav a.active {
+  color: var(--mh-accent);
+  font-weight: 600;
+}
+
+.mh-acct__logout {
+  margin-top: 8px;
+  padding: 9px 12px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--mh-danger);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.mh-acct__logout:hover {
+  background: var(--mh-bg-elev-2);
+}
+
+/* ── Content area ────────────────────────────────────────── */
+.mh-acct__content {
+  min-height: 400px;
+}
+
+/* ── Mobile ──────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .mh-acct {
+    grid-template-columns: 1fr;
+    gap: 20px;
+    padding: 24px 16px;
+  }
+
+  .mh-acct__sidebar {
+    position: static;
+  }
+
+  .mh-acct__nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .mh-acct__nav a,
+  .mh-acct__logout {
+    flex: 0 0 auto;
+    width: auto;
+  }
+}

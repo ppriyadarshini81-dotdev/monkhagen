@@ -1,0 +1,135 @@
+<section class="mh-pd mh-container" *ngIf="product && !loading">
+  <nav class="mh-crumbs">
+    <a routerLink="/">Home</a> /
+    <a routerLink="/products">Products</a> /
+    <span>{{ product.name }}</span>
+  </nav>
+
+  <div class="mh-pd__grid">
+    <!-- Gallery -->
+    <div class="mh-pd__gallery">
+      <div class="mh-pd__main">
+        <img [src]="product.images[activeImage]" [alt]="product.name" />
+        <span class="mh-pd__badge" *ngIf="product.badge">{{ product.badge }}</span>
+        <ng-container *ngIf="product.images.length > 1">
+          <button class="mh-pd__arrow mh-pd__arrow--prev" type="button"
+            (click)="changeImage(-1)" aria-label="Previous product image">
+            &#8592;
+          </button>
+          <button class="mh-pd__arrow mh-pd__arrow--next" type="button"
+            (click)="changeImage(1)" aria-label="Next product image">
+            &#8594;
+          </button>
+        </ng-container>
+      </div>
+      <div class="mh-pd__thumbs" *ngIf="product.images.length > 1">
+        <button
+          *ngFor="let img of product.images; let i = index"
+          [class.active]="i === activeImage"
+          (click)="activeImage = i"
+        >
+          <img [src]="img" [alt]="product.name + ' ' + (i + 1)" />
+        </button>
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="mh-pd__info">
+      <span class="mh-eyebrow">{{ product.category }}</span>
+      <h1>{{ product.name }}</h1>
+      <div class="mh-pd__meta">
+        <span class="mh-pd__price">₹{{ product.price | number }}</span>
+        <button class="mh-pd__size-link" type="button" *ngIf="pageContent?.sizeChartImageUrl"
+          (click)="openSizeChart()" aria-haspopup="dialog">Size chart</button>
+        <span class="mh-pd__stock" *ngIf="product.stock === 0">Sold out</span>
+      </div>
+
+      <div class="mh-pd__opt" *ngIf="product.colors.length">
+        <span class="mh-label">Color</span>
+        <div class="mh-pd__choices">
+          <button
+            *ngFor="let c of product.colors"
+            [class.active]="selectedColor === c"
+            (click)="selectedColor = c"
+          >
+            {{ c }}
+          </button>
+        </div>
+      </div>
+
+      <div class="mh-pd__opt" *ngIf="product.sizes.length">
+        <span class="mh-label">Size</span>
+        <div class="mh-pd__choices">
+          <button
+            *ngFor="let s of product.sizes"
+            [class.active]="selectedSize === s"
+            (click)="selectedSize = s; addError = ''"
+          >
+            {{ s }}
+          </button>
+        </div>
+      </div>
+
+      <div class="mh-pd__buy">
+        <div class="mh-qty">
+          <button (click)="changeQty(-1)" aria-label="Decrease">−</button>
+          <span>{{ quantity }}</span>
+          <button (click)="changeQty(1)" aria-label="Increase">+</button>
+        </div>
+        <button
+          class="mh-btn mh-btn--gold mh-pd__add"
+          [disabled]="product.stock === 0 || adding"
+          (click)="addToCart()"
+        >
+          {{ added ? 'Added to Cart ✓' : 'Add to Cart' }}
+        </button>
+      </div>
+
+      <p class="mh-error" *ngIf="addError">{{ addError }}</p>
+
+      <div class="mh-pd__delivery" *ngIf="pageContent?.deliveryEstimate">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 5h11v12H3V5Zm11 5h4l3 4v3h-7M7 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm11 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" /></svg>
+        <div>
+          <span>Estimated delivery</span>
+          <strong>{{ pageContent?.deliveryEstimate }}</strong>
+          <p *ngIf="pageContent?.deliveryNote">{{ pageContent?.deliveryNote }}</p>
+        </div>
+      </div>
+
+      <div class="mh-pd__details">
+        <details *ngIf="product.description" open>
+          <summary>Product details</summary>
+          <div class="mh-pd__detail-body"><p class="mh-pd__desc">{{ product.description }}</p></div>
+        </details>
+        <details *ngIf="careItems.length">
+          <summary>CARE / KEEP IT FRESH</summary>
+          <div class="mh-pd__detail-body">
+            <ul class="mh-pd__care"><li *ngFor="let item of careItems">{{ item }}</li></ul>
+          </div>
+        </details>
+      </div>
+      <div class="mh-pd__content-error" *ngIf="contentError" role="status">
+        <p>{{ contentError }}</p>
+        <button type="button" class="mh-link" (click)="loadPageContent()" [disabled]="contentLoading">{{ contentLoading ? 'Loading…' : 'Retry' }}</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<dialog #sizeChartDialog class="mh-pd__chart-dialog" aria-labelledby="size-chart-title" (click)="closeOnBackdrop($event)">
+  <div class="mh-pd__chart-panel">
+    <header>
+      <h2 id="size-chart-title">Size chart</h2>
+      <button type="button" class="mh-pd__chart-close" (click)="closeSizeChart()" aria-label="Close size chart" autofocus>&times;</button>
+    </header>
+    <img *ngIf="sizeChartDialog.open && pageContent?.sizeChartImageUrl" class="mh-pd__size-chart"
+      [src]="pageContent?.sizeChartImageUrl" alt="Monk Hagen size chart" decoding="async" />
+  </div>
+</dialog>
+
+<div class="mh-pd__state mh-container" *ngIf="loading">Loading…</div>
+
+<div class="mh-pd__state mh-container" *ngIf="notFound && !loading">
+  <h2>Product not found</h2>
+  <a class="mh-btn mh-btn--ghost" routerLink="/products">Back to products</a>
+</div>

@@ -1,0 +1,17 @@
+const router = require('express').Router();
+const ctrl = require('../controllers/productController');
+const { authenticate, requireAdmin } = require('../middleware/auth');
+const validation = require('../middleware/validation');
+validation.params(router);
+router.use(validation.requestShape, validation.body('product'));
+
+router.get('/', ctrl.list);
+router.get('/categories', ctrl.categories);
+router.get('/admin', authenticate, requireAdmin, ctrl.adminList);
+router.get('/admin/:idOrSlug', authenticate, requireAdmin, ctrl.adminGetOne);
+router.get('/:idOrSlug', ctrl.getOne);
+router.post('/', authenticate, requireAdmin, ctrl.create);
+router.put('/:id', authenticate, requireAdmin, ctrl.update);
+router.delete('/:id', authenticate, requireAdmin, ctrl.remove);
+
+module.exports = router;

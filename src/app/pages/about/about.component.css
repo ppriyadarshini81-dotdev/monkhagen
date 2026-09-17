@@ -1,0 +1,138 @@
+.mh-about-hero {
+  position: relative;
+  height: 60vh;
+  min-height: 420px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.mh-about-hero__bg {
+  position: absolute;
+  inset: 0;
+  /* background set via [style.background] in template from media-assets.ts */
+}
+
+.mh-about-hero__content {
+  position: relative;
+  padding-bottom: 56px;
+}
+
+.mh-about-hero__content h1 {
+  font-size: clamp(40px, 8vw, 88px);
+  font-weight: 800;
+  margin: 14px 0;
+}
+
+.mh-about-hero__content p {
+  color: var(--mh-text-dim);
+  font-size: 18px;
+  max-width: 460px;
+}
+
+.mh-about-story {
+  max-width: 860px;
+  padding-top: 88px;
+  padding-bottom: 88px;
+}
+
+.mh-about-story__lead {
+  max-width: 760px;
+  margin: 0 0 52px;
+  color: var(--mh-text);
+  font-family: var(--mh-font-serif);
+  font-size: clamp(30px, 4.4vw, 48px);
+  font-weight: 600;
+  line-height: 1.22;
+}
+
+.mh-about-story__copy {
+  max-width: 700px;
+}
+
+.mh-about-story__copy p {
+  margin: 0 0 34px;
+  color: var(--mh-text);
+  font-size: clamp(17px, 2vw, 21px);
+  line-height: 1.75;
+}
+
+.mh-about-story__copy strong,
+.mh-about-story__belief {
+  color: var(--mh-accent);
+  font-weight: 700;
+}
+
+.mh-about-story__signature {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding-top: 20px;
+  color: var(--mh-text);
+}
+
+.mh-about-story__signature strong {
+  color: var(--mh-accent);
+  font-size: 18px;
+  letter-spacing: 0.2em;
+}
+
+.mh-about-story__signature span {
+  font-family: var(--mh-font-serif);
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.mh-stats {
+  border-top: 1px solid var(--mh-line);
+  border-bottom: 1px solid var(--mh-line);
+  background: var(--mh-bg-elev);
+  margin-top: 48px;
+  padding: 48px 0;
+}
+
+.mh-stats__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  text-align: center;
+}
+
+.mh-stats__grid strong {
+  display: block;
+  font-size: clamp(30px, 5vw, 48px);
+  font-weight: 800;
+}
+
+.mh-stats__grid span {
+  color: var(--mh-text-dim);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.mh-about-cta {
+  text-align: center;
+  padding: 88px 0;
+}
+
+.mh-about-cta h2 {
+  font-size: clamp(32px, 6vw, 56px);
+}
+
+.mh-about-cta p {
+  color: var(--mh-text-dim);
+  margin: 14px 0 26px;
+}
+
+@media (max-width: 820px) {
+  .mh-about-story {
+    padding-top: 56px;
+    padding-bottom: 56px;
+  }
+  .mh-stats__grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+  }
+}

@@ -1,0 +1,65 @@
+<section class="mh-email mh-container">
+
+  <div class="mh-email__layout">
+    <header class="mh-email__head">
+      <span class="mh-eyebrow">Customer support</span>
+      <h1>Email Us</h1>
+      <p>Tell us how we can help. Your message will be sent directly to the Monk Hagen team.</p>
+      <span class="mh-email__subject">Subject: Query from customer</span>
+    </header>
+
+    <form class="mh-email__form mh-card" #contactForm="ngForm" (ngSubmit)="submit()">
+      <div class="mh-field">
+        <label class="mh-label" for="contact-name">Name</label>
+        <input
+          class="mh-input"
+          id="contact-name"
+          name="name"
+          type="text"
+          maxlength="120"
+          autocomplete="name"
+          [(ngModel)]="form.name"
+          required
+        />
+      </div>
+
+      <div class="mh-field">
+        <label class="mh-label" for="contact-email">Email</label>
+        <input
+          class="mh-input"
+          id="contact-email"
+          name="email"
+          type="email"
+          maxlength="254"
+          autocomplete="email"
+          [(ngModel)]="form.email"
+          required
+          email
+        />
+      </div>
+
+      <div class="mh-field">
+        <label class="mh-label" for="contact-query">Your query</label>
+        <textarea
+          class="mh-textarea"
+          id="contact-query"
+          name="query"
+          rows="8"
+          minlength="10"
+          maxlength="5000"
+          placeholder="Type your question here..."
+          [(ngModel)]="form.query"
+          required
+        ></textarea>
+        <span class="mh-email__count">{{ form.query.length }} / 5,000</span>
+      </div>
+
+      <p class="mh-success" role="status" *ngIf="success">{{ success }}</p>
+      <p class="mh-error" role="alert" *ngIf="error">{{ error }}</p>
+
+      <button class="mh-btn mh-btn--gold" type="submit" [disabled]="contactForm.invalid || sending">
+        {{ sending ? 'Sendingâ€¦' : 'Send query' }}
+      </button>
+    </form>
+  </div>
+</section>
