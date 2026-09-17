@@ -73,7 +73,7 @@ test('chart and care seed only fills blank shared fields and preserves existing 
 });
 
 test('public reads and admin-only edits validate and whitelist shared content', async () => {
-  const users = { customer: { id: 'customer', role: 'customer', isActive: true },
+  const users = { customer: { id: 'customer', role: 'customer', isActive: true, firebaseUid: 'customer-google' },
     admin: { id: 'admin', role: 'admin', isActive: true, email: process.env.ADMIN_GOOGLE_EMAIL, firebaseUid: 'admin-google' },
     super_admin: { id: 'super_admin', role: 'super_admin', isActive: true, email: process.env.ADMIN_GOOGLE_EMAIL, firebaseUid: 'admin-google' } };
   User.findById = async id => users[id];

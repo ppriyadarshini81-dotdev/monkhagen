@@ -4,7 +4,8 @@ const { sendOrderConfirmation } = require('./orderConfirmationEmail');
 
 const POLL_INTERVAL_MS = 60 * 1000;
 
-async function sendPendingConfirmations() {
+async function sendPendingConfirmations({ limit = 20 } = {}) {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new Error('Invalid email queue batch size.');
   // Avoid querying or logging one error per order while SMTP is intentionally absent.
   try {
     getTransporter();
@@ -18,7 +19,7 @@ async function sendPendingConfirmations() {
      FROM orders
      WHERE payment_status = 'paid' AND confirmation_email_sent_at IS NULL
      ORDER BY paid_at NULLS LAST, created_at
-     LIMIT 20`
+     LIMIT $1`, [limit]
   );
 
   let sent = 0;
@@ -38,8 +39,7 @@ function startEmailWorker() {
       if (sent > 0) console.log(`Order confirmation emails sent: ${sent}`);
     } catch (error) {
       console.error('Order confirmation queue could not be processed:', {
-        code: error.code || null,
-        message: error.message || 'Email delivery failed.'
+        code: /^[A-Z0-9_]{1,80}$/.test(error.code || '') ? error.code : 'EMAIL_QUEUE_FAILED'
       });
     } finally {
       running = false;

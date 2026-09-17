@@ -78,8 +78,7 @@ async function sendOrderConfirmation(orderId) {
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Order confirmation email failed:', {
-      code: error.code || null,
-      message: error.message || 'Email delivery failed.'
+      code: /^[A-Z0-9_]{1,80}$/.test(error.code || '') ? error.code : 'EMAIL_FAILED'
     });
     return false;
   } finally {

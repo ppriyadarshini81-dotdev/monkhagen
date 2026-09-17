@@ -20,7 +20,7 @@ async function msg91Send(phone) {
     );
     if (!res.ok) throw new Error('MSG91 send OTP failed.');
   } else if (developmentOtpCode()) {
-    console.log(`[DEV OTP] requested for +91${phone}`);
+    console.log('Development OTP requested; customer details suppressed.');
   } else throw otpUnavailable();
 }
 

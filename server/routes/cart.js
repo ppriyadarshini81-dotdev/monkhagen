@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/cartController');
 const { authenticate } = require('../middleware/auth');
+require('../middleware/validation').params(router);
 
 router.use(authenticate);
 

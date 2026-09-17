@@ -1,6 +1,9 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/productController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const validation = require('../middleware/validation');
+validation.params(router);
+router.use(validation.requestShape, validation.body('product'));
 
 router.get('/', ctrl.list);
 router.get('/categories', ctrl.categories);

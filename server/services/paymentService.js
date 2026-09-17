@@ -208,8 +208,10 @@ async function verifyPayment(userId, { localOrderId, razorpayPaymentId, razorpay
   }
 
   // The queue row is committed. Shipping failures cannot roll back or fail a captured payment.
-  if (finalization.order.payment_status === 'paid' && !finalization.order.fulfillment_hold_reason) void shipping.processPendingOrder(order.id);
-  if (finalization.order.payment_status === 'paid') void sendOrderConfirmation(order.id).catch(() => console.warn('Order confirmation email will be retried.'));
+  if (!process.env.VERCEL) {
+    if (finalization.order.payment_status === 'paid' && !finalization.order.fulfillment_hold_reason) void shipping.processPendingOrder(order.id);
+    if (finalization.order.payment_status === 'paid') void sendOrderConfirmation(order.id).catch(() => console.warn('Order confirmation email will be retried.'));
+  }
   return {
     localOrderId: order.id,
     orderNumber: finalization.order.order_number,
@@ -280,7 +282,7 @@ async function processWebhook(rawBody, headers) {
     client.release();
   }
 
-  if (finalizedOrderId) {
+  if (finalizedOrderId && !process.env.VERCEL) {
     // The worker rechecks payment/hold state under its own durable lease.
     if (dispatchAllowed) void shipping.processPendingOrder(finalizedOrderId);
     void sendOrderConfirmation(finalizedOrderId).catch(() => console.warn('Order confirmation email will be retried.'));

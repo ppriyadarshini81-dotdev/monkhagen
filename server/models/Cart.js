@@ -90,6 +90,7 @@ const Cart = {
       [cartId, variantId]
     );
     const nextQuantity = Number(itemRows[0]?.quantity || 0) + quantity;
+    if (!Number.isSafeInteger(nextQuantity) || nextQuantity < 1 || nextQuantity > 100) throw httpError(400, 'A maximum of 100 units per item is supported.');
     if (nextQuantity > variantRows[0].stock) {
       throw httpError(400, `Only ${variantRows[0].stock} item(s) are available.`);
     }

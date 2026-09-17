@@ -208,7 +208,7 @@ async function replaceProductOptions(client, productId, table, column, optionIds
 const Product = {
   isValidId(str) { return UUID_RE.test(str); },
 
-  async findAll({ category, search, featured, activeOnly = true } = {}) {
+  async findAll({ category, search, featured, activeOnly = true, limit = 100, offset = 0 } = {}) {
     const conditions = activeOnly ? ['p.is_active = TRUE', 'c.is_active = TRUE'] : ['TRUE'];
     const params = [];
     let idx = 1;
@@ -224,8 +224,9 @@ const Product = {
       idx++;
     }
 
+    params.push(limit, offset);
     const { rows } = await pool.query(
-      `${LIST_Q} WHERE ${conditions.join(' AND ')} ORDER BY p.featured DESC, p.created_at DESC`,
+      `${LIST_Q} WHERE ${conditions.join(' AND ')} ORDER BY p.featured DESC, p.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params
     );
     // Return every image so selected storefront cards can rotate their media.

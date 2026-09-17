@@ -4,8 +4,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function positiveInteger(value) {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  return Number.isSafeInteger(value) && value > 0 && value <= 100 ? value : null;
 }
 
 exports.get = asyncHandler(async (req, res) => {

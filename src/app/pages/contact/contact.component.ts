@@ -7,6 +7,5 @@ import { Component } from '@angular/core';
   styleUrl: './contact.component.css'
 })
 export class ContactComponent {
-  readonly email = 'officialmail.monkhagen@gmail.com';
-  readonly phone = '12345678678';
+  readonly email = 'official@monkhagen.in';
 }

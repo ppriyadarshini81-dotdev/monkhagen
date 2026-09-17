@@ -49,9 +49,10 @@ function fmtAddr(row) {
 }
 
 exports.getAddresses = asyncHandler(async (req, res) => {
+  const { limit, offset } = require('../middleware/validation').pagination(req.query);
   const { rows } = await pool.query(
-    'SELECT * FROM customer_addresses WHERE user_id = $1 ORDER BY is_default DESC, created_at ASC',
-    [req.user.id]
+    'SELECT * FROM customer_addresses WHERE user_id = $1 ORDER BY is_default DESC, created_at ASC LIMIT $2 OFFSET $3',
+    [req.user.id, limit, offset]
   );
   res.json(rows.map(fmtAddr));
 });
@@ -71,14 +72,17 @@ exports.addAddress = asyncHandler(async (req, res) => {
   if (!fullName || !phone || !addressLine1 || !city || !state || !postalCode) {
     return res.status(400).json({ message: 'fullName, phone, addressLine1, city, state and postalCode are required.' });
   }
-  const { rows: existing } = await pool.query(
-    'SELECT id FROM customer_addresses WHERE user_id = $1', [req.user.id]
-  );
-  const makeDefault = existing.length === 0;
-
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // Serialize address creation for this account, including first/default and
+    // storage-limit checks, without locking another customer's address book.
+    await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [req.user.id]);
+    const { rows: existing } = await client.query(
+      'SELECT COUNT(*)::integer AS count FROM customer_addresses WHERE user_id = $1', [req.user.id]
+    );
+    if (existing[0].count >= 50) throw Object.assign(new Error('You can save up to 50 addresses. Remove an unused address first.'), { status: 409 });
+    const makeDefault = existing[0].count === 0;
     const { rows } = await client.query(
       `INSERT INTO customer_addresses (user_id, full_name, phone, address_line1, address_line2, landmark, city, state, postal_code, country, address_type, is_default)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
@@ -238,6 +242,7 @@ async function enrichOrder(o) {
 }
 
 exports.getOrders = asyncHandler(async (req, res) => {
+  const { limit, offset } = require('../middleware/validation').pagination(req.query);
   const { rows } = await pool.query(
     `SELECT o.*,
        s.awb_code AS shipment_awb_code,
@@ -249,8 +254,8 @@ exports.getOrders = asyncHandler(async (req, res) => {
        s.estimated_delivery AS shipment_estimated_delivery
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      WHERE o.user_id = $1 AND o.payment_status = 'paid'
-     ORDER BY o.created_at DESC`,
-    [req.user.id]
+     ORDER BY o.created_at DESC LIMIT $2 OFFSET $3`,
+    [req.user.id, limit, offset]
   );
   const orders = await Promise.all(rows.map(enrichOrder));
   res.json(orders);
@@ -299,6 +304,7 @@ function fmtReturn(rr) {
 }
 
 exports.getReturns = asyncHandler(async (req, res) => {
+  const { limit, offset } = require('../middleware/validation').pagination(req.query);
   const { rows } = await pool.query(
     `SELECT rr.*,
             COALESCE(json_agg(json_build_object(
@@ -309,8 +315,8 @@ exports.getReturns = asyncHandler(async (req, res) => {
      LEFT JOIN return_items ri ON ri.return_request_id = rr.id
      WHERE rr.user_id = $1
      GROUP BY rr.id
-     ORDER BY rr.created_at DESC`,
-    [req.user.id]
+     ORDER BY rr.created_at DESC LIMIT $2 OFFSET $3`,
+    [req.user.id, limit, offset]
   );
   res.json(rows.map(fmtReturn));
 });

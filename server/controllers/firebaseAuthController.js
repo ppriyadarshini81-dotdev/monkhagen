@@ -8,7 +8,7 @@ const { adminGoogleEmail } = require('../config/security');
 // Firebase owns customer credentials. The API receives and verifies only an ID token.
 exports.firebaseLogin = asyncHandler(async (req, res) => {
   const { idToken } = req.body;
-  if (typeof idToken !== 'string' || !idToken.trim()) {
+  if (typeof idToken !== 'string' || !idToken.trim() || idToken.length > 8192) {
     return res.status(400).json({ message: 'Firebase ID token is required.' });
   }
 
@@ -89,5 +89,6 @@ exports.firebaseLogin = asyncHandler(async (req, res) => {
     return res.status(403).json({ message: 'This account is unavailable. Contact support.' });
   }
 
-  res.json({ token: signToken(user, { provider }), user: user.toJSON() });
+  res.set('Cache-Control', 'no-store');
+  res.json({ token: signToken(user, { provider, firebaseAuthTime: decoded.auth_time || Math.floor(Date.now() / 1000) }), user: user.toJSON() });
 });

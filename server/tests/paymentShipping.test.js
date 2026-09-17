@@ -81,6 +81,21 @@ test('frontend success with invalid signature never queues a shipment', async ()
   assert.equal(fixture.statements.length, 0);
 });
 
+test('serverless capture persists its queue without launching detached provider work', async () => {
+  const previous = process.env.VERCEL;
+  process.env.VERCEL = '1';
+  try {
+    const fixture = setup();
+    const result = await payments.verifyPayment(USER_ID, verification());
+    assert.equal(result.paymentStatus, 'paid');
+    assert.ok(fixture.statements.some(sql => sql.includes('INSERT INTO shipments')));
+    assert.deepEqual(fixture.kicks, []);
+  } finally {
+    if (previous === undefined) delete process.env.VERCEL;
+    else process.env.VERCEL = previous;
+  }
+});
+
 test('authorized but uncaptured payment never queues shipping', async () => {
   const fixture = setup();
   payment.status = 'authorized';

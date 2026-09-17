@@ -8,6 +8,12 @@ const { legacyOtpEnabled } = require('../config/security');
 const authLimiter = createLimiter('authentication', { windowMs: 15 * 60000, limit: 10 });
 
 router.get('/me', authenticate, ctrl.me);
+router.post('/logout', authenticate, authLimiter, require('../middleware/asyncHandler')(async (req, res) => {
+  await require('../models/User').revokeSessions(req.user.id);
+  require('../services/firebaseSession').invalidate(req.user.firebaseUid);
+  res.set('Cache-Control', 'no-store');
+  res.status(204).end();
+}));
 
 // All Firebase customer providers (Google and email/password) use the same verified-token flow.
 router.post('/firebase', authLimiter, firebaseCtrl.firebaseLogin);

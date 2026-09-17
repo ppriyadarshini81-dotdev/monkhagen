@@ -1,6 +1,7 @@
 const { pool } = require('../config/db');
 const Shipment = require('./Shipment');
 const inventory = require('../services/inventoryService');
+const { validateTransition } = require('../services/orderStatusPolicy');
 
 function genOrderNumber() {
   const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -112,14 +113,14 @@ const Order = {
     return enrichOrder(order);
   },
 
-  async findByUser(userId) {
+  async findByUser(userId, { limit = 100, offset = 0 } = {}) {
     const { rows } = await pool.query(
-      'SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC', [userId]
+      'SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3', [userId, limit, offset]
     );
     return Promise.all(rows.map(enrichOrder));
   },
 
-  async findAll() {
+  async findAll({ limit = 100, offset = 0 } = {}) {
     const { rows } = await pool.query(`SELECT o.*, json_build_object(
       'shiprocketOrderId', s.shiprocket_order_id,
       'shiprocketShipmentId', s.shiprocket_shipment_id,
@@ -129,7 +130,7 @@ const Order = {
       'pickupStatus', COALESCE(s.pickup_status, 'pending'),
       'lastErrorCode', COALESCE(s.last_error_code, o.fulfillment_hold_reason)
     ) AS shipment FROM orders o
-    LEFT JOIN shipments s ON s.order_id = o.id ORDER BY o.created_at DESC`);
+    LEFT JOIN shipments s ON s.order_id = o.id ORDER BY o.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]);
     return Promise.all(rows.map(async row => ({ ...await enrichOrder(row), shipment: row.shipment })));
   },
 
@@ -142,10 +143,22 @@ const Order = {
       await client.query('BEGIN');
       const found = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [id]);
       if (found.rows[0]) {
+        validateTransition(found.rows[0], status);
+        if (status === 'shipped' && found.rows[0].order_status !== status) {
+          const shipment = await client.query("SELECT order_id FROM shipments WHERE order_id = $1 AND awb_code IS NOT NULL AND pickup_status = 'scheduled'", [id]);
+          if (!shipment.rows.length) throw inventory.error(409, 'A courier, AWB and scheduled pickup are required before marking an order shipped.');
+        }
+        if (['return_requested','returned'].includes(status) && found.rows[0].order_status !== status) {
+          const request = await client.query("SELECT id FROM return_requests WHERE order_id = $1 AND status NOT IN ('rejected','cancelled')", [id]);
+          if (!request.rows.length) throw inventory.error(409, 'An eligible return request is required for this status change.');
+        }
         if (status === 'cancelled') await inventory.releaseReservation(client, found.rows[0]);
         const result = await client.query(`UPDATE orders SET order_status = $1,
           fulfillment_hold_reason = CASE WHEN $1 = 'cancelled' THEN COALESCE(fulfillment_hold_reason, 'ORDER_CANCELLED_REVIEW')
-            ELSE fulfillment_hold_reason END, updated_at = NOW() WHERE id = $2 RETURNING *`, [status, id]);
+            ELSE fulfillment_hold_reason END,
+          shipped_at = CASE WHEN $1 = 'shipped' THEN COALESCE(shipped_at, NOW()) ELSE shipped_at END,
+          delivered_at = CASE WHEN $1 = 'delivered' THEN COALESCE(delivered_at, NOW()) ELSE delivered_at END,
+          updated_at = NOW() WHERE id = $2 RETURNING *`, [status, id]);
         updated = result.rows[0];
       }
       await client.query('COMMIT');

@@ -822,9 +822,11 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const sizeChartCareApplied = await runMigration('004_size_chart_care_content', applySizeChartCareMigration);
     const googleAdminApplied = await runMigration('005_google_only_admin', applyGoogleAdminMigration);
     const integrityApplied = await runMigration('006_security_integrity', applySecurityIntegrityMigration);
+    const sessionsApplied = await runMigration('007_session_revocation', database =>
+      database.query(readFileSync(path.join(__dirname, '..', 'migrations', '007_session_revocation.sql'), 'utf8')));
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
@@ -832,7 +834,7 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     console.error('Database startup failed:', { code: err.code || 'DB_STARTUP_FAILED' });
     if (err.code === 'DB_ROLE_UNSAFE') console.error('Use a restricted application database role in production; migrate separately.');
 
-    process.exit(1);
+    throw err;
   }
 }
 

@@ -1,6 +1,9 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/variantOptionController')('colors', 'Color');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const validation = require('../middleware/validation');
+validation.params(router);
+router.use(validation.requestShape, validation.body('named'));
 
 router.get('/', ctrl.list);
 router.get('/admin', authenticate, requireAdmin, ctrl.adminList);

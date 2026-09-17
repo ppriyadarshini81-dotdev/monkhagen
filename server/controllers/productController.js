@@ -6,14 +6,14 @@ const asyncHandler = require('../middleware/asyncHandler');
 // GET /api/products?category=&search=&featured=
 exports.list = asyncHandler(async (req, res) => {
   const { category, search, featured } = req.query;
-  const products = await Product.findAll({ category, search, featured: featured === 'true' });
+  const products = await Product.findAll({ category, search, featured: featured === 'true', ...require('../middleware/validation').pagination(req.query) });
   res.json(products);
 });
 
 // Protected catalog reads retain unpublished records for administration.
-exports.adminList = asyncHandler(async (_req, res) => {
+exports.adminList = asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json(await Product.findAll({ activeOnly: false }));
+  res.json(await Product.findAll({ activeOnly: false, ...require('../middleware/validation').pagination(req.query) }));
 });
 
 exports.adminGetOne = asyncHandler(async (req, res) => {
@@ -70,9 +70,9 @@ exports.remove = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id, { full: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
 
-  // Delete all R2 images before removing the product record
-  await Promise.allSettled(product.images.map(deleteFile));
   await Product.findByIdAndDelete(req.params.id);
+  // A blocked/failed database delete must never remove live product assets.
+  await Promise.allSettled(product.images.map(deleteFile));
   res.json({ message: 'Product deleted.', id: product.id });
 });
 

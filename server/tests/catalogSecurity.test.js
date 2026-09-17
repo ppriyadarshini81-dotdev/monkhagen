@@ -34,7 +34,7 @@ test('public product SQL filters inactive products and categories; protected lis
   pool.query = async (sql, params) => { statements.push({ sql, params }); return { rows: [] }; };
   await Product.findAll({ search: 'test-search' });
   assert.match(statements[0].sql, /WHERE p.is_active = TRUE AND c.is_active = TRUE AND/);
-  assert.deepEqual(statements[0].params, ['%test-search%']);
+  assert.deepEqual(statements[0].params, ['%test-search%', 100, 0]);
   await Product.findAll({ activeOnly: false });
   assert.match(statements[1].sql, /WHERE TRUE ORDER BY/);
   for (const [method, value] of [['findById', '10000000-0000-4000-8000-000000000001'], ['findBySlug', 'draft-product']]) {
@@ -90,7 +90,7 @@ test('public routes ignore browser visibility flags; protected admin routes reje
   Product.findById = Product.findBySlug = async (_value, options = {}) => options.activeOnly ? null : draft;
   Category.findOne = async options => options.activeOnly ? null : draft;
   const users = {
-    customer: { id: 'customer', role: 'customer', isActive: true },
+    customer: { id: 'customer', role: 'customer', isActive: true, firebaseUid: 'customer-google' },
     admin: { id: 'admin', role: 'admin', isActive: true, email: process.env.ADMIN_GOOGLE_EMAIL, firebaseUid: 'google-uid' }
   };
   User.findById = async id => users[id];

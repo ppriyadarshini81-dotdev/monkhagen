@@ -22,7 +22,7 @@
 
 .mh-contact__grid {
   display: grid;
-  grid-template-columns: repeat(2, max-content);
+  grid-template-columns: minmax(0, max-content);
   gap: 20px;
   max-width: 100%;
   align-items: stretch;

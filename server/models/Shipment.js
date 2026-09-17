@@ -155,7 +155,8 @@ const Shipment = {
     }
   },
 
-  async pending() {
+  async pending(limit = 10) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10) throw new Error('Invalid queue batch size.');
     const { rows } = await pool.query(
       `SELECT s.order_id FROM shipments s JOIN orders o ON o.id = s.order_id
        WHERE s.shiprocket_order_id IS NULL AND s.pending_operation IS NULL
@@ -167,7 +168,7 @@ const Shipment = {
          AND s.last_error_code IS DISTINCT FROM 'SHIPROCKET_NOT_CONFIGURED'
          AND s.last_error_code IS DISTINCT FROM 'SHIPROCKET_PERMISSION_DENIED'
          AND s.next_attempt_at <= NOW()
-       ORDER BY s.next_attempt_at LIMIT 10`
+       ORDER BY s.next_attempt_at LIMIT $1`, [limit]
     );
     return rows.map(row => row.order_id);
   }

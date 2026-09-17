@@ -19,7 +19,17 @@ function allowedCorsOrigins(environment = process.env) {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
-  if (configured.length) return configured;
+  if (configured.length) {
+    for (const origin of configured) {
+      let url;
+      try { url = new URL(origin); } catch { throw new Error('CORS_ORIGINS must contain valid origins only.'); }
+      if (url.origin !== origin || url.username || url.password || !['https:', 'http:'].includes(url.protocol) ||
+          environment.NODE_ENV === 'production' && (url.protocol !== 'https:' || ['localhost','127.0.0.1','[::1]'].includes(url.hostname))) {
+        throw new Error('Production CORS origins must use HTTPS; wildcard, credentialed and localhost origins are forbidden.');
+      }
+    }
+    return configured;
+  }
   if (environment.NODE_ENV === 'production') {
     throw new Error('CORS_ORIGINS must contain at least one allowed origin in production.');
   }
@@ -27,7 +37,7 @@ function allowedCorsOrigins(environment = process.env) {
 }
 
 function legacyOtpEnabled(environment = process.env) {
-  return environment.ENABLE_LEGACY_OTP === 'true';
+  return environment.NODE_ENV !== 'production' && environment.ENABLE_LEGACY_OTP === 'true';
 }
 
 function developmentOtpCode(environment = process.env) {

@@ -39,11 +39,15 @@ function wrapRow(row) {
   if (!row) return null;
   return {
     ...format(row),
+    sessionVersion: Number(row.session_version || 0),
     toJSON() { return format(row); }
   };
 }
 
 const User = {
+  async revokeSessions(id) {
+    await pool.query('UPDATE users SET session_version = session_version + 1 WHERE id = $1', [id]);
+  },
   async findById(id) {
     const { rows } = await pool.query(`${BASE_Q} WHERE u.id = $1`, [id]);
     return wrapRow(rows[0]);

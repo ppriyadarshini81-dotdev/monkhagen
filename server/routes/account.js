@@ -1,14 +1,18 @@
 const router = require('express').Router();
 const ctrl = require('../controllers/accountController');
 const { authenticate } = require('../middleware/auth');
-const { returnLimiter } = require('../middleware/rateLimit');
+const { returnLimiter, createLimiter } = require('../middleware/rateLimit');
+const validation = require('../middleware/validation');
+validation.params(router);
 
 // All account routes require authentication
 router.use(authenticate);
+const accountMutationLimiter = createLimiter('account-mutations', { limit: 60, windowMs: 15 * 60000, authenticated: true });
+router.use((req, res, next) => ['POST','PUT','PATCH','DELETE'].includes(req.method) ? accountMutationLimiter(req, res, next) : next());
 
 // Profile
 router.get('/profile',          ctrl.getProfile);
-router.put('/profile',          ctrl.updateProfile);
+router.put('/profile', validation.body('profile'), ctrl.updateProfile);
 
 // Addresses
 router.get('/addresses',             ctrl.getAddresses);

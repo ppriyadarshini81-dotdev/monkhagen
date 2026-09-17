@@ -42,6 +42,7 @@ test('CORS is localhost-only in development and explicit in production', () => {
 test('legacy OTP and its fixed development code are opt-in', () => {
   assert.equal(legacyOtpEnabled({}), false);
   assert.equal(legacyOtpEnabled({ ENABLE_LEGACY_OTP: 'true' }), true);
+  assert.equal(legacyOtpEnabled({ NODE_ENV: 'production', ENABLE_LEGACY_OTP: 'true' }), false);
   assert.equal(developmentOtpCode({ DEV_OTP_CODE: '123456' }), '123456');
   assert.equal(developmentOtpCode({ DEV_OTP_CODE: '1234567' }), null);
   assert.equal(

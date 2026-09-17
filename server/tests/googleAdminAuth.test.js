@@ -9,7 +9,7 @@ const User = require('../models/User');
 const firebaseAdmin = require('../config/firebaseAdmin');
 const originalAuth = firebaseAdmin.getAuth;
 let decoded, verificationError, verificationCalls, stored, mutations;
-firebaseAdmin.getAuth = () => ({ verifyIdToken: async (token, checkRevoked) => {
+firebaseAdmin.getAuth = () => ({ getUser: async uid => ({ uid, disabled: false, emailVerified: true, tokensValidAfterTime: '1970-01-01T00:00:00Z' }), verifyIdToken: async (token, checkRevoked) => {
   verificationCalls.push({ token, checkRevoked });
   if (verificationError) throw verificationError;
   return decoded;

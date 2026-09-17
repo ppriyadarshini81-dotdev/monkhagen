@@ -17,7 +17,8 @@ export class AuthService {
 
   private readUser(): User | null {
     const raw = localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as User) : null;
+    try { return raw ? (JSON.parse(raw) as User) : null; }
+    catch { localStorage.removeItem(USER_KEY); return null; }
   }
 
   get currentUser(): User | null {
@@ -60,6 +61,10 @@ export class AuthService {
   }
 
   logout(): void {
+    const token = this.token;
+    if (token) this.http.post<void>(`${this.api}/logout`, {}, {
+      headers: { Authorization: `Bearer ${token}` }
+    }).subscribe({ error: () => console.warn('Server sign-out could not be confirmed. The local session was cleared.') });
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     sessionStorage.removeItem(PROFILE_HINT_KEY);
