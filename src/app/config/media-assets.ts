@@ -31,7 +31,7 @@ export const MEDIA = {
 
   // ── About page ────────────────────────────────────────────
   about: {
-    heroBg: 'https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=1600&q=80'
+    heroBg: 'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/monk_hagen_dark_under_150kb.webp'
   },
 
   // ── Instagram feed — replace with your actual post image URLs ──
