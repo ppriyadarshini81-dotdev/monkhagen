@@ -1,17 +1,19 @@
-<!-- ====== VIDEO HERO BAR ====== -->
-<section class="mh-hero">
-  <div class="mh-hero__videos">
-    <video
-      *ngFor="let v of videos; let i = index"
-      [class.active]="i === currentVideo"
-      [attr.src]="i === currentVideo ? v : null"
-      [attr.poster]="i === currentVideo ? posters[i] : null"
-      autoplay
-      [muted]="true"
-      loop
-      playsinline
-      preload="metadata"
-    ></video>
+<!-- ====== IMAGE HERO CAROUSEL ====== -->
+<section class="mh-hero" aria-label="Monk Hagen collection" aria-roledescription="carousel">
+  <div class="mh-hero__viewport">
+    <div class="mh-hero__track"
+         [class.mh-hero__track--instant]="!heroAnimating"
+         [style.transform]="'translate3d(-' + heroPosition * 100 + '%, 0, 0)'"
+         (transitionend)="onHeroTransitionEnd($event)">
+      <img *ngFor="let slide of heroSlides; let i = index"
+           class="mh-hero__slide"
+           [src]="slide"
+           [alt]="i < posters.length ? 'Monk Hagen collection banner ' + (i + 1) : ''"
+           [attr.aria-hidden]="i !== heroPosition"
+           loading="eager"
+           [attr.fetchpriority]="i === 0 ? 'high' : 'low'"
+           decoding="async" />
+    </div>
     <div class="mh-hero__scrim"></div>
   </div>
 
@@ -20,10 +22,12 @@
 
   <div class="mh-hero__dots">
     <button
-      *ngFor="let v of videos; let i = index"
-      [class.active]="i === currentVideo"
-      (click)="selectVideo(i)"
-      [attr.aria-label]="'Video ' + (i + 1)"
+      type="button"
+      *ngFor="let slide of posters; let i = index"
+      [class.active]="i === currentSlide"
+      [attr.aria-current]="i === currentSlide ? 'true' : null"
+      (click)="selectSlide(i)"
+      [attr.aria-label]="'Show banner ' + (i + 1)"
     ></button>
   </div>
 </section>
@@ -42,6 +46,7 @@
     <app-product-card
       *ngFor="let p of featured; trackBy: trackProduct"
       [product]="p"
+      [cycleImages]="true"
     ></app-product-card>
   </div>
   <ng-template #loadingTpl>
@@ -98,6 +103,7 @@
     <app-product-card
       *ngFor="let p of newArrivals; trackBy: trackProduct"
       [product]="p"
+      [cycleImages]="true"
     ></app-product-card>
   </div>
 </section>

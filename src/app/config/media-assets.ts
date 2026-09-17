@@ -14,9 +14,11 @@ export const MEDIA = {
       'https://cdn.coverr.co/videos/coverr-a-man-in-a-denim-jacket-2999/1080p.mp4'
     ],
     posters: [
-      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/banner1.png',
-      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/banner5.png',
-      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/banner4.png'
+      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/monk_hagen_blue_under_150kb.webp',
+      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/monk_hagen_blue_letters_under_150kb.webp',
+      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/monk_hagen_closeup_under_150kb.webp',
+      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/monk_hagen_dark_under_150kb.webp',
+      'https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Banner/monk_hagen_seats_under_150kb.webp'
     ]
   },
 

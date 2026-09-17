@@ -102,25 +102,29 @@
   font-weight: 600;
 }
 
-.mh-hero__videos {
+.mh-hero__viewport {
   position: absolute;
   inset: 0;
 }
 
-.mh-hero__videos video {
-  position: absolute;
-  inset: 0;
+.mh-hero__track {
+  display: flex;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  opacity: 0;
-  transform: scale(1.06);
-  transition: opacity 1s ease, transform 0.6s ease;
+  transition: transform 650ms cubic-bezier(.22, .61, .36, 1);
 }
 
-.mh-hero__videos video.active {
-  opacity: 1;
-  transform: scale(1);
+.mh-hero__track--instant {
+  transition: none;
+}
+
+.mh-hero__slide {
+  display: block;
+  flex: 0 0 100%;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  object-fit: cover;
 }
 
 .mh-hero__scrim {
@@ -165,6 +169,7 @@
   bottom: 28px;
   right: 28px;
   display: flex;
+  align-items: center;
   gap: 10px;
   z-index: 3;
 }
@@ -180,6 +185,17 @@
 
 .mh-hero__dots button.active {
   background: var(--mh-accent);
+}
+
+.mh-hero__dots button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mh-hero__track {
+    transition-duration: 1ms;
+  }
 }
 
 /* ===== MARQUEE ===== */

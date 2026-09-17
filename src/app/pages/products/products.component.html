@@ -62,7 +62,7 @@
   </div>
 
   <div class="mh-grid" *ngIf="!loading; else loadingTpl">
-    <app-product-card *ngFor="let p of products" [product]="p"></app-product-card>
+    <app-product-card *ngFor="let p of products" [product]="p" [cycleImages]="true"></app-product-card>
   </div>
 
   <p class="mh-empty" *ngIf="!loading && products.length === 0">

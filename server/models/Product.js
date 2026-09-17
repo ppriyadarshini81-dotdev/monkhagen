@@ -159,12 +159,25 @@ async function replaceImages(client, productId, images) {
 }
 
 async function replaceVariants(client, productId, variants) {
-  await client.query('DELETE FROM product_variants WHERE product_id = $1', [productId]);
+  // Carts and order history reference variant IDs. Never delete/recreate them
+  // during a product edit; retain removed combinations as inactive history.
+  await client.query(
+    'UPDATE product_variants SET is_active = FALSE, updated_at = NOW() WHERE product_id = $1',
+    [productId]
+  );
   for (const variant of variants) {
     await client.query(
       `INSERT INTO product_variants
-         (product_id, size, color, size_id, color_id, sku, price, stock)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         (product_id, size, color, size_id, color_id, sku, price, stock, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (product_id, size, color) DO UPDATE SET
+         size_id = EXCLUDED.size_id,
+         color_id = EXCLUDED.color_id,
+         sku = CASE WHEN $10 THEN EXCLUDED.sku ELSE product_variants.sku END,
+         price = CASE WHEN $11 THEN EXCLUDED.price ELSE product_variants.price END,
+         stock = EXCLUDED.stock,
+         is_active = EXCLUDED.is_active,
+         updated_at = NOW()`,
       [
         productId,
         variant.size,
@@ -173,7 +186,10 @@ async function replaceVariants(client, productId, variants) {
         variant.colorId || null,
         variant.sku || null,
         variant.price ?? null,
-        variant.stock ?? 0
+        variant.stock ?? 0,
+        variant.isActive ?? true,
+        Object.prototype.hasOwnProperty.call(variant, 'sku'),
+        Object.prototype.hasOwnProperty.call(variant, 'price')
       ]
     );
   }

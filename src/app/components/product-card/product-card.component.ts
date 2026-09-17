@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnDestroy } from '@angular/core';
+import { Component, Input, OnChanges, OnDestroy } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { CartService } from '../../services/cart.service';
@@ -15,7 +15,7 @@ import { sortSizes } from '../../utils/size-order';
   templateUrl: './product-card.component.html',
   styleUrl: './product-card.component.css'
 })
-export class ProductCardComponent implements OnDestroy {
+export class ProductCardComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) product!: Product;
   @Input() cycleImages = false;
   added = false;
@@ -25,8 +25,12 @@ export class ProductCardComponent implements OnDestroy {
   addError = '';
   quickProduct?: Product;
   currentImageIndex = 0;
+  imageSlides: string[] = [];
+  imagesActivated = false;
+  imageAnimating = false;
+  private hovered = false;
+  private loadedImages = new Set<number>();
   private imageTimer?: ReturnType<typeof setInterval>;
-  private hoverImagePreload?: HTMLImageElement;
 
   constructor(
     private cart: CartService,
@@ -35,32 +39,43 @@ export class ProductCardComponent implements OnDestroy {
     private router: Router
   ) {}
 
-  get currentImage(): string {
-    const image = this.product.images[this.currentImageIndex] || this.product.images[0] || '';
-    return cachedMediaUrl(image);
+  ngOnChanges(): void {
+    this.stopImageTimer();
+    this.hovered = false;
+    this.imagesActivated = false;
+    this.imageAnimating = false;
+    this.currentImageIndex = 0;
+    this.loadedImages.clear();
+    this.imageSlides = this.product.images.map(cachedMediaUrl);
+    if (this.cycleImages && this.imageSlides.length > 1) {
+      this.imageSlides = [...this.imageSlides, this.imageSlides[0]];
+    }
   }
 
   onMouseEnter(): void {
-    if (this.cycleImages && this.product.images.length > 1) {
-      this.currentImageIndex = 1;
-    }
-    this.startImageTimer(1800);
+    if (!this.cycleImages || this.product.images.length < 2) return;
+    this.hovered = true;
+    this.imagesActivated = true;
+    this.startImagePreview();
   }
 
   onMouseLeave(): void {
     this.stopImageTimer();
+    this.hovered = false;
+    this.imageAnimating = false;
     this.currentImageIndex = 0;
     if (!this.adding) this.showSizePicker = false;
   }
 
-  preloadHoverImage(): void {
-    if (this.hoverImagePreload || !this.cycleImages || this.product.images.length < 2) {
-      return;
-    }
+  onImageLoaded(index: number): void {
+    this.loadedImages.add(index);
+    if (index === 1) this.startImagePreview();
+  }
 
-    this.hoverImagePreload = new Image();
-    this.hoverImagePreload.decoding = 'async';
-    this.hoverImagePreload.src = cachedMediaUrl(this.product.images[1]);
+  onImageTransitionEnd(event: TransitionEvent): void {
+    if (event.propertyName !== 'transform' || this.currentImageIndex !== this.product.images.length) return;
+    this.imageAnimating = false;
+    this.currentImageIndex = 0;
   }
 
   get availableSizes(): string[] {
@@ -72,12 +87,17 @@ export class ProductCardComponent implements OnDestroy {
     );
   }
 
-  private startImageTimer(delay: number): void {
-    this.stopImageTimer();
-    if (!this.cycleImages || this.product.images.length < 2) return;
+  private startImagePreview(): void {
+    if (!this.hovered || this.imageTimer || !this.loadedImages.has(1)) return;
+    // Keep the primary photo visible until the first alternate is loaded.
+    this.imageAnimating = true;
+    this.currentImageIndex = 1;
     this.imageTimer = setInterval(() => {
-      this.currentImageIndex = (this.currentImageIndex + 1) % this.product.images.length;
-    }, delay);
+      const next = (this.currentImageIndex + 1) % this.imageSlides.length;
+      if (!this.loadedImages.has(next)) return;
+      this.imageAnimating = true;
+      this.currentImageIndex = next;
+    }, 2000);
   }
 
   private stopImageTimer(): void {
@@ -88,7 +108,7 @@ export class ProductCardComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.stopImageTimer();
-    this.hoverImagePreload = undefined;
+    this.hovered = false;
   }
 
   quickAdd(event: Event): void {

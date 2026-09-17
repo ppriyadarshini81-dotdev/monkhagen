@@ -22,8 +22,9 @@ export class HomeComponent implements OnInit, OnDestroy {
   categories: Category[] = [];
   loading = true;
 
-  readonly videos  = MEDIA.hero.videos;
   readonly posters = MEDIA.hero.posters;
+  // Repeat the first banner once so the final-to-first transition slides forward.
+  readonly heroSlides = this.posters.length ? [...this.posters, this.posters[0]] : [];
   readonly media   = MEDIA;
 
   readonly instaFeed  = MEDIA.instagram.posts;
@@ -44,7 +45,11 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.startInstagramTimer();
   }
 
-  currentVideo = 0;
+  heroPosition = 0;
+  heroAnimating = true;
+  get currentSlide(): number {
+    return this.posters.length ? this.heroPosition % this.posters.length : 0;
+  }
   private heroTimer?: ReturnType<typeof setInterval>;
   private instagramTimer?: ReturnType<typeof setInterval>;
 
@@ -104,15 +109,32 @@ export class HomeComponent implements OnInit, OnDestroy {
       next: (cats) => (this.categories = cats)
     });
 
-    this.heroTimer = setInterval(() => {
-      this.currentVideo = (this.currentVideo + 1) % this.videos.length;
-    }, 6000);
+    this.startHeroTimer();
 
     this.startInstagramTimer();
   }
 
-  selectVideo(index: number): void {
-    this.currentVideo = index;
+  selectSlide(index: number): void {
+    if (index < 0 || index >= this.posters.length) return;
+    this.heroAnimating = true;
+    this.heroPosition = index;
+    this.startHeroTimer();
+  }
+
+  onHeroTransitionEnd(event: TransitionEvent): void {
+    if (event.propertyName !== 'transform' || this.heroPosition !== this.posters.length) return;
+    this.heroAnimating = false;
+    this.heroPosition = 0;
+  }
+
+  private startHeroTimer(): void {
+    if (this.heroTimer) clearInterval(this.heroTimer);
+    this.heroTimer = undefined;
+    if (this.posters.length < 2) return;
+    this.heroTimer = setInterval(() => {
+      this.heroAnimating = true;
+      this.heroPosition = (this.heroPosition + 1) % this.heroSlides.length;
+    }, 2000);
   }
 
   trackProduct(_index: number, product: Product): string {
