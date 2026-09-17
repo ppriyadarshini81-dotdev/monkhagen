@@ -4,6 +4,11 @@ const asyncHandler = require('../middleware/asyncHandler');
 module.exports = function createVariantOptionController(table, label) {
   return {
     list: asyncHandler(async (_req, res) => {
+      res.json(await VariantOption.find(table, { activeOnly: true }));
+    }),
+
+    adminList: asyncHandler(async (_req, res) => {
+      res.set('Cache-Control', 'no-store');
       res.json(await VariantOption.find(table, { activeOnly: false }));
     }),
 

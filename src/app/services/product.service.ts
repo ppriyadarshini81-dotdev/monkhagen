@@ -52,6 +52,14 @@ export class ProductService {
     return this.http.get<string[]>(`${this.api}/categories`);
   }
 
+  getAdminProducts(): Observable<Product[]> {
+    return this.http.get<Product[]>(`${this.api}/admin`);
+  }
+
+  getAdminProduct(idOrSlug: string): Observable<Product> {
+    return this.http.get<Product>(`${this.api}/admin/${idOrSlug}`);
+  }
+
   getProduct(idOrSlug: string): Observable<Product> {
     return this.http.get<Product>(`${this.api}/${idOrSlug}`);
   }

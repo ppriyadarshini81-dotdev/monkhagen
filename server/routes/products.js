@@ -4,6 +4,8 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 
 router.get('/', ctrl.list);
 router.get('/categories', ctrl.categories);
+router.get('/admin', authenticate, requireAdmin, ctrl.adminList);
+router.get('/admin/:idOrSlug', authenticate, requireAdmin, ctrl.adminGetOne);
 router.get('/:idOrSlug', ctrl.getOne);
 router.post('/', authenticate, requireAdmin, ctrl.create);
 router.put('/:id', authenticate, requireAdmin, ctrl.update);

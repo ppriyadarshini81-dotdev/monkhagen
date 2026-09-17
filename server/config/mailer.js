@@ -36,7 +36,11 @@ function getTransporter() {
       host: config.host,
       port: config.port,
       secure: config.secure,
-      auth: config.auth
+      auth: config.auth,
+      // Port 587 must upgrade with STARTTLS before authentication; port 465
+      // already uses implicit TLS. Never accept an unverified certificate.
+      requireTLS: !config.secure,
+      tls: { minVersion: 'TLSv1.2', rejectUnauthorized: true }
     });
   }
   return { transporter, config };

@@ -91,7 +91,7 @@ const LIST_Q = `
     v.min_price
   FROM products p
   JOIN categories c ON c.id = p.category_id
-  LEFT JOIN badges b ON b.id = p.badge_id
+  LEFT JOIN badges b ON b.id = p.badge_id AND b.is_active = TRUE
   LEFT JOIN LATERAL (
     SELECT ARRAY_AGG(img.image_url ORDER BY img.is_primary DESC, img.display_order, img.created_at) AS image_urls
     FROM product_images img
@@ -106,7 +106,7 @@ const LIST_Q = `
   ) v ON TRUE
 `;
 
-async function fetchVariantsAndImages(productId) {
+async function fetchVariantsAndImages(productId, { activeOnly = false } = {}) {
   const [imgRes, varRes, sizeRes, colorRes] = await Promise.all([
     pool.query('SELECT * FROM product_images WHERE product_id = $1 ORDER BY display_order, created_at', [productId]),
     pool.query(
@@ -114,7 +114,7 @@ async function fetchVariantsAndImages(productId) {
        FROM product_variants pv
        LEFT JOIN sizes s ON s.id = pv.size_id
        LEFT JOIN colors c ON c.id = pv.color_id
-       WHERE pv.product_id = $1
+       WHERE pv.product_id = $1 ${activeOnly ? 'AND pv.is_active = TRUE AND (s.id IS NULL OR s.is_active = TRUE) AND (c.id IS NULL OR c.is_active = TRUE)' : ''}
        ORDER BY COALESCE(s.name, pv.size), COALESCE(c.name, pv.color)`,
       [productId]
     ),
@@ -122,7 +122,7 @@ async function fetchVariantsAndImages(productId) {
       `SELECT s.id, s.name
        FROM product_size_details psd
        JOIN sizes s ON s.id = psd.size_id
-       WHERE psd.product_id = $1
+       WHERE psd.product_id = $1 ${activeOnly ? 'AND s.is_active = TRUE' : ''}
        ORDER BY s.name`,
       [productId]
     ),
@@ -130,7 +130,7 @@ async function fetchVariantsAndImages(productId) {
       `SELECT c.id, c.name
        FROM product_color_details pcd
        JOIN colors c ON c.id = pcd.color_id
-       WHERE pcd.product_id = $1
+       WHERE pcd.product_id = $1 ${activeOnly ? 'AND c.is_active = TRUE' : ''}
        ORDER BY c.name`,
       [productId]
     )
@@ -208,8 +208,8 @@ async function replaceProductOptions(client, productId, table, column, optionIds
 const Product = {
   isValidId(str) { return UUID_RE.test(str); },
 
-  async findAll({ category, search, featured } = {}) {
-    const conditions = ['p.is_active = TRUE'];
+  async findAll({ category, search, featured, activeOnly = true } = {}) {
+    const conditions = activeOnly ? ['p.is_active = TRUE', 'c.is_active = TRUE'] : ['TRUE'];
     const params = [];
     let idx = 1;
 
@@ -239,19 +239,19 @@ const Product = {
     });
   },
 
-  async findById(id, { full = true } = {}) {
-    const { rows } = await pool.query(`${LIST_Q} WHERE p.id = $1`, [id]);
+  async findById(id, { full = true, activeOnly = false } = {}) {
+    const { rows } = await pool.query(`${LIST_Q} WHERE p.id = $1 ${activeOnly ? 'AND p.is_active = TRUE AND c.is_active = TRUE' : ''}`, [id]);
     if (!rows[0]) return null;
     if (!full) return formatRow(rows[0]);
-    const { images, variants, sizeDetails, colorDetails } = await fetchVariantsAndImages(id);
+    const { images, variants, sizeDetails, colorDetails } = await fetchVariantsAndImages(id, { activeOnly });
     return formatRow(rows[0], images, variants, sizeDetails, colorDetails);
   },
 
-  async findBySlug(slug, { full = true } = {}) {
-    const { rows } = await pool.query(`${LIST_Q} WHERE p.slug = $1`, [slug]);
+  async findBySlug(slug, { full = true, activeOnly = false } = {}) {
+    const { rows } = await pool.query(`${LIST_Q} WHERE p.slug = $1 ${activeOnly ? 'AND p.is_active = TRUE AND c.is_active = TRUE' : ''}`, [slug]);
     if (!rows[0]) return null;
     if (!full) return formatRow(rows[0]);
-    const { images, variants, sizeDetails, colorDetails } = await fetchVariantsAndImages(rows[0].id);
+    const { images, variants, sizeDetails, colorDetails } = await fetchVariantsAndImages(rows[0].id, { activeOnly });
     return formatRow(rows[0], images, variants, sizeDetails, colorDetails);
   },
 

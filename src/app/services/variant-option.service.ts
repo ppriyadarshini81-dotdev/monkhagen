@@ -13,6 +13,10 @@ export class VariantOptionService {
     return this.http.get<VariantOption[]>(`/api/${type}`);
   }
 
+  getAdminOptions(type: OptionType): Observable<VariantOption[]> {
+    return this.http.get<VariantOption[]>(`/api/${type}/admin`);
+  }
+
   createOption(type: OptionType, name: string): Observable<VariantOption> {
     return this.http.post<VariantOption>(`/api/${type}`, { name });
   }

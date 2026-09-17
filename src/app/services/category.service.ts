@@ -17,6 +17,10 @@ export class CategoryService {
     return this.http.get<Category>(`${this.api}/${slug}`);
   }
 
+  getAdminCategories(): Observable<Category[]> {
+    return this.http.get<Category[]>(`${this.api}/admin`);
+  }
+
   createCategory(category: Partial<Category>): Observable<Category> {
     return this.http.post<Category>(this.api, category);
   }

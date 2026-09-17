@@ -10,6 +10,21 @@ exports.list = asyncHandler(async (req, res) => {
   res.json(products);
 });
 
+// Protected catalog reads retain unpublished records for administration.
+exports.adminList = asyncHandler(async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await Product.findAll({ activeOnly: false }));
+});
+
+exports.adminGetOne = asyncHandler(async (req, res) => {
+  const product = Product.isValidId(req.params.idOrSlug)
+    ? await Product.findById(req.params.idOrSlug)
+    : await Product.findBySlug(req.params.idOrSlug);
+  if (!product) return res.status(404).json({ message: 'Product not found.' });
+  res.set('Cache-Control', 'no-store');
+  res.json(product);
+});
+
 // GET /api/products/categories
 exports.categories = asyncHandler(async (_req, res) => {
   const cats = await Category.find();
@@ -20,8 +35,8 @@ exports.categories = asyncHandler(async (_req, res) => {
 exports.getOne = asyncHandler(async (req, res) => {
   const { idOrSlug } = req.params;
   const product = Product.isValidId(idOrSlug)
-    ? await Product.findById(idOrSlug)
-    : await Product.findBySlug(idOrSlug);
+    ? await Product.findById(idOrSlug, { activeOnly: true })
+    : await Product.findBySlug(idOrSlug, { activeOnly: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
   res.json(product);
 });

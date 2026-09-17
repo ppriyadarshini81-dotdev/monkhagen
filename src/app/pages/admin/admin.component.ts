@@ -123,19 +123,19 @@ export class AdminComponent implements OnInit {
   }
 
   loadProducts(): void {
-    this.productService.getProducts().subscribe((p) => (this.products = p));
+    this.productService.getAdminProducts().subscribe((p) => (this.products = p));
   }
 
   loadCategories(): void {
-    this.categoryService.getCategories().subscribe((c) => (this.categories = c));
+    this.categoryService.getAdminCategories().subscribe((c) => (this.categories = c));
   }
 
   loadBadges(): void {
-    this.badgeService.getBadges().subscribe((badges) => (this.badges = badges));
+    this.badgeService.getAdminBadges().subscribe((badges) => (this.badges = badges));
   }
 
   loadOptions(type: OptionType): void {
-    this.variantOptionService.getOptions(type).subscribe((options) => {
+    this.variantOptionService.getAdminOptions(type).subscribe((options) => {
       if (type === 'sizes') this.sizes = options;
       else this.colors = options;
     });
@@ -284,7 +284,7 @@ export class AdminComponent implements OnInit {
   editProduct(p: Product): void {
     this.message = '';
     this.error = '';
-    this.productService.getProduct(p.id).subscribe({
+    this.productService.getAdminProduct(p.id).subscribe({
       next: (product) => {
         this.editing = true;
         this.form = {

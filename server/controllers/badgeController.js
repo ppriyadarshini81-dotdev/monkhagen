@@ -7,6 +7,11 @@ function requiredName(value) {
 }
 
 exports.list = asyncHandler(async (_req, res) => {
+  res.json(await Badge.find({ activeOnly: true }));
+});
+
+exports.adminList = asyncHandler(async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
   res.json(await Badge.find({ activeOnly: false }));
 });
 

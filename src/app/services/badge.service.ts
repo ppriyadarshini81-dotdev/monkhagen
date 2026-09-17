@@ -13,6 +13,10 @@ export class BadgeService {
     return this.http.get<Badge[]>(this.api);
   }
 
+  getAdminBadges(): Observable<Badge[]> {
+    return this.http.get<Badge[]>(`${this.api}/admin`);
+  }
+
   createBadge(badge: Pick<Badge, 'name'>): Observable<Badge> {
     return this.http.post<Badge>(this.api, badge);
   }

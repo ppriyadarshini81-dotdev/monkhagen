@@ -24,13 +24,13 @@ const Category = {
     return rows.map(format);
   },
 
-  async findOne({ slug, id } = {}) {
+  async findOne({ slug, id, activeOnly = false } = {}) {
     if (slug) {
-      const { rows } = await pool.query('SELECT * FROM categories WHERE slug = $1', [slug]);
+      const { rows } = await pool.query(`SELECT * FROM categories WHERE slug = $1 ${activeOnly ? 'AND is_active = TRUE' : ''}`, [slug]);
       return rows[0] ? format(rows[0]) : null;
     }
     if (id) {
-      const { rows } = await pool.query('SELECT * FROM categories WHERE id = $1', [id]);
+      const { rows } = await pool.query(`SELECT * FROM categories WHERE id = $1 ${activeOnly ? 'AND is_active = TRUE' : ''}`, [id]);
       return rows[0] ? format(rows[0]) : null;
     }
     return null;
