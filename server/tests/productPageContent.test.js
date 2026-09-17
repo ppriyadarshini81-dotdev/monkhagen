@@ -5,6 +5,7 @@ const { pool, applyProductPageContentMigration, applySizeChartCareMigration } = 
 const Content = require('../models/ProductPageContent');
 const User = require('../models/User');
 process.env.JWT_SECRET = require('node:crypto').randomBytes(64).toString('hex');
+process.env.ADMIN_GOOGLE_EMAIL = 'administrator@example.com';
 const { signToken } = require('../middleware/auth');
 const { errorHandler } = require('../middleware/error');
 const router = require('../routes/productPageContent');
@@ -71,8 +72,9 @@ test('chart and care seed only fills blank shared fields and preserves existing 
 });
 
 test('public reads and admin-only edits validate and whitelist shared content', async () => {
-  const users = { customer: { id: 'customer', role: 'customer' },
-    admin: { id: 'admin', role: 'admin' }, super_admin: { id: 'super_admin', role: 'super_admin' } };
+  const users = { customer: { id: 'customer', role: 'customer', isActive: true },
+    admin: { id: 'admin', role: 'admin', isActive: true, email: process.env.ADMIN_GOOGLE_EMAIL, firebaseUid: 'admin-google' },
+    super_admin: { id: 'super_admin', role: 'super_admin', isActive: true, email: process.env.ADMIN_GOOGLE_EMAIL, firebaseUid: 'admin-google' } };
   User.findById = async id => users[id];
   let getValue = content;
   let saved = [];
@@ -87,7 +89,7 @@ test('public reads and admin-only edits validate and whitelist shared content', 
   });
   const base = `http://127.0.0.1:${server.address().port}/api/product-page-content`;
   const put = (body, role = 'admin') => fetch(base, { method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer ${signToken(users[role])}` } : {}) },
+    headers: { 'Content-Type': 'application/json', ...(role ? { Authorization: `Bearer ${signToken(users[role], { provider: 'google.com' })}` } : {}) },
     body: JSON.stringify(body) });
   try {
     const publicRead = await fetch(base);

@@ -2,11 +2,19 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { randomBytes } = require('node:crypto');
 const {
+  adminGoogleEmail,
   allowedCorsOrigins,
   developmentOtpCode,
   jwtSecret,
   legacyOtpEnabled
 } = require('../config/security');
+
+test('administrator identity requires explicit configuration without an implicit fallback', () => {
+  for (const ADMIN_GOOGLE_EMAIL of [undefined, '', '   ', 'not-an-email', 'one@example.com,two@example.com']) {
+    assert.throws(() => adminGoogleEmail({ ADMIN_GOOGLE_EMAIL }), /ADMIN_GOOGLE_EMAIL/);
+  }
+  assert.equal(adminGoogleEmail({ ADMIN_GOOGLE_EMAIL: '  Administrator@Example.com  ' }), 'administrator@example.com');
+});
 
 test('every environment requires an explicit strong JWT secret without a fallback', () => {
   const secret = randomBytes(64).toString('hex');

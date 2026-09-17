@@ -1,6 +1,7 @@
 const { Pool } = require('pg');
 const { readFileSync } = require('fs');
 const path = require('path');
+const { adminGoogleEmail } = require('./security');
 
 function createPoolConfig(environment = process.env) {
   const connectionString = environment.DATABASE_URL?.trim();
@@ -31,8 +32,8 @@ async function initSchema(database = pool) {
     /* =========================================================
        ROLES
        customer     -> phone + OTP
-       admin        -> email + password
-       super_admin  -> email + password
+       admin        -> designated verified Google account
+       super_admin  -> equivalent legacy role; same Google-only policy
     ========================================================== */
 
     CREATE TABLE IF NOT EXISTS roles (
@@ -62,8 +63,8 @@ async function initSchema(database = pool) {
 
        ADMIN / SUPER ADMIN:
          email required
-         password_hash required by application logic
-         login via email + password
+         password_hash unused
+         login via designated verified Google account only
     ========================================================== */
 
     CREATE TABLE IF NOT EXISTS users (
@@ -754,6 +755,19 @@ async function applySizeChartCareMigration(database = pool) {
   await database.query(sql);
 }
 
+async function applyGoogleAdminMigration(database = pool) {
+  // Retain account records and their business history. Remove all privileged
+  // passwords and disable identities outside the configured Google account.
+  await database.query(`
+    UPDATE users u
+    SET password_hash = NULL,
+        is_active = CASE WHEN LOWER(TRIM(u.email)) = $1 THEN u.is_active ELSE FALSE END,
+        updated_at = NOW()
+    FROM roles r
+    WHERE u.role_id = r.id AND r.name IN ('admin', 'super_admin')
+  `, [adminGoogleEmail()]);
+}
+
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
   try {
@@ -795,9 +809,10 @@ async function connectDB() {
     const firebaseAuthApplied = await runMigration('002_firebase_auth', applyFirebaseAuthMigration);
     const productPageContentApplied = await runMigration('003_product_page_content', applyProductPageContentMigration);
     const sizeChartCareApplied = await runMigration('004_size_chart_care_content', applySizeChartCareMigration);
+    const googleAdminApplied = await runMigration('005_google_only_admin', applyGoogleAdminMigration);
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
@@ -820,5 +835,6 @@ module.exports = {
   applyFirebaseAuthMigration,
   applyProductPageContentMigration,
   applySizeChartCareMigration,
+  applyGoogleAdminMigration,
   runMigration
 };

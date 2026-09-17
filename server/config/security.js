@@ -1,3 +1,11 @@
+function adminGoogleEmail(environment = process.env) {
+  const email = environment.ADMIN_GOOGLE_EMAIL?.trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error('ADMIN_GOOGLE_EMAIL must contain the designated administrator email.');
+  }
+  return email;
+}
+
 function jwtSecret(environment = process.env) {
   const configured = environment.JWT_SECRET?.trim();
   if (!configured || configured.length < 32) {
@@ -29,6 +37,7 @@ function developmentOtpCode(environment = process.env) {
 }
 
 module.exports = {
+  adminGoogleEmail,
   allowedCorsOrigins,
   developmentOtpCode,
   jwtSecret,

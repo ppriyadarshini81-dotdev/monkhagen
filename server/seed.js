@@ -149,13 +149,9 @@ async function seed() {
     await Product.create({ ...rest, categoryId: catMap[categoryName] });
   }
 
-  console.log('Seeding users…');
-  await User.create({ name: 'Monk Admin', email: 'admin@monkhagen.com', passwordHash: await User.hashPassword('admin123'), role: 'admin' });
-  await User.create({ name: 'Super Admin', email: 'super@monkhagen.com', passwordHash: await User.hashPassword('super123'), role: 'super_admin' });
+  console.log('Administrator accounts are provisioned through configured Google sign-in.');
 
   console.log('\nSeed complete ✓');
-  console.log('Admin       : admin@monkhagen.com / admin123');
-  console.log('Super Admin : super@monkhagen.com / super123');
   console.log('Customers   : login with Google');
   await pool.end();
   process.exit(0);

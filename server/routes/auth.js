@@ -13,7 +13,6 @@ const authLimiter = rateLimit({
   message: { message: 'Too many sign-in attempts. Please try again later.' }
 });
 
-router.post('/login', authLimiter, ctrl.login);
 router.get('/me', authenticate, ctrl.me);
 
 // All Firebase customer providers (Google and email/password) use the same verified-token flow.

@@ -3,14 +3,16 @@ const assert = require('node:assert/strict');
 const express = require('express');
 const User = require('../models/User');
 process.env.JWT_SECRET = require('node:crypto').randomBytes(64).toString('hex');
+process.env.ADMIN_GOOGLE_EMAIL = 'administrator@example.com';
 const { signToken } = require('../middleware/auth');
 const shipping = require('../services/shippingService');
 const router = require('../routes/shipping');
 
 test('shipping routes require authentication and admin permission for fulfillment', async () => {
   const users = {
-    customer: { id: 'customer', role: 'customer' }, admin: { id: 'admin', role: 'admin' },
-    super_admin: { id: 'super_admin', role: 'super_admin' }
+    customer: { id: 'customer', role: 'customer', isActive: true },
+    admin: { id: 'admin', role: 'admin', isActive: true, email: process.env.ADMIN_GOOGLE_EMAIL, firebaseUid: 'admin-google' },
+    super_admin: { id: 'super_admin', role: 'super_admin', isActive: true, email: process.env.ADMIN_GOOGLE_EMAIL, firebaseUid: 'admin-google' }
   };
   const originalFind = User.findById;
   const originalCreate = shipping.createShipment;
@@ -31,7 +33,7 @@ test('shipping routes require authentication and admin permission for fulfillmen
     assert.equal(calls, 0);
     for (const role of ['admin', 'super_admin']) {
       const response = await fetch(`${base}/create-shipment`, { method: 'POST',
-        headers: { Authorization: `Bearer ${signToken(users[role])}`, 'Content-Type': 'application/json' }, body: '{}' });
+        headers: { Authorization: `Bearer ${signToken(users[role], { provider: 'google.com' })}`, 'Content-Type': 'application/json' }, body: '{}' });
       assert.equal(response.status, 200);
     }
     assert.equal(calls, 2);

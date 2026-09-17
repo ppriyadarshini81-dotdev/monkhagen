@@ -1,5 +1,4 @@
 const { pool } = require('../config/db');
-const bcrypt = require('bcryptjs');
 
 // In-process cache so we don't query roles table on every operation
 let roleCache = null;
@@ -40,10 +39,6 @@ function wrapRow(row) {
   if (!row) return null;
   return {
     ...format(row),
-    passwordHash: row.password_hash,
-    comparePassword(plain) {
-      return typeof row.password_hash === 'string' && bcrypt.compare(plain, row.password_hash);
-    },
     toJSON() { return format(row); }
   };
 }
@@ -62,15 +57,6 @@ const User = {
   async findByPhone(phone) {
     const { rows } = await pool.query(`${BASE_Q} WHERE u.phone = $1`, [phone]);
     return wrapRow(rows[0]);
-  },
-  async create({ name, email, passwordHash, role = 'admin' }) {
-    const roleId = await getRoleId(role);
-    const { rows } = await pool.query(
-      `INSERT INTO users (name, email, password_hash, role_id, email_verified)
-       VALUES ($1, $2, $3, $4, TRUE) RETURNING id`,
-      [name, email, passwordHash, roleId]
-    );
-    return this.findById(rows[0].id);
   },
   async createByPhone({ phone, name, role = 'customer' }) {
     const roleId = await getRoleId(role);
@@ -144,8 +130,7 @@ const User = {
   },
   async deleteMany() {
     await pool.query('DELETE FROM users');
-  },
-  hashPassword(plain) { return bcrypt.hash(plain, 10); }
+  }
 };
 
 module.exports = User;

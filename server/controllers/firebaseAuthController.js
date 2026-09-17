@@ -2,18 +2,19 @@ const { getAuth } = require('../config/firebaseAdmin');
 const User = require('../models/User');
 const { signToken } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
+const { adminGoogleEmail } = require('../config/security');
 
 // POST /api/auth/firebase
 // Firebase owns customer credentials. The API receives and verifies only an ID token.
 exports.firebaseLogin = asyncHandler(async (req, res) => {
   const { idToken } = req.body;
-  if (!idToken) {
+  if (typeof idToken !== 'string' || !idToken.trim()) {
     return res.status(400).json({ message: 'Firebase ID token is required.' });
   }
 
   let decoded;
   try {
-    decoded = await getAuth().verifyIdToken(idToken);
+    decoded = await getAuth().verifyIdToken(idToken, true);
   } catch {
     return res.status(401).json({ message: 'Invalid or expired Firebase token.' });
   }
@@ -28,10 +29,11 @@ exports.firebaseLogin = asyncHandler(async (req, res) => {
 
   const normalizedEmail = email.trim().toLowerCase();
   const provider = decoded.firebase?.sign_in_provider || '';
-  const configuredAdminEmail = (
-    process.env.ADMIN_GOOGLE_EMAIL || 'officialmail.monkhagen@gmail.com'
-  ).trim().toLowerCase();
+  const configuredAdminEmail = adminGoogleEmail();
   const isConfiguredGoogleAdmin = provider === 'google.com' && normalizedEmail === configuredAdminEmail;
+  if (normalizedEmail === configuredAdminEmail && !isConfiguredGoogleAdmin) {
+    return res.status(403).json({ message: 'Use Google sign-in for the administrator account.' });
+  }
 
   let user = await User.findByFirebaseUid(uid);
 
@@ -39,13 +41,15 @@ exports.firebaseLogin = asyncHandler(async (req, res) => {
     const existingByEmail = await User.findOne({ email: normalizedEmail });
 
     if (existingByEmail) {
+      if (!existingByEmail.isActive) {
+        return res.status(403).json({ message: 'This account is unavailable. Contact support.' });
+      }
+      if (existingByEmail.firebaseUid && existingByEmail.firebaseUid !== uid) {
+        return res.status(403).json({ message: 'This email is linked to a different sign-in account. Contact support.' });
+      }
       const existingIsAdmin = ['admin', 'super_admin'].includes(existingByEmail.role);
       if (existingIsAdmin && !isConfiguredGoogleAdmin) {
         return res.status(403).json({ message: 'Use the administrator sign-in method for this account.' });
-      }
-
-      if (isConfiguredGoogleAdmin && !existingIsAdmin) {
-        await User.setRole(existingByEmail.id, 'admin');
       }
 
       user = await User.linkFirebaseUid(existingByEmail.id, {
@@ -54,6 +58,9 @@ exports.firebaseLogin = asyncHandler(async (req, res) => {
         name,
         emailVerified
       });
+      if (isConfiguredGoogleAdmin && user.role !== 'admin') {
+        user = await User.setRole(user.id, 'admin');
+      }
     } else {
       user = await User.createFirebaseUser({
         firebaseUid: uid,
@@ -65,8 +72,15 @@ exports.firebaseLogin = asyncHandler(async (req, res) => {
       });
     }
   } else {
+    if (!user.isActive) {
+      return res.status(403).json({ message: 'This account is unavailable. Contact support.' });
+    }
+    if (user.email?.trim().toLowerCase() !== normalizedEmail ||
+        (['admin', 'super_admin'].includes(user.role) && !isConfiguredGoogleAdmin)) {
+      return res.status(403).json({ message: 'This sign-in account is not authorized. Contact support.' });
+    }
     user = await User.updateFirebaseUser(user.id, { name, picture, emailVerified });
-    if (isConfiguredGoogleAdmin && !['admin', 'super_admin'].includes(user.role)) {
+    if (isConfiguredGoogleAdmin && user.role !== 'admin') {
       user = await User.setRole(user.id, 'admin');
     }
   }
@@ -75,5 +89,5 @@ exports.firebaseLogin = asyncHandler(async (req, res) => {
     return res.status(403).json({ message: 'This account is unavailable. Contact support.' });
   }
 
-  res.json({ token: signToken(user), user: user.toJSON() });
+  res.json({ token: signToken(user, { provider }), user: user.toJSON() });
 });

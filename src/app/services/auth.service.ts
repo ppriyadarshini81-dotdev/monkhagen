@@ -36,12 +36,6 @@ export class AuthService {
     return ['admin', 'super_admin'].includes(this.currentUser?.role || '');
   }
 
-  login(email: string, password: string): Observable<AuthResponse> {
-    return this.http
-      .post<AuthResponse>(`${this.api}/login`, { email, password })
-      .pipe(tap((res) => this.persist(res)));
-  }
-
   loginWithFirebase(idToken: string): Observable<AuthResponse> {
     return this.http
       .post<AuthResponse>(`${this.api}/firebase`, { idToken })
