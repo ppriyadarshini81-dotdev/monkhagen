@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const User = require('../models/User');
+process.env.JWT_SECRET = require('node:crypto').randomBytes(64).toString('hex');
 const { signToken } = require('../middleware/auth');
 const shipping = require('../services/shippingService');
 const router = require('../routes/shipping');

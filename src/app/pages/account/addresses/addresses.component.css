@@ -13,3 +13,6 @@
 .mh-addr-form__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .mh-field--full { grid-column: 1 / -1; }
 .mh-addr-form__actions { display: flex; gap: 12px; margin-top: 20px; }
+.mh-field-error { margin: 6px 0 0; color: var(--mh-danger, #dc2626); font-size: 12px; line-height: 1.5; }
+.mh-input[aria-invalid="true"] { border-color: var(--mh-danger, #dc2626); }
+@media (max-width: 600px) { .mh-addr-form__grid { grid-template-columns: 1fr; } }

@@ -1,14 +1,9 @@
-const DEVELOPMENT_JWT_SECRET = 'monk-hagen-dev-secret-change-me';
-
 function jwtSecret(environment = process.env) {
   const configured = environment.JWT_SECRET?.trim();
-  if (
-    environment.NODE_ENV === 'production' &&
-    (!configured || configured === DEVELOPMENT_JWT_SECRET || configured.length < 32)
-  ) {
-    throw new Error('JWT_SECRET must be configured with at least 32 characters in production.');
+  if (!configured || configured.length < 32) {
+    throw new Error('JWT_SECRET must be configured with at least 32 characters.');
   }
-  return configured || DEVELOPMENT_JWT_SECRET;
+  return configured;
 }
 
 function allowedCorsOrigins(environment = process.env) {

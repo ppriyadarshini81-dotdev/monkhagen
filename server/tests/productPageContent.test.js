@@ -4,6 +4,7 @@ const express = require('express');
 const { pool, applyProductPageContentMigration, applySizeChartCareMigration } = require('../config/db');
 const Content = require('../models/ProductPageContent');
 const User = require('../models/User');
+process.env.JWT_SECRET = require('node:crypto').randomBytes(64).toString('hex');
 const { signToken } = require('../middleware/auth');
 const { errorHandler } = require('../middleware/error');
 const router = require('../routes/productPageContent');

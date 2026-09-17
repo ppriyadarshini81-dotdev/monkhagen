@@ -7,24 +7,32 @@
   <!-- Address form -->
   <div class="mh-addr-form mh-card" *ngIf="showForm">
     <h3>{{ editingId ? 'Edit' : 'New' }} Address</h3>
-    <form (ngSubmit)="save()">
+    <form #addressFormElement (ngSubmit)="save()" novalidate>
       <div class="mh-addr-form__grid">
-        <div class="mh-field"><label class="mh-label">Full name</label>
-          <input class="mh-input" [(ngModel)]="form.fullName" name="fullName" required /></div>
-        <div class="mh-field"><label class="mh-label">Phone</label>
-          <input class="mh-input" [(ngModel)]="form.phone" name="phone" required /></div>
-        <div class="mh-field mh-field--full"><label class="mh-label">Address line 1</label>
-          <input class="mh-input" [(ngModel)]="form.addressLine1" name="l1" required /></div>
-        <div class="mh-field mh-field--full"><label class="mh-label">Address line 2</label>
-          <input class="mh-input" [(ngModel)]="form.addressLine2" name="l2" /></div>
-        <div class="mh-field mh-field--full"><label class="mh-label">Landmark</label>
-          <input class="mh-input" [(ngModel)]="form.landmark" name="lm" /></div>
-        <div class="mh-field"><label class="mh-label">City</label>
-          <input class="mh-input" [(ngModel)]="form.city" name="city" required /></div>
-        <div class="mh-field"><label class="mh-label">State</label>
-          <input class="mh-input" [(ngModel)]="form.state" name="state" required /></div>
-        <div class="mh-field"><label class="mh-label">PIN code</label>
-          <input class="mh-input" [(ngModel)]="form.postalCode" name="pin" required /></div>
+        <div class="mh-field"><label class="mh-label" for="addr-name">Full name *</label>
+          <input id="addr-name" class="mh-input" [(ngModel)]="form.fullName" name="fullName" required maxlength="100" autocomplete="name" (blur)="touched.add('fullName')" [attr.aria-invalid]="!!visibleError('fullName')" aria-describedby="addr-name-error" />
+          <p id="addr-name-error" class="mh-field-error" *ngIf="visibleError('fullName')">{{ visibleError('fullName') }}</p></div>
+        <div class="mh-field"><label class="mh-label" for="addr-phone">Phone *</label>
+          <input id="addr-phone" class="mh-input" [(ngModel)]="form.phone" name="phone" required type="tel" inputmode="numeric" maxlength="10" autocomplete="tel-national" (blur)="touched.add('phone')" [attr.aria-invalid]="!!visibleError('phone')" aria-describedby="addr-phone-error" />
+          <p id="addr-phone-error" class="mh-field-error" *ngIf="visibleError('phone')">{{ visibleError('phone') }}</p></div>
+        <div class="mh-field mh-field--full"><label class="mh-label" for="addr-line1">Address line 1 *</label>
+          <input id="addr-line1" class="mh-input" [(ngModel)]="form.addressLine1" name="l1" required maxlength="255" autocomplete="address-line1" (blur)="touched.add('addressLine1')" [attr.aria-invalid]="!!visibleError('addressLine1')" aria-describedby="addr-line1-error" />
+          <p id="addr-line1-error" class="mh-field-error" *ngIf="visibleError('addressLine1')">{{ visibleError('addressLine1') }}</p></div>
+        <div class="mh-field mh-field--full"><label class="mh-label" for="addr-line2">Address line 2 (optional)</label>
+          <input id="addr-line2" class="mh-input" [(ngModel)]="form.addressLine2" name="l2" maxlength="255" autocomplete="address-line2" (blur)="touched.add('addressLine2')" [attr.aria-invalid]="!!visibleError('addressLine2')" aria-describedby="addr-line2-error" />
+          <p id="addr-line2-error" class="mh-field-error" *ngIf="visibleError('addressLine2')">{{ visibleError('addressLine2') }}</p></div>
+        <div class="mh-field mh-field--full"><label class="mh-label" for="addr-landmark">Landmark (optional)</label>
+          <input id="addr-landmark" class="mh-input" [(ngModel)]="form.landmark" name="lm" maxlength="255" (blur)="touched.add('landmark')" [attr.aria-invalid]="!!visibleError('landmark')" aria-describedby="addr-landmark-error" />
+          <p id="addr-landmark-error" class="mh-field-error" *ngIf="visibleError('landmark')">{{ visibleError('landmark') }}</p></div>
+        <div class="mh-field"><label class="mh-label" for="addr-city">City *</label>
+          <input id="addr-city" class="mh-input" [(ngModel)]="form.city" name="city" required maxlength="100" autocomplete="address-level2" (blur)="touched.add('city')" [attr.aria-invalid]="!!visibleError('city')" aria-describedby="addr-city-error" />
+          <p id="addr-city-error" class="mh-field-error" *ngIf="visibleError('city')">{{ visibleError('city') }}</p></div>
+        <div class="mh-field"><label class="mh-label" for="addr-state">State *</label>
+          <input id="addr-state" class="mh-input" [(ngModel)]="form.state" name="state" required maxlength="100" autocomplete="address-level1" (blur)="touched.add('state')" [attr.aria-invalid]="!!visibleError('state')" aria-describedby="addr-state-error" />
+          <p id="addr-state-error" class="mh-field-error" *ngIf="visibleError('state')">{{ visibleError('state') }}</p></div>
+        <div class="mh-field"><label class="mh-label" for="addr-pin">PIN code *</label>
+          <input id="addr-pin" class="mh-input" [(ngModel)]="form.postalCode" name="pin" required inputmode="numeric" maxlength="6" autocomplete="postal-code" (blur)="touched.add('postalCode')" [attr.aria-invalid]="!!visibleError('postalCode')" aria-describedby="addr-pin-error" />
+          <p id="addr-pin-error" class="mh-field-error" *ngIf="visibleError('postalCode')">{{ visibleError('postalCode') }}</p></div>
         <div class="mh-field"><label class="mh-label">Type</label>
           <select class="mh-input mh-select" [(ngModel)]="form.addressType" name="type">
             <option>Home</option><option>Work</option><option>Other</option>
@@ -34,7 +42,7 @@
       <div class="mh-addr-form__actions">
         <button class="mh-btn mh-btn--gold" type="submit" [disabled]="saving">
           {{ saving ? 'Saving…' : 'Save Address' }}</button>
-        <button class="mh-btn mh-btn--ghost" type="button" (click)="cancel()">Cancel</button>
+        <button class="mh-btn mh-btn--ghost" type="button" (click)="cancel()" [disabled]="saving">Cancel</button>
       </div>
     </form>
   </div>
