@@ -23,9 +23,14 @@ function createApp() {
     shipping: 'shipping', maintenance: 'maintenance' };
   for (const [url, file] of Object.entries(routes)) app.use(`/api/${url}`, require(`./routes/${file}`));
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', brand: 'Monk Hagen' }));
-  const directory = path.join(__dirname, '..', 'dist', 'clothing-ui', 'browser');
-  app.use(express.static(directory));
-  app.get(/^(?!\/api).*/, (_req, res, next) => res.sendFile(path.join(directory, 'index.html'), error => { if (error) next(error); }));
+  if (process.env.NODE_ENV === 'production') {
+    // Production hosts only the API; Angular is served independently by Cloudflare.
+    app.get('/', (_req, res) => res.json({ status: 'ok', service: 'Monk Hagen API' }));
+  } else {
+    const directory = path.join(__dirname, '..', 'dist', 'clothing-ui', 'browser');
+    app.use(express.static(directory));
+    app.get(/^(?!\/api).*/, (_req, res, next) => res.sendFile(path.join(directory, 'index.html'), error => { if (error) next(error); }));
+  }
   app.use(notFound, errorHandler);
   return app;
 }

@@ -28,7 +28,7 @@ Keep the automatically created deployment token private (a label such as
 `monkhagen-deploy` is sufficient). Do not add database URLs, Firebase private keys,
 JWT secrets, Razorpay secrets, R2 credentials, shipping credentials or SMTP passwords
 to this frontend project. Those remain in Render. The only Worker variable is the
-public Render API origin, already declared in `wrangler.jsonc`.
+public Render API origin, `https://api.monkhagen.in`, already declared in `wrangler.jsonc`.
 
 These repository changes must reach the GitHub `main` branch before Cloudflare can
 use them. Creating these files locally does not commit, push or deploy them.
@@ -41,13 +41,24 @@ frontend proxy, never return Angular's HTML fallback. Angular services and the b
 token interceptor keep their existing same-origin `/api` URLs. `proxy.conf.json` is
 only for `ng serve` locally; it is not used by Cloudflare.
 
-The proxy forwards to the fixed HTTPS Render origin, preserves bearer authorization,
+The proxy forwards to the fixed HTTPS Render custom domain `https://api.monkhagen.in`, preserves bearer authorization,
 streams request/response bodies, does not follow redirects, and does not edge-cache
 API responses. Public media's browser cache/ETag headers remain intact; authenticated
 requests and mutations are marked `no-store`. Browser origins must match the frontend
 origin. After validation the Origin header is removed from the server-to-server hop,
 so no Render CORS change is required. This does not replace backend authentication,
 role checks, ownership checks, validation or payment signature checks.
+
+Angular still calls relative `/api` URLs, not the custom API domain directly:
+`/api/products` on the frontend is forwarded to `https://api.monkhagen.in/api/products`.
+Do not append `/api` to `RENDER_API_ORIGIN`; the request path already includes it.
+Update the fixed origin in `cloudflare/worker.mjs` together with the Wrangler variable.
+
+With `NODE_ENV=production`, Render serves only the API: GET `/` returns
+`{"status":"ok","service":"Monk Hagen API"}`, and `/api/health` keeps its existing
+JSON response. Other non-API paths return JSON 404 rather than Angular HTML. Express
+retains its existing static-file/SPA fallback outside production; the localhost
+Angular development proxy is unchanged. No Angular build is needed on Render.
 
 Security headers for static assets are copied from `public/_headers`. API responses
 retain Render's headers; proxy failures use generic errors without internal details.

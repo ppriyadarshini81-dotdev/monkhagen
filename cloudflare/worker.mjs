@@ -1,5 +1,5 @@
 // Frontend delivery only. Authentication, payments and database access stay on Render.
-const RENDER_ORIGIN = 'https://monkhagen-api.onrender.com';
+const RENDER_ORIGIN = 'https://api.monkhagen.in';
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
