@@ -10,6 +10,6 @@
     "run_worker_first": ["/api", "/api/*"]
   },
   "vars": {
-    "RENDER_API_ORIGIN": "https://monkhagen-api.onrender.com"
+    "RENDER_API_ORIGIN": "https://api.monkhagen.in"
   }
 }

@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import worker from './worker.mjs';
 
 const frontend = 'https://monkhagen.example';
-const upstreamOrigin = 'https://monkhagen-api.onrender.com';
+const upstreamOrigin = 'https://api.monkhagen.in';
 const env = {
   RENDER_API_ORIGIN: upstreamOrigin,
   ASSETS: { fetch: async () => new Response('angular', { headers: { 'Content-Type': 'text/html' } }) }
