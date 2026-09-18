@@ -2,6 +2,12 @@
 
 Monk Hagen is a premium streetwear storefront built as one Angular application with an Express API.
 
+## Documentation
+
+For the current frontend-on-Cloudflare / backend-on-Render setup, see the [Cloudflare deployment guide](docs/cloudflare-frontend.md).
+
+See the [website design and functionality document](docs/website-design-and-functionality.md) for the current high-level/low-level design, module-wise functionality, integrations, security changes, development history and deployment checklist. The [documentation index](docs/README.md) links the operational guides. Some quick-start statements below are historical; consult the dated design document for current authentication and production behavior.
+
 ## Stack
 
 - Angular 20 standalone components

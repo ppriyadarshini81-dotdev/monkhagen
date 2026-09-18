@@ -8,6 +8,7 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "test:shipping": "node --test server/tests/*.test.js",
+    "test:cloudflare": "node --test cloudflare/*.test.mjs",
     "server": "node server/index.js",
     "server:dev": "nodemon server/index.js",
     "seed": "node server/seed.js",
@@ -62,6 +63,7 @@
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.1.0",
     "nodemon": "^3.1.9",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "wrangler": "4.134.0"
   }
 }

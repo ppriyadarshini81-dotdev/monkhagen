@@ -49,3 +49,6 @@ Thumbs.db
 !.env.sample
 !.env.template
 /.vercel/
+/.wrangler/
+.dev.vars
+.dev.vars.*
