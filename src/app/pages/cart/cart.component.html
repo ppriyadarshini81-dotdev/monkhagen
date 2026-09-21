@@ -76,13 +76,13 @@
 
 <dialog #addressDialog class="mh-address-dialog" aria-labelledby="address-title" (cancel)="placing && $event.preventDefault()">
   <div class="mh-address-dialog__head">
-    <div><span class="mh-eyebrow">MONK HAGEN / SECURE CHECKOUT</span><h2 id="address-title">Choose your delivery address</h2><p class="mh-address-intro">Select a saved address or add a new one to continue.</p></div>
-    <button type="button" class="mh-address-close" aria-label="Close address selection" [disabled]="placing" (click)="closeAddressDialog()">&#215;</button>
+    <div><span class="mh-eyebrow">MONK HAGEN / SECURE CHECKOUT</span><h2 id="address-title">{{ checkoutStep === 'address' ? 'Choose your delivery address' : 'Choose how you would like to pay' }}</h2><p class="mh-address-intro">{{ checkoutStep === 'address' ? 'Select a saved address or add a new one to continue.' : 'Pay securely online or when your order arrives.' }}</p></div>
+    <button type="button" class="mh-address-close" aria-label="Close checkout" [disabled]="placing" (click)="closeAddressDialog()">&#215;</button>
   </div>
-  <ol class="mh-checkout-steps" aria-label="Checkout progress"><li class="is-complete"><span>&#10003;</span> Bag</li><li aria-current="step"><span>02</span> Address</li><li><span>03</span> Payment</li></ol>
-  <p class="mh-address-loading" *ngIf="loadingAddresses" role="status">Loading your addresses...</p>
-  <form #addressForm="ngForm" (ngSubmit)="continueCheckout()">
-    <fieldset [disabled]="placing || loadingAddresses">
+  <ol class="mh-checkout-steps" aria-label="Checkout progress"><li class="is-complete"><span>&#10003;</span> Bag</li><li [class.is-complete]="checkoutStep === 'payment'" [attr.aria-current]="checkoutStep === 'address' ? 'step' : null"><span><ng-container *ngIf="checkoutStep === 'payment'; else addressStepNumber">&#10003;</ng-container><ng-template #addressStepNumber>02</ng-template></span> Address</li><li [attr.aria-current]="checkoutStep === 'payment' ? 'step' : null"><span>03</span> Payment</li></ol>
+  <p class="mh-address-loading" *ngIf="checkoutStep === 'address' && loadingAddresses" role="status">Loading your addresses...</p>
+  <form #addressForm="ngForm" (ngSubmit)="checkoutStep === 'address' ? continueCheckout() : placeOrder()">
+    <fieldset *ngIf="checkoutStep === 'address'" [disabled]="placing || loadingAddresses">
       <legend class="mh-address-legend">{{ addresses.length ? 'SAVED DELIVERY ADDRESSES' : 'DELIVERY DETAILS' }}</legend>
       <label class="mh-address-option" *ngFor="let address of addresses">
         <input type="radio" name="savedAddress" [value]="address.id" [ngModel]="selectedAddressId" (ngModelChange)="selectAddress($event)" />
@@ -126,9 +126,32 @@
         </div>
       </div>
     </fieldset>
+    <fieldset *ngIf="checkoutStep === 'payment'" class="mh-payment-methods" [disabled]="placing">
+      <legend class="mh-address-legend">PAYMENT METHOD</legend>
+      <label class="mh-payment-option">
+        <input type="radio" name="paymentMethod" value="razorpay" [(ngModel)]="paymentMethod" />
+        <span class="mh-payment-option__icon" aria-hidden="true">&#10022;</span>
+        <span class="mh-payment-option__copy"><strong>Pay Online</strong><small>UPI, cards, net banking and wallets via Razorpay</small></span>
+        <span class="mh-payment-option__tag">Secure</span>
+      </label>
+      <label class="mh-payment-option">
+        <input type="radio" name="paymentMethod" value="cod" [(ngModel)]="paymentMethod" />
+        <span class="mh-payment-option__icon" aria-hidden="true">&#8377;</span>
+        <span class="mh-payment-option__copy"><strong>Cash on Delivery</strong><small>Pay the order total when your delivery arrives</small></span>
+        <span class="mh-payment-option__tag">COD</span>
+      </label>
+      <div class="mh-payment-note" *ngIf="paymentMethod === 'cod'">
+        Your order will be confirmed now. Payment remains pending until it is collected for this delivery.
+      </div>
+    </fieldset>
     <p class="mh-error mh-checkout-error" role="alert" *ngIf="checkoutError">{{ checkoutError }}</p>
-    <button type="button" class="mh-btn mh-btn--ghost" *ngIf="checkoutError && !placing && !addingAddress && addresses.length === 0" (click)="loadAddresses()">Reload addresses</button>
+    <button type="button" class="mh-btn mh-btn--ghost" *ngIf="checkoutStep === 'address' && checkoutError && !placing && !addingAddress && addresses.length === 0" (click)="loadAddresses()">Reload addresses</button>
     <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small>Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number }}</strong></div>
-    <button type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing || loadingAddresses || (!selectedAddressId && !addingAddress)">{{ placing ? 'Preparing secure payment...' : 'Continue to payment' }} <span aria-hidden="true">&#8594;</span></button><p class="mh-address-payment">Secure payment powered by Razorpay</p></footer>
+    <div class="mh-payment-actions" *ngIf="checkoutStep === 'payment'">
+      <button type="button" class="mh-btn mh-btn--ghost" [disabled]="placing" (click)="backToAddress()">&#8592; Back</button>
+      <button type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing">{{ placing ? 'Placing order...' : (paymentMethod === 'cod' ? 'Place COD order' : 'Pay securely') }} <span aria-hidden="true">&#8594;</span></button>
+    </div>
+    <button *ngIf="checkoutStep === 'address'" type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing || loadingAddresses || (!selectedAddressId && !addingAddress)">{{ placing ? 'Saving address...' : 'Continue to payment' }} <span aria-hidden="true">&#8594;</span></button>
+    <p class="mh-address-payment">{{ checkoutStep === 'payment' && paymentMethod === 'cod' ? 'Pay only when your order arrives' : 'Secure payment powered by Razorpay' }}</p></footer>
   </form>
 </dialog>

@@ -9,7 +9,7 @@
   <div *ngIf="!loading && loadError" class="mh-orders-empty mh-orders-empty--error">{{ loadError }}</div>
   <div *ngIf="!loading && !loadError && orders.length === 0" class="mh-orders-empty">
     <strong>No confirmed orders yet</strong>
-    <span>Your successfully paid orders will appear here.</span>
+    <span>Your confirmed orders will appear here.</span>
   </div>
 
   <div class="mh-orders-list" *ngIf="!loading && orders.length">
@@ -18,10 +18,11 @@
         <div>
           <span>Order confirmed</span>
           <h3>#{{ order.orderNumber }}</h3>
+          <small *ngIf="isPendingCod(order)">Cash on delivery &middot; Payment pending</small>
           <small>{{ order.createdAt | date: 'dd MMMM y, h:mm a' }}</small>
         </div>
         <div class="mh-customer-order__amount">
-          <small>Total paid</small>
+          <small>{{ isPendingCod(order) ? 'Amount due' : 'Total paid' }}</small>
           <strong>&#8377;{{ order.totalAmount | number }}</strong>
         </div>
       </header>
@@ -92,17 +93,19 @@
           </address>
         </section>
         <section class="mh-detail-section">
-          <div class="mh-detail-section__head"><h3>Payment summary</h3><span>Paid</span></div>
+          <div class="mh-detail-section__head"><h3>Payment summary</h3><span>{{ isPendingCod(order) ? 'Pending / COD' : statusLabel(order.paymentStatus) }}</span></div>
           <dl class="mh-detail-totals">
+            <div><dt>Payment method</dt><dd>{{ paymentMethodLabel(order) }}</dd></div>
+            <div><dt>Payment status</dt><dd>{{ isPendingCod(order) ? 'Pending / COD' : statusLabel(order.paymentStatus) }}</dd></div>
             <div><dt>Subtotal</dt><dd>&#8377;{{ order.subtotal | number }}</dd></div>
             <div *ngIf="order.discountAmount"><dt>Discount</dt><dd>&minus;&#8377;{{ order.discountAmount | number }}</dd></div>
             <div><dt>Delivery</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Complimentary' }}</dd></div>
-            <div><dt>Total paid</dt><dd>&#8377;{{ order.totalAmount | number }}</dd></div>
+            <div><dt>{{ isPendingCod(order) ? 'Amount due on delivery' : 'Total paid' }}</dt><dd>&#8377;{{ order.totalAmount | number }}</dd></div>
           </dl>
         </section>
       </div>
     </div>
-    <footer class="mh-customer-dialog__foot"><small>Payment verified via {{ statusLabel(order.paymentMethod) }}</small><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
+    <footer class="mh-customer-dialog__foot"><small>{{ isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order)) }}</small><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
   </ng-container>
 </dialog>
 

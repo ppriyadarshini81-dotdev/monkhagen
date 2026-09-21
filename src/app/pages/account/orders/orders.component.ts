@@ -28,7 +28,7 @@ export class AccountOrdersComponent implements OnInit {
   ngOnInit(): void {
     this.account.getOrders().subscribe({
       next: (orders) => {
-        this.orders = orders.filter((order) => order.paymentStatus === 'paid');
+        this.orders = orders;
         this.loading = false;
       },
       error: () => {
@@ -117,5 +117,13 @@ export class AccountOrdersComponent implements OnInit {
   statusLabel(status: string | null | undefined): string {
     if (!status) return 'Awaiting update';
     return status.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+  }
+
+  isPendingCod(order: Order): boolean {
+    return order.paymentMethod === 'cod' && order.paymentStatus === 'pending';
+  }
+
+  paymentMethodLabel(order: Order): string {
+    return order.paymentMethod === 'cod' ? 'Cash on delivery' : this.statusLabel(order.paymentMethod);
   }
 }

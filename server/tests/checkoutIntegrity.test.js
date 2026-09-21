@@ -175,6 +175,13 @@ test('capture consumes a reservation without a second deduction; duplicate verif
   assert.equal(fixture.state.shipments.size, 1);
   assert.ok(fixture.state.orders[0].inventory_deducted_at);
 });
+test('COD rejects an out-of-stock cart without creating an order or Razorpay order', async () => {
+  const fixture = setup({ stock: 0 });
+  await assert.rejects(Order.createCod(USER, attempt()), /stock/i);
+  assert.equal(fixture.state.orders.length, 0);
+  assert.equal(fixture.state.shipments.size, 0);
+  assert.equal(remoteCreates, 0);
+});
 test('expired and failed reservations restore stock once, and expired attempts cannot be reused', async () => {
   const fixture = setup({ stock: 2 });
   const input = attempt();
@@ -217,6 +224,7 @@ test('COD is server-priced, allocates stock and converts its cart atomically; du
   assert.equal(fixture.state.converted.has(USER), true);
   assert.equal(fixture.state.shipments.size, 1);
   assert.ok(fixture.state.orders[0].inventory_deducted_at);
+  assert.equal(remoteCreates, 0);
 });
 test('legacy COD retries without tokens cannot process a converted cart again', async () => {
   const fixture = setup();

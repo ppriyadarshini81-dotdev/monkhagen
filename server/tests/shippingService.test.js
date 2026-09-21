@@ -56,7 +56,10 @@ test('maps immutable order snapshots, INR totals, variant SKUs and package units
   assert.deepEqual(body.order_items[0], { name: 'Test Tee', sku: 'TEE-M-BLACK', units: 1, selling_price: 1499 });
   assert.equal(body.weight, 0.5);
   assert.equal(body.length, 25);
-  assert.equal(buildOrderPayload({ ...orderFixture(), payment_method: 'cod', payment_status: 'pending' }, address, items, parcel).payment_method, 'COD');
+  const codPayload = buildOrderPayload({ ...orderFixture(), payment_method: 'cod', payment_status: 'pending' }, address, items, parcel);
+  assert.equal(codPayload.payment_method, 'COD');
+  assert.equal(codPayload.sub_total, 1499);
+  assert.equal(codPayload.shipping_charges, 99);
   assert.throws(() => buildOrderPayload({ ...orderFixture(), total_amount: 1 }, address, items, parcel));
 });
 
@@ -146,6 +149,20 @@ test('authentication, configuration and permission failures require a controlled
     assert.equal(fixture.getRow().shipping_status, 'needs_configuration');
     assert.ok(fixture.getRow().next_attempt_at > new Date());
   }
+});
+
+test('temporary Shiprocket failure preserves the COD order and records a durable retry', async () => {
+  const order = { ...orderFixture(), payment_method: 'cod', payment_status: 'pending',
+    razorpay_order_id: null, razorpay_payment_id: null, paid_at: null };
+  const fixture = setup({ order, request: async () => {
+    throw shippingError(502, 'SHIPROCKET_REQUEST_FAILED', 'Temporary provider failure');
+  } });
+  await assert.rejects(fixture.service.createShipment(ORDER_ID, parcel));
+  assert.equal(order.payment_method, 'cod');
+  assert.equal(order.payment_status, 'pending');
+  assert.equal(fixture.getRow().shipping_status, 'retry_pending');
+  assert.equal(fixture.getRow().pending_operation, null);
+  assert.ok(fixture.getRow().next_attempt_at > new Date());
 });
 
 test('AWB, pickup and label enforce prerequisites and reuse successful results', async () => {

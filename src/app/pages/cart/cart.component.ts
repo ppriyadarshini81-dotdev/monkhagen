@@ -9,6 +9,10 @@ import { AuthService } from '../../services/auth.service';
 import { CartService } from '../../services/cart.service';
 import { PaymentOrder, PaymentService, RazorpaySuccess } from '../../services/payment.service';
 import { AnalyticsService } from '../../services/analytics.service';
+import { OrderService } from '../../services/order.service';
+
+type CheckoutStep = 'address' | 'payment';
+type PaymentMethod = 'razorpay' | 'cod';
 
 @Component({
   selector: 'app-cart',
@@ -30,13 +34,17 @@ export class CartComponent implements OnInit {
   error = '';
   checkoutError = '';
   orderId: string | null = null;
+  checkoutStep: CheckoutStep = 'address';
+  paymentMethod: PaymentMethod = 'razorpay';
+  private checkoutToken = '';
 
   constructor(
     public cart: CartService,
     private account: AccountService,
     private auth: AuthService,
     private payments: PaymentService,
-    private analytics: AnalyticsService
+    private analytics: AnalyticsService,
+    private orders: OrderService
   ) {}
 
   ngOnInit(): void {
@@ -48,6 +56,9 @@ export class CartComponent implements OnInit {
     this.error = '';
     this.checkoutError = '';
     this.addressAttempted = false;
+    this.checkoutStep = 'address';
+    this.paymentMethod = 'razorpay';
+    this.checkoutToken ||= this.newCheckoutToken();
     this.addressDialog.nativeElement.showModal();
     this.analytics.track('CHECKOUT_STARTED');
     this.loadAddresses();
@@ -90,23 +101,50 @@ export class CartComponent implements OnInit {
       this.addressAttempted = true;
       return;
     }
-    this.placing = true;
-    this.analytics.track('ADDRESS_SELECTED');
     if (this.selectedAddressId) {
-      this.startPayment(this.selectedAddressId);
+      this.showPaymentStep(this.selectedAddressId);
       return;
     }
 
+    this.placing = true;
     this.account.addAddress(this.addressPayload()).subscribe({
       next: (address) => {
         this.addresses = [...this.addresses, address];
         this.selectedAddressId = address.id;
         this.lastSelectedAddressId = address.id;
         this.addingAddress = false;
-        this.startPayment(address.id);
+        this.showPaymentStep(address.id);
       },
       error: (err) => this.fail(err?.error?.message || 'Could not save the shipping address.')
     });
+  }
+
+  backToAddress(): void {
+    if (this.placing) return;
+    this.checkoutError = '';
+    this.checkoutStep = 'address';
+  }
+
+  placeOrder(): void {
+    if (this.placing || !this.selectedAddressId) return;
+    this.checkoutError = '';
+    this.placing = true;
+
+    if (this.paymentMethod === 'cod') {
+      this.orders.checkout(this.selectedAddressId, this.checkoutToken).subscribe({
+        next: (order) => {
+          this.orderId = order.orderNumber || order.id;
+          this.cart.reset();
+          this.checkoutToken = '';
+          this.placing = false;
+          this.addressDialog.nativeElement.close();
+        },
+        error: (err) => this.fail(err?.error?.message || 'Could not place the cash on delivery order.')
+      });
+      return;
+    }
+
+    this.startPayment(this.selectedAddressId);
   }
 
   selectAddress(addressId: string): void {
@@ -189,8 +227,15 @@ export class CartComponent implements OnInit {
     });
   }
 
+  private showPaymentStep(addressId: string): void {
+    this.selectedAddressId = addressId;
+    this.checkoutStep = 'payment';
+    this.placing = false;
+    this.analytics.track('ADDRESS_SELECTED');
+  }
+
   private startPayment(addressId: string): void {
-    this.payments.createOrder(addressId, this.newCheckoutToken()).subscribe({
+    this.payments.createOrder(addressId, this.checkoutToken).subscribe({
       next: (order) => this.openRazorpay(order),
       error: (err) => this.fail(err?.error?.message || 'Could not prepare the payment.')
     });
@@ -218,6 +263,7 @@ export class CartComponent implements OnInit {
       next: (verified) => {
         this.orderId = verified.orderNumber;
         this.cart.reset();
+        this.checkoutToken = '';
         this.placing = false;
       },
       error: (err) => this.fail(

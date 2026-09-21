@@ -58,9 +58,10 @@ export class OrderService {
 
   constructor(private http: HttpClient) {}
 
-  checkout(addressId: string): Observable<Order> {
+  checkout(addressId: string, checkoutToken: string): Observable<Order> {
     return this.http.post<Order>(this.api, {
       addressId,
+      checkoutToken,
       paymentMethod: 'cod'
     });
   }
