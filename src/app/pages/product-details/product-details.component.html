@@ -44,11 +44,24 @@
       <span class="mh-eyebrow">{{ product.category }}</span>
       <h1>{{ product.name }}</h1>
       <div class="mh-pd__meta">
-        <span class="mh-pd__price">₹{{ product.price | number }}</span>
-        <button class="mh-pd__size-link" type="button" *ngIf="pageContent?.sizeChartImageUrl"
-          (click)="openSizeChart()" aria-haspopup="dialog">Size chart</button>
+        <div class="mh-pd__mrp">
+          <span><b>MRP:</b> <strong>&#8377;{{ product.price | number: '1.2-2' }}</strong></span>
+          <small>(Inclusive of all taxes)</small>
+        </div>
         <span class="mh-pd__stock" *ngIf="product.stock === 0">Sold out</span>
       </div>
+
+      <section class="mh-pd__offers" aria-labelledby="available-offers-title" *ngIf="cart.prepaidOffer.eligible">
+        <h2 id="available-offers-title">Available Offers</h2>
+        <article class="mh-pd__offer-card">
+          <span class="mh-pd__offer-icon" aria-hidden="true">%</span>
+          <div>
+            <strong>{{ cart.prepaidOffer.discountPercent }}% OFF</strong>
+            <span>On your first prepaid order</span>
+            <code>Code: {{ cart.prepaidOffer.code }}</code>
+          </div>
+        </article>
+      </section>
 
       <div class="mh-pd__opt" *ngIf="product.colors.length">
         <span class="mh-label">Color</span>
@@ -64,7 +77,11 @@
       </div>
 
       <div class="mh-pd__opt" *ngIf="product.sizes.length">
-        <span class="mh-label">Size</span>
+        <div class="mh-pd__option-head">
+          <span class="mh-label">Size</span>
+          <button class="mh-pd__size-link" type="button" *ngIf="pageContent?.sizeChartImageUrl"
+            (click)="openSizeChart()" aria-haspopup="dialog">Size chart</button>
+        </div>
         <div class="mh-pd__choices">
           <button
             *ngFor="let s of product.sizes"

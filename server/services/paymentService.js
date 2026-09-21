@@ -6,6 +6,7 @@ const Shipment = require('../models/Shipment');
 const shipping = require('./shippingService');
 const inventory = require('./inventoryService');
 const analytics = require('./analyticsService');
+const offers = require('./offerService');
 
 const CURRENCY = 'INR';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -99,22 +100,25 @@ async function createPaymentOrder(userId, { addressId, checkoutToken }) {
     const pending = await client.query(`SELECT id FROM orders WHERE cart_id = $1 AND payment_status = 'pending'
       AND inventory_reserved_at IS NOT NULL AND inventory_released_at IS NULL FOR UPDATE`, [cart.id]);
     if (pending.rows.length) throw httpError(409, 'A checkout for this cart is already pending. Retry it or wait for it to expire.');
+    const prepaidOffer = await offers.firstPrepaidOffer(client, userId, amount);
+    const discount = prepaidOffer.discountPaise;
+    const payable = prepaidOffer.totalPaise;
     await inventory.deduct(client, items);
     const localOrderNumber = orderNumber();
     const result = await client.query(`INSERT INTO orders
       (user_id, cart_id, checkout_token, order_number, subtotal, discount_amount, shipping_amount, total_amount,
        payment_method, payment_status, order_status, inventory_reserved_at, inventory_reservation_expires_at)
-      VALUES ($1,$2,$3,$4,$5,0,0,$5,'razorpay','pending','placed',NOW(),NOW() + INTERVAL '15 minutes') RETURNING id`,
-      [userId, cart.id, checkoutToken, localOrderNumber, fromPaise(amount)]);
+      VALUES ($1,$2,$3,$4,$5,$6,0,$7,'razorpay','pending','placed',NOW(),NOW() + INTERVAL '15 minutes') RETURNING id`,
+      [userId, cart.id, checkoutToken, localOrderNumber, fromPaise(amount), fromPaise(discount), fromPaise(payable)]);
     const localOrderId = result.rows[0].id;
     await inventory.snapshotAddress(client, localOrderId, address);
     await inventory.snapshotItems(client, localOrderId, items);
-    const remote = await razorpay.orders.create({ amount, currency: CURRENCY, receipt: localOrderNumber,
+    const remote = await razorpay.orders.create({ amount: payable, currency: CURRENCY, receipt: localOrderNumber,
       notes: { local_order_id: localOrderId, order_number: localOrderNumber } });
     if (!remote?.id) throw httpError(502, 'Razorpay did not return an order ID.');
     await client.query('UPDATE orders SET razorpay_order_id = $1, updated_at = NOW() WHERE id = $2', [remote.id, localOrderId]);
     await client.query('COMMIT');
-    return { keyId, razorpayOrderId: remote.id, amount, currency: CURRENCY, localOrderId, orderNumber: localOrderNumber };
+    return { keyId, razorpayOrderId: remote.id, amount: payable, currency: CURRENCY, localOrderId, orderNumber: localOrderNumber };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;

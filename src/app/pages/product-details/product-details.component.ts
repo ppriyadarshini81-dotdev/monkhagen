@@ -148,7 +148,7 @@ export class ProductDetailsComponent implements OnInit {
   constructor(
     private route: ActivatedRoute,
     private productService: ProductService,
-    private cart: CartService,
+    public cart: CartService,
     private auth: AuthService,
     private router: Router,
     private contentService: ProductPageContentService,

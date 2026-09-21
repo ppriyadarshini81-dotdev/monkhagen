@@ -1,17 +1,21 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable, tap, throwError } from 'rxjs';
-import { Cart, CartItem } from '../models/cart.model';
+import { Cart, CartItem, PrepaidOffer } from '../models/cart.model';
 import { Product } from '../models/product.model';
 import { AuthService } from './auth.service';
 
-const EMPTY_CART: Cart = { cartId: '', items: [], total: 0 };
+const EMPTY_OFFER: PrepaidOffer = {
+  code: 'MonkHagen10', discountPercent: 10, eligible: false, discountAmount: 0, totalAmount: 0
+};
+const EMPTY_CART: Cart = { cartId: '', items: [], total: 0, prepaidOffer: EMPTY_OFFER };
 
 @Injectable({ providedIn: 'root' })
 export class CartService {
   private readonly api = '/api/cart';
   private readonly itemsSubject = new BehaviorSubject<CartItem[]>([]);
   private readonly loadingSubject = new BehaviorSubject(false);
+  private currentPrepaidOffer: PrepaidOffer = EMPTY_OFFER;
 
   readonly items$ = this.itemsSubject.asObservable();
   readonly loading$ = this.loadingSubject.asObservable();
@@ -48,6 +52,10 @@ export class CartService {
       (sum, item) => sum + (item.price ?? 0) * item.quantity,
       0
     );
+  }
+
+  get prepaidOffer(): PrepaidOffer {
+    return this.currentPrepaidOffer;
   }
 
   load(): Observable<Cart> {
@@ -119,5 +127,6 @@ export class CartService {
 
   private apply(cart: Cart): void {
     this.itemsSubject.next(cart.items || []);
+    this.currentPrepaidOffer = cart.prepaidOffer || EMPTY_OFFER;
   }
 }

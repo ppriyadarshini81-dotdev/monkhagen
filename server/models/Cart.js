@@ -1,4 +1,5 @@
 const { pool } = require('../config/db');
+const offers = require('../services/offerService');
 
 function httpError(status, message) {
   const error = new Error(message);
@@ -66,7 +67,8 @@ const Cart = {
     `, [cartId]);
     const items = rows.map(formatItem);
     const total = items.reduce((s, i) => s + (i.price || 0) * i.quantity, 0);
-    return { cartId, items, total };
+    const prepaidOffer = await offers.firstPrepaidOffer(pool, userId, Math.round(total * 100));
+    return { cartId, items, total, prepaidOffer: offers.publicOffer(prepaidOffer) };
   },
 
   async addItem(userId, { productId, variantId, quantity = 1 }) {

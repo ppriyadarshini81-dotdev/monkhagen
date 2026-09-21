@@ -157,6 +157,10 @@
   margin-bottom: 10px;
 }
 
+.mh-cart__row--offer { color: #087f3d; }
+.mh-cart__row--offer span { display: flex; flex-direction: column; gap: 3px; }
+.mh-cart__row--offer small { color: var(--mh-text-dim); font-size: 10px; letter-spacing: .04em; }
+
 
 .mh-address-dialog {
   width: min(720px, calc(100vw - 40px)); max-height: 90dvh;

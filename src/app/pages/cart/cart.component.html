@@ -61,8 +61,12 @@
           <span>Shipping</span>
           <span><s aria-label="Original shipping charge">&#8377;100</s> <strong>Free</strong></span>
         </div>
+        <div class="mh-cart__row mh-cart__row--offer" *ngIf="cart.prepaidOffer.eligible">
+          <span>Prepaid offer <small>{{ cart.prepaidOffer.code }}</small></span>
+          <strong>&minus;&#8377;{{ cart.prepaidOffer.discountAmount | number: '1.2-2' }}</strong>
+        </div>
         <div class="mh-cart__row mh-cart__row--total">
-          <span>Total</span><span>₹{{ grandTotal | number }}</span>
+          <span>Total</span><span>&#8377;{{ cartSummaryTotal | number: '1.2-2' }}</span>
         </div>
 
         <p class="mh-error" *ngIf="error">{{ error }}</p>
@@ -146,7 +150,7 @@
     </fieldset>
     <p class="mh-error mh-checkout-error" role="alert" *ngIf="checkoutError">{{ checkoutError }}</p>
     <button type="button" class="mh-btn mh-btn--ghost" *ngIf="checkoutStep === 'address' && checkoutError && !placing && !addingAddress && addresses.length === 0" (click)="loadAddresses()">Reload addresses</button>
-    <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small>Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number }}</strong></div>
+    <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small *ngIf="checkoutDiscount">{{ cart.prepaidOffer.code }} prepaid offer: &minus;&#8377;{{ checkoutDiscount | number: '1.2-2' }}</small><small *ngIf="!checkoutDiscount">Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number: '1.2-2' }}</strong></div>
     <div class="mh-payment-actions" *ngIf="checkoutStep === 'payment'">
       <button type="button" class="mh-btn mh-btn--ghost" [disabled]="placing" (click)="backToAddress()">&#8592; Back</button>
       <button type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing">{{ placing ? 'Placing order...' : (paymentMethod === 'cod' ? 'Place COD order' : 'Pay securely') }} <span aria-hidden="true">&#8594;</span></button>

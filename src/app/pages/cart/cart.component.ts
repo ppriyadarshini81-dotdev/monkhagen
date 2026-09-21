@@ -86,7 +86,17 @@ export class CartComponent implements OnInit {
   }
 
   get grandTotal(): number {
-    return this.cart.total + this.shippingFee;
+    return this.cart.total - this.checkoutDiscount + this.shippingFee;
+  }
+
+  get checkoutDiscount(): number {
+    return this.paymentMethod === 'razorpay' && this.cart.prepaidOffer.eligible
+      ? this.cart.prepaidOffer.discountAmount
+      : 0;
+  }
+
+  get cartSummaryTotal(): number {
+    return this.cart.total - (this.cart.prepaidOffer.eligible ? this.cart.prepaidOffer.discountAmount : 0) + this.shippingFee;
   }
 
   continueCheckout(): void {
