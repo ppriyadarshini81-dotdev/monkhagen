@@ -52,6 +52,7 @@
         </article>
       </div>
 
+      <div class="mh-cart__side">
       <aside class="mh-cart__summary mh-card">
         <h3>Order Summary</h3>
         <div class="mh-cart__row">
@@ -62,7 +63,7 @@
           <span><s aria-label="Original shipping charge">&#8377;100</s> <strong>Free</strong></span>
         </div>
         <div class="mh-cart__row mh-cart__row--offer" *ngIf="cart.prepaidOffer.eligible">
-          <span>Prepaid offer <small>{{ cart.prepaidOffer.code }}</small></span>
+          <span>Welcome Offer <small>{{ cart.prepaidOffer.code }}</small></span>
           <strong>&minus;&#8377;{{ cart.prepaidOffer.discountAmount | number: '1.2-2' }}</strong>
         </div>
         <div class="mh-cart__row mh-cart__row--total">
@@ -74,6 +75,19 @@
           {{ placing ? 'Processing...' : 'Checkout' }}
         </button>
       </aside>
+      <section class="mh-cart__offers" *ngIf="cart.prepaidOffer.eligible" aria-labelledby="cart-offers-title">
+        <h3 id="cart-offers-title">Available Offers</h3>
+        <article class="mh-cart__offer-card">
+          <span class="mh-cart__offer-icon" aria-hidden="true">%</span>
+          <div class="mh-cart__offer-copy">
+            <strong>{{ cart.prepaidOffer.discountPercent }}% OFF</strong>
+            <span>On your first prepaid order</span>
+            <code>Code: {{ cart.prepaidOffer.code }}</code>
+          </div>
+          <span class="mh-cart__offer-applied"><span aria-hidden="true">&#10003;</span> Applied</span>
+        </article>
+      </section>
+      </div>
     </div>
   </ng-template>
 </section>
@@ -150,7 +164,7 @@
     </fieldset>
     <p class="mh-error mh-checkout-error" role="alert" *ngIf="checkoutError">{{ checkoutError }}</p>
     <button type="button" class="mh-btn mh-btn--ghost" *ngIf="checkoutStep === 'address' && checkoutError && !placing && !addingAddress && addresses.length === 0" (click)="loadAddresses()">Reload addresses</button>
-    <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small *ngIf="checkoutDiscount">{{ cart.prepaidOffer.code }} prepaid offer: &minus;&#8377;{{ checkoutDiscount | number: '1.2-2' }}</small><small *ngIf="!checkoutDiscount">Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number: '1.2-2' }}</strong></div>
+    <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small *ngIf="checkoutDiscount">{{ cart.prepaidOffer.code }} Welcome Offer: &minus;&#8377;{{ checkoutDiscount | number: '1.2-2' }}</small><small *ngIf="!checkoutDiscount">Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number: '1.2-2' }}</strong></div>
     <div class="mh-payment-actions" *ngIf="checkoutStep === 'payment'">
       <button type="button" class="mh-btn mh-btn--ghost" [disabled]="placing" (click)="backToAddress()">&#8592; Back</button>
       <button type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing">{{ placing ? 'Placing order...' : (paymentMethod === 'cod' ? 'Place COD order' : 'Pay securely') }} <span aria-hidden="true">&#8594;</span></button>

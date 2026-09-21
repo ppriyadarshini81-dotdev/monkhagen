@@ -158,6 +158,7 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
         this.adding = false;
         this.showSizePicker = false;
         this.added = true;
+        this.cart.openPreview();
         setTimeout(() => (this.added = false), 1400);
       },
       error: (err) => {

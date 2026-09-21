@@ -1,4 +1,4 @@
-const FIRST_PREPAID_CODE = 'MonkHagen10';
+const FIRST_PREPAID_CODE = 'MONKHAGEN10';
 const FIRST_PREPAID_PERCENT = 10;
 
 function validPaise(value) {

@@ -6,7 +6,7 @@ import { Product } from '../models/product.model';
 import { AuthService } from './auth.service';
 
 const EMPTY_OFFER: PrepaidOffer = {
-  code: 'MonkHagen10', discountPercent: 10, eligible: false, discountAmount: 0, totalAmount: 0
+  code: 'MONKHAGEN10', discountPercent: 10, eligible: false, discountAmount: 0, totalAmount: 0
 };
 const EMPTY_CART: Cart = { cartId: '', items: [], total: 0, prepaidOffer: EMPTY_OFFER };
 
@@ -15,10 +15,12 @@ export class CartService {
   private readonly api = '/api/cart';
   private readonly itemsSubject = new BehaviorSubject<CartItem[]>([]);
   private readonly loadingSubject = new BehaviorSubject(false);
+  private readonly previewOpenSubject = new BehaviorSubject(false);
   private currentPrepaidOffer: PrepaidOffer = EMPTY_OFFER;
 
   readonly items$ = this.itemsSubject.asObservable();
   readonly loading$ = this.loadingSubject.asObservable();
+  readonly previewOpen$ = this.previewOpenSubject.asObservable();
 
   constructor(
     private http: HttpClient,
@@ -56,6 +58,14 @@ export class CartService {
 
   get prepaidOffer(): PrepaidOffer {
     return this.currentPrepaidOffer;
+  }
+
+  openPreview(): void {
+    this.previewOpenSubject.next(true);
+  }
+
+  closePreview(): void {
+    this.previewOpenSubject.next(false);
   }
 
   load(): Observable<Cart> {
@@ -122,6 +132,7 @@ export class CartService {
 
   reset(): void {
     this.apply(EMPTY_CART);
+    this.closePreview();
     this.loadingSubject.next(false);
   }
 

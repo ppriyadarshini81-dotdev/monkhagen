@@ -240,6 +240,7 @@ export class ProductDetailsComponent implements OnInit {
       next: () => {
         this.adding = false;
         this.added = true;
+        this.cart.openPreview();
         setTimeout(() => (this.added = false), 1800);
       },
       error: (err) => {
