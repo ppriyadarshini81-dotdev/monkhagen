@@ -8,6 +8,8 @@ import { AuthService } from '../../services/auth.service';
 import { sortSizes } from '../../utils/size-order';
 import { ProductPageContent } from '../../models/product-page-content.model';
 import { ProductPageContentService } from '../../services/product-page-content.service';
+import { AnalyticsService } from '../../services/analytics.service';
+import { cachedMediaUrl } from '../../utils/media-url';
 
 @Component({
   selector: 'app-product-details',
@@ -17,6 +19,7 @@ import { ProductPageContentService } from '../../services/product-page-content.s
   styleUrl: './product-details.component.css'
 })
 export class ProductDetailsComponent implements OnInit {
+  readonly cachedMediaUrl = cachedMediaUrl;
   product?: Product;
   loading = true;
   notFound = false;
@@ -52,7 +55,8 @@ export class ProductDetailsComponent implements OnInit {
     private cart: CartService,
     private auth: AuthService,
     private router: Router,
-    private contentService: ProductPageContentService
+    private contentService: ProductPageContentService,
+    private analytics: AnalyticsService
   ) {}
 
   ngOnInit(): void {
@@ -75,6 +79,7 @@ export class ProductDetailsComponent implements OnInit {
           this.activeImage = 0;
           this.quantity = 1;
           this.loading = false;
+          this.analytics.track('PRODUCT_VIEWED', this.router.url, product.id);
         },
         error: () => {
           this.notFound = true;

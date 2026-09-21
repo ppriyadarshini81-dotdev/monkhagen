@@ -11,7 +11,8 @@
       <a routerLink="/about" routerLinkActive="active" (click)="closeMenu()">About Us</a>
 
       <ng-container *ngIf="isAdmin">
-        <a routerLink="/admin" routerLinkActive="active" (click)="closeMenu()">Admin</a>
+        <a routerLink="/admin" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Admin</a>
+        <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Dashboard</a>
       </ng-container>
 
       <div class="mh-nav__mobileonly">

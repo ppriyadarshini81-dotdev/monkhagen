@@ -10,8 +10,14 @@ async function runMaintenance(database = pool) {
       (SELECT key_hash FROM security_rate_limits WHERE reset_at < NOW() - INTERVAL '1 day' LIMIT 1000)`);
     await client.query(`DELETE FROM operation_leases WHERE lock_key IN
       (SELECT lock_key FROM operation_leases WHERE expires_at < NOW() - INTERVAL '1 day' LIMIT 1000)`);
+    const analyticsEvents = await client.query(`DELETE FROM analytics_events WHERE id IN
+      (SELECT id FROM analytics_events WHERE occurred_at < NOW() - INTERVAL '400 days' LIMIT 5000)`);
+    const analyticsSessions = await client.query(`DELETE FROM analytics_sessions WHERE id IN
+      (SELECT s.id FROM analytics_sessions s WHERE s.last_activity_at < NOW() - INTERVAL '400 days'
+        AND NOT EXISTS (SELECT 1 FROM analytics_events e WHERE e.session_id = s.id) LIMIT 1000)`);
     await client.query('COMMIT');
-    return { expiredReservationsChecked: released };
+    return { expiredReservationsChecked: released,
+      analyticsRowsRemoved: analyticsEvents.rowCount + analyticsSessions.rowCount };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;

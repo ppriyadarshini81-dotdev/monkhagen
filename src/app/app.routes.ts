@@ -38,6 +38,18 @@ export const routes: Routes = [
     title: 'Login — Monk Hagen'
   },
   {
+    path: 'dashboard',
+    canActivate: [adminGuard],
+    loadComponent: () =>
+      import('./pages/admin-analytics/admin-analytics.component').then((m) => m.AdminAnalyticsComponent),
+    title: 'Dashboard — Monk Hagen'
+  },
+  {
+    path: 'admin/analytics',
+    redirectTo: 'dashboard',
+    pathMatch: 'full'
+  },
+  {
     path: 'admin',
     canActivate: [adminGuard],
     loadComponent: () =>

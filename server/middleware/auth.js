@@ -8,11 +8,12 @@ const JWT_SECRET = jwtSecret();
 const ADMIN_GOOGLE_EMAIL = adminGoogleEmail();
 const ISSUER = 'monkhagen-api';
 const AUDIENCE = 'monkhagen-web';
-function expirySeconds(role) {
-  const value = process.env.JWT_EXPIRES_IN || '1h';
+const MAX_TOKEN_LIFETIME_SECONDS = 24 * 60 * 60;
+function expirySeconds() {
+  const value = process.env.JWT_EXPIRES_IN || '1d';
   const match = /^(\d+)(s|m|h|d)$/.exec(value);
-  const seconds = match ? Number(match[1]) * ({ s: 1, m: 60, h: 3600, d: 86400 }[match[2]]) : 3600;
-  return Math.max(60, Math.min(seconds, ['admin','super_admin'].includes(role) ? 900 : 3600));
+  const seconds = match ? Number(match[1]) * ({ s: 1, m: 60, h: 3600, d: 86400 }[match[2]]) : MAX_TOKEN_LIFETIME_SECONDS;
+  return Math.max(60, Math.min(seconds, MAX_TOKEN_LIFETIME_SECONDS));
 }
 
 function signToken(user, { provider = null, firebaseAuthTime = Math.floor(Date.now() / 1000) } = {}) {
@@ -21,7 +22,7 @@ function signToken(user, { provider = null, firebaseAuthTime = Math.floor(Date.n
       provider, firebaseUid: provider ? user.firebaseUid : null,
       firebaseAuthTime: provider ? firebaseAuthTime : null, sessionVersion: user.sessionVersion || 0 },
     JWT_SECRET,
-    { expiresIn: expirySeconds(user.role), algorithm: 'HS256', issuer: ISSUER, audience: AUDIENCE }
+    { expiresIn: expirySeconds(), algorithm: 'HS256', issuer: ISSUER, audience: AUDIENCE }
   );
 }
 
@@ -34,7 +35,7 @@ async function authenticate(req, res, next) {
       return res.status(401).json({ message: 'Authentication required.' });
     }
     const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'], issuer: ISSUER, audience: AUDIENCE });
-    const maximumLifetime = ['admin','super_admin'].includes(decoded.role) ? 900 : 3600;
+    const maximumLifetime = MAX_TOKEN_LIFETIME_SECONDS;
     if (!Number.isSafeInteger(decoded.iat) || !Number.isSafeInteger(decoded.exp) || decoded.exp - decoded.iat > maximumLifetime ||
         decoded.iat > Math.floor(Date.now() / 1000) + 30 || !Number.isSafeInteger(decoded.sessionVersion)) {
       return res.status(401).json({ message: 'Sign in again.' });
@@ -64,8 +65,14 @@ async function authenticate(req, res, next) {
     next();
   } catch (error) {
     if (error.status === 503) return res.status(503).json({ message: 'Authentication is temporarily unavailable. Please try again.' });
-    return res.status(401).json({ message: 'Invalid or expired token.' });
+    return res.status(401).json({ message: 'Session expired. Please log in again.' });
   }
+}
+
+function optionalAuthenticate(req, res, next) {
+  const header = req.headers.authorization || '';
+  if (!header) return next();
+  return authenticate(req, res, next);
 }
 
 function requireAdmin(req, res, next) {
@@ -75,4 +82,4 @@ function requireAdmin(req, res, next) {
   return adminLimiter(req, res, next);
 }
 
-module.exports = { signToken, authenticate, requireAdmin, JWT_SECRET };
+module.exports = { signToken, authenticate, optionalAuthenticate, requireAdmin, JWT_SECRET };

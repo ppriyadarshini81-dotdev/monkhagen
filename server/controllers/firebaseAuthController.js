@@ -3,6 +3,7 @@ const User = require('../models/User');
 const { signToken } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
 const { adminGoogleEmail } = require('../config/security');
+const analytics = require('../services/analyticsService');
 
 // POST /api/auth/firebase
 // Firebase owns customer credentials. The API receives and verifies only an ID token.
@@ -36,6 +37,7 @@ exports.firebaseLogin = asyncHandler(async (req, res) => {
   }
 
   let user = await User.findByFirebaseUid(uid);
+  let created = false;
 
   if (!user) {
     const existingByEmail = await User.findOne({ email: normalizedEmail });
@@ -62,6 +64,7 @@ exports.firebaseLogin = asyncHandler(async (req, res) => {
         user = await User.setRole(user.id, 'admin');
       }
     } else {
+      created = true;
       user = await User.createFirebaseUser({
         firebaseUid: uid,
         email: normalizedEmail,
@@ -90,5 +93,9 @@ exports.firebaseLogin = asyncHandler(async (req, res) => {
   }
 
   res.set('Cache-Control', 'no-store');
+  await analytics.recordServerEvent(req, created ? 'SIGNUP' : 'LOGIN', {
+    userId: user.id,
+    dedupeKey: `auth:${created ? 'signup' : 'login'}:${uid}:${decoded.auth_time || Date.now()}`
+  });
   res.json({ token: signToken(user, { provider, firebaseAuthTime: decoded.auth_time || Math.floor(Date.now() / 1000) }), user: user.toJSON() });
 });

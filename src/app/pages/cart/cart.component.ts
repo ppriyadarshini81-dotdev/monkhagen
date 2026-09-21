@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild } from '@angular/core';
+import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Address, AddressPayload } from '../../models/account.model';
@@ -8,6 +8,7 @@ import { AccountService } from '../../services/account.service';
 import { AuthService } from '../../services/auth.service';
 import { CartService } from '../../services/cart.service';
 import { PaymentOrder, PaymentService, RazorpaySuccess } from '../../services/payment.service';
+import { AnalyticsService } from '../../services/analytics.service';
 
 @Component({
   selector: 'app-cart',
@@ -16,7 +17,7 @@ import { PaymentOrder, PaymentService, RazorpaySuccess } from '../../services/pa
   templateUrl: './cart.component.html',
   styleUrl: './cart.component.css'
 })
-export class CartComponent {
+export class CartComponent implements OnInit {
   @ViewChild('addressDialog') addressDialog!: ElementRef<HTMLDialogElement>;
   addingAddress = false;
   loadingAddresses = false;
@@ -34,8 +35,13 @@ export class CartComponent {
     public cart: CartService,
     private account: AccountService,
     private auth: AuthService,
-    private payments: PaymentService
+    private payments: PaymentService,
+    private analytics: AnalyticsService
   ) {}
+
+  ngOnInit(): void {
+    this.analytics.track('CART_VIEWED');
+  }
 
   checkout(): void {
     if (this.placing) return;
@@ -43,6 +49,7 @@ export class CartComponent {
     this.checkoutError = '';
     this.addressAttempted = false;
     this.addressDialog.nativeElement.showModal();
+    this.analytics.track('CHECKOUT_STARTED');
     this.loadAddresses();
   }
 
@@ -84,6 +91,7 @@ export class CartComponent {
       return;
     }
     this.placing = true;
+    this.analytics.track('ADDRESS_SELECTED');
     if (this.selectedAddressId) {
       this.startPayment(this.selectedAddressId);
       return;
@@ -198,6 +206,9 @@ export class CartComponent {
       });
       this.verifyPayment(order, result);
     } catch (error) {
+      if (error instanceof Error && error.message.includes('closed')) {
+        this.analytics.track('PAYMENT_WINDOW_CLOSED');
+      }
       this.fail(error instanceof Error ? error.message : 'Payment was not completed.');
     }
   }

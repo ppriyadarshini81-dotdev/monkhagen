@@ -773,6 +773,10 @@ async function applySecurityIntegrityMigration(database = pool) {
   await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '006_security_integrity.sql'), 'utf8'));
 }
 
+async function applyAnalyticsMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '008_analytics.sql'), 'utf8'));
+}
+
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
   try {
@@ -824,9 +828,10 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const integrityApplied = await runMigration('006_security_integrity', applySecurityIntegrityMigration);
     const sessionsApplied = await runMigration('007_session_revocation', database =>
       database.query(readFileSync(path.join(__dirname, '..', 'migrations', '007_session_revocation.sql'), 'utf8')));
+    const analyticsApplied = await runMigration('008_analytics', applyAnalyticsMigration);
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
@@ -849,5 +854,6 @@ module.exports = {
   applySizeChartCareMigration,
   applyGoogleAdminMigration,
   applySecurityIntegrityMigration,
+  applyAnalyticsMigration,
   runMigration
 };
