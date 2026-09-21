@@ -4,7 +4,6 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { ProductService } from '../../services/product.service';
 import { CartService } from '../../services/cart.service';
-import { AuthService } from '../../services/auth.service';
 import { sortSizes } from '../../utils/size-order';
 import { ProductPageContent } from '../../models/product-page-content.model';
 import { ProductPageContentService } from '../../services/product-page-content.service';
@@ -149,7 +148,6 @@ export class ProductDetailsComponent implements OnInit {
     private route: ActivatedRoute,
     private productService: ProductService,
     public cart: CartService,
-    private auth: AuthService,
     private router: Router,
     private contentService: ProductPageContentService,
     private analytics: AnalyticsService
@@ -218,12 +216,6 @@ export class ProductDetailsComponent implements OnInit {
       return;
     }
 
-    if (!this.auth.isLoggedIn) {
-      this.router.navigate(['/login'], {
-        queryParams: { redirect: this.router.url }
-      });
-      return;
-    }
     if (this.product.sizes.length > 0 && !this.selectedSize) {
       this.addError = 'Please select a size.';
       return;

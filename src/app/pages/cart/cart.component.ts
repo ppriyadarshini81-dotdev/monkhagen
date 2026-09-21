@@ -1,7 +1,8 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { combineLatest, filter, take } from 'rxjs';
 import { Address, AddressPayload } from '../../models/account.model';
 import { CartItem } from '../../models/cart.model';
 import { AccountService } from '../../services/account.service';
@@ -21,7 +22,7 @@ type PaymentMethod = 'razorpay' | 'cod';
   templateUrl: './cart.component.html',
   styleUrl: './cart.component.css'
 })
-export class CartComponent implements OnInit {
+export class CartComponent implements OnInit, AfterViewInit {
   @ViewChild('addressDialog') addressDialog!: ElementRef<HTMLDialogElement>;
   addingAddress = false;
   loadingAddresses = false;
@@ -44,15 +45,38 @@ export class CartComponent implements OnInit {
     private auth: AuthService,
     private payments: PaymentService,
     private analytics: AnalyticsService,
-    private orders: OrderService
+    private orders: OrderService,
+    private router: Router,
+    private route: ActivatedRoute
   ) {}
 
   ngOnInit(): void {
     this.analytics.track('CART_VIEWED');
   }
 
+  ngAfterViewInit(): void {
+    if (!this.auth.isLoggedIn || this.route.snapshot.queryParamMap.get('checkout') !== '1') return;
+    combineLatest([this.auth.user$, this.cart.loading$]).pipe(
+      filter(([user, loading]) => Boolean(user) && !loading),
+      take(1)
+    ).subscribe(() => {
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { checkout: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true
+      });
+      queueMicrotask(() => this.checkout());
+    });
+  }
+
   checkout(): void {
-    if (this.placing) return;
+    if (this.placing || this.cart.loading) return;
+    if (!this.auth.isLoggedIn) {
+      this.cart.closePreview();
+      this.router.navigate(['/login'], { queryParams: { redirect: '/cart?checkout=1' } });
+      return;
+    }
     this.error = '';
     this.checkoutError = '';
     this.addressAttempted = false;

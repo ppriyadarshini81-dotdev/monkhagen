@@ -71,8 +71,8 @@
         </div>
 
         <p class="mh-error" *ngIf="error">{{ error }}</p>
-        <button class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing" (click)="checkout()">
-          {{ placing ? 'Processing...' : 'Checkout' }}
+          <button class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing || cart.loading" (click)="checkout()">
+            {{ cart.loading ? 'Syncing cart...' : (placing ? 'Processing...' : 'Checkout') }}
         </button>
       </aside>
       <section class="mh-cart__offers" *ngIf="cart.prepaidOffer.eligible" aria-labelledby="cart-offers-title">

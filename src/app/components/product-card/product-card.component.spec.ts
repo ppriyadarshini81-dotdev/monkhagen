@@ -1,14 +1,12 @@
 import { fakeAsync, tick } from '@angular/core/testing';
-import { Router } from '@angular/router';
 import { Product } from '../../models/product.model';
-import { AuthService } from '../../services/auth.service';
 import { CartService } from '../../services/cart.service';
 import { ProductService } from '../../services/product.service';
 import { ProductCardComponent } from './product-card.component';
 
 describe('Product card hover slideshow', () => {
   function createCard(images = ['first.webp', 'second.webp', 'third.webp']): ProductCardComponent {
-    const card = new ProductCardComponent({} as CartService, {} as AuthService, {} as ProductService, {} as Router);
+    const card = new ProductCardComponent({} as CartService, {} as ProductService);
     card.product = { images } as Product;
     card.cycleImages = true;
     card.ngOnChanges();

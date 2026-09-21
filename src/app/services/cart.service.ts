@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, tap, throwError } from 'rxjs';
+import { BehaviorSubject, firstValueFrom, Observable, of, tap, throwError } from 'rxjs';
 import { Cart, CartItem, PrepaidOffer } from '../models/cart.model';
 import { Product } from '../models/product.model';
 import { AuthService } from './auth.service';
@@ -9,6 +9,7 @@ const EMPTY_OFFER: PrepaidOffer = {
   code: 'MONKHAGEN10', discountPercent: 10, eligible: false, discountAmount: 0, totalAmount: 0
 };
 const EMPTY_CART: Cart = { cartId: '', items: [], total: 0, prepaidOffer: EMPTY_OFFER };
+const GUEST_CART_KEY = 'mh_guest_cart_v1';
 
 @Injectable({ providedIn: 'root' })
 export class CartService {
@@ -26,13 +27,13 @@ export class CartService {
     private http: HttpClient,
     private auth: AuthService
   ) {
-    // Remove the legacy device-wide cart; authenticated carts now live in PostgreSQL.
+    // Remove the obsolete cart shape. Guest carts use a versioned, variant-based shape.
     localStorage.removeItem('mh_cart');
     this.auth.user$.subscribe((user) => {
       if (user && this.auth.token) {
-        this.load().subscribe({ error: () => this.reset() });
+        void this.activateAuthenticatedCart();
       } else {
-        this.reset();
+        this.apply(this.guestCart());
       }
     });
   }
@@ -69,6 +70,11 @@ export class CartService {
   }
 
   load(): Observable<Cart> {
+    if (!this.auth.isLoggedIn) {
+      const cart = this.guestCart();
+      this.apply(cart);
+      return of(cart);
+    }
     this.loadingSubject.next(true);
     return this.http.get<Cart>(this.api).pipe(
       tap({
@@ -87,9 +93,6 @@ export class CartService {
     size: string | null = null,
     color: string | null = null
   ): Observable<Cart> {
-    if (!this.auth.isLoggedIn) {
-      return throwError(() => new Error('Please sign in to add items to your cart.'));
-    }
     if (product.sizes.length > 0 && !size) {
       return throwError(() => new Error('Please select a size.'));
     }
@@ -105,32 +108,82 @@ export class CartService {
       return throwError(() => new Error('The selected size is currently unavailable.'));
     }
 
+    const safeQuantity = Math.max(1, Math.trunc(quantity));
+    if (!this.auth.isLoggedIn) {
+      const items = [...this.readGuestItems()];
+      const index = items.findIndex((item) => item.variantId === variant.id);
+      const nextQuantity = (index >= 0 ? items[index].quantity : 0) + safeQuantity;
+      if (nextQuantity > variant.stock) {
+        return throwError(() => new Error(`Only ${variant.stock} item(s) are available.`));
+      }
+      if (index >= 0) {
+        items[index] = { ...items[index], quantity: nextQuantity, stock: variant.stock };
+      } else {
+        items.push({
+          id: `guest:${variant.id}`,
+          cartId: 'guest',
+          productId: product.id,
+          variantId: variant.id,
+          quantity: safeQuantity,
+          productName: product.name,
+          productSlug: product.slug,
+          size: variant.size || size,
+          color: variant.color || color,
+          sku: variant.sku,
+          price: variant.price ?? product.price,
+          imageUrl: product.images[0] || null,
+          stock: variant.stock
+        });
+      }
+      return of(this.persistGuestItems(items));
+    }
+
     return this.http.post<Cart>(`${this.api}/items`, {
       productId: product.id,
       variantId: variant.id,
-      quantity: Math.max(1, Math.trunc(quantity))
+      quantity: safeQuantity
     }).pipe(tap((cart) => this.apply(cart)));
   }
 
   updateQuantity(itemId: string, quantity: number): Observable<Cart> {
+    if (!this.auth.isLoggedIn) {
+      const items = [...this.readGuestItems()];
+      const index = items.findIndex((item) => item.id === itemId);
+      if (index < 0) return throwError(() => new Error('Cart item not found.'));
+      const safeQuantity = Math.max(1, Math.trunc(quantity));
+      if (items[index].stock !== null && safeQuantity > items[index].stock!) {
+        return throwError(() => new Error(`Only ${items[index].stock} item(s) are available.`));
+      }
+      items[index] = { ...items[index], quantity: safeQuantity };
+      return of(this.persistGuestItems(items));
+    }
     return this.http.put<Cart>(`${this.api}/items/${itemId}`, {
       quantity: Math.max(1, Math.trunc(quantity))
     }).pipe(tap((cart) => this.apply(cart)));
   }
 
   remove(itemId: string): Observable<Cart> {
+    if (!this.auth.isLoggedIn) {
+      return of(this.persistGuestItems(this.readGuestItems().filter((item) => item.id !== itemId)));
+    }
     return this.http.delete<Cart>(`${this.api}/items/${itemId}`).pipe(
       tap((cart) => this.apply(cart))
     );
   }
 
   clear(): Observable<{ message: string }> {
+    if (!this.auth.isLoggedIn) {
+      localStorage.removeItem(GUEST_CART_KEY);
+      this.apply(EMPTY_CART);
+      return of({ message: 'Cart cleared.' });
+    }
     return this.http.delete<{ message: string }>(this.api).pipe(
       tap(() => this.reset())
     );
   }
 
   reset(): void {
+    localStorage.removeItem(GUEST_CART_KEY);
     this.apply(EMPTY_CART);
     this.closePreview();
     this.loadingSubject.next(false);
@@ -139,5 +192,69 @@ export class CartService {
   private apply(cart: Cart): void {
     this.itemsSubject.next(cart.items || []);
     this.currentPrepaidOffer = cart.prepaidOffer || EMPTY_OFFER;
+  }
+
+  private guestCart(): Cart {
+    const items = this.readGuestItems();
+    const total = items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+    return {
+      cartId: 'guest',
+      items,
+      total,
+      prepaidOffer: { ...EMPTY_OFFER, totalAmount: total }
+    };
+  }
+
+  private readGuestItems(): CartItem[] {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(GUEST_CART_KEY) || '[]');
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter((item): item is CartItem =>
+        item && typeof item.id === 'string' && typeof item.productId === 'string' &&
+        typeof item.variantId === 'string' && Number.isSafeInteger(item.quantity) &&
+        item.quantity > 0 && item.quantity <= 100 &&
+        (item.price === null || (Number.isFinite(item.price) && item.price >= 0))
+      );
+    } catch {
+      localStorage.removeItem(GUEST_CART_KEY);
+      return [];
+    }
+  }
+
+  private persistGuestItems(items: CartItem[]): Cart {
+    localStorage.setItem(GUEST_CART_KEY, JSON.stringify(items));
+    const cart = this.guestCart();
+    this.apply(cart);
+    return cart;
+  }
+
+  private async activateAuthenticatedCart(): Promise<void> {
+    this.loadingSubject.next(true);
+    let serverCart: Cart | null = null;
+    try {
+      serverCart = await firstValueFrom(this.http.get<Cart>(this.api));
+      for (const guestItem of this.readGuestItems()) {
+        const existing: CartItem | undefined = serverCart.items.find(
+          (item: CartItem) => item.variantId === guestItem.variantId
+        );
+        if (existing && guestItem.quantity > existing.quantity) {
+          serverCart = await firstValueFrom(this.http.put<Cart>(`${this.api}/items/${existing.id}`, {
+            quantity: guestItem.quantity
+          }));
+        } else if (!existing) {
+          serverCart = await firstValueFrom(this.http.post<Cart>(`${this.api}/items`, {
+            productId: guestItem.productId,
+            variantId: guestItem.variantId,
+            quantity: guestItem.quantity
+          }));
+        }
+      }
+      localStorage.removeItem(GUEST_CART_KEY);
+      this.apply(serverCart);
+    } catch {
+      if (serverCart) this.apply(serverCart);
+    } finally {
+      this.loadingSubject.next(false);
+    }
   }
 }

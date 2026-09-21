@@ -26,7 +26,6 @@ export const routes: Routes = [
   },
   {
     path: 'cart',
-    canActivate: [customerGuard],
     loadComponent: () =>
       import('./pages/cart/cart.component').then((m) => m.CartComponent),
     title: 'Cart — Monk Hagen'
