@@ -66,7 +66,7 @@ DB_PASSWORD=
 
 # At least 32 characters. The server refuses to start without it in production.
 JWT_SECRET=
-JWT_EXPIRES_IN=7d
+JWT_EXPIRES_IN=1d
 
 # Comma-separated browser origins, for example https://monkhagen.com
 CORS_ORIGINS=

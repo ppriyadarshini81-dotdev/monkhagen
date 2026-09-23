@@ -253,7 +253,8 @@ exports.getOrders = asyncHandler(async (req, res) => {
        s.pickup_status AS shipment_pickup_status,
        s.estimated_delivery AS shipment_estimated_delivery
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
-     WHERE o.user_id = $1 AND o.payment_status = 'paid'
+     WHERE o.user_id = $1
+       AND (o.payment_status = 'paid' OR (o.payment_method = 'cod' AND o.payment_status = 'pending'))
      ORDER BY o.created_at DESC LIMIT $2 OFFSET $3`,
     [req.user.id, limit, offset]
   );
@@ -272,7 +273,8 @@ exports.getOrder = asyncHandler(async (req, res) => {
        s.pickup_status AS shipment_pickup_status,
        s.estimated_delivery AS shipment_estimated_delivery
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
-     WHERE o.id = $1 AND o.user_id = $2 AND o.payment_status = 'paid'`,
+     WHERE o.id = $1 AND o.user_id = $2
+       AND (o.payment_status = 'paid' OR (o.payment_method = 'cod' AND o.payment_status = 'pending'))`,
     [req.params.orderId, req.user.id]
   );
   if (!rows[0]) return res.status(404).json({ message: 'Order not found.' });

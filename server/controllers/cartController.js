@@ -1,5 +1,6 @@
 const Cart = require('../models/Cart');
 const asyncHandler = require('../middleware/asyncHandler');
+const analytics = require('../services/analyticsService');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -24,6 +25,9 @@ exports.addItem = asyncHandler(async (req, res) => {
   }
 
   const cart = await Cart.addItem(req.user.id, { productId, variantId, quantity });
+  await analytics.recordServerEvent(req, 'ADD_TO_CART', {
+    productId, cartId: cart.cartId
+  });
   res.json(cart);
 });
 
@@ -45,6 +49,7 @@ exports.removeItem = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Valid itemId is required.' });
   }
   const cart = await Cart.removeItem(req.user.id, req.params.itemId);
+  await analytics.recordServerEvent(req, 'REMOVE_FROM_CART', { cartId: cart.cartId });
   res.json(cart);
 });
 

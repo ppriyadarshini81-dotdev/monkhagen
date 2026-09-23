@@ -20,4 +20,13 @@ export interface Cart {
   cartId: string;
   items: CartItem[];
   total: number;
+  prepaidOffer: PrepaidOffer;
+}
+
+export interface PrepaidOffer {
+  code: string;
+  discountPercent: number;
+  eligible: boolean;
+  discountAmount: number;
+  totalAmount: number;
 }

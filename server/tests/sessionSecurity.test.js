@@ -24,12 +24,12 @@ async function run(callback) {
   const request = token => fetch(base, { headers: { Authorization: `Bearer ${token}` } });
   try { await callback({ user, request, base }); } finally { await new Promise(resolve => server.close(resolve)); }
 }
-test('tokens have bounded lifetimes, explicit issuer/audience and revocation version', () => {
+test('admin and customer tokens are capped at one day with explicit issuer/audience and revocation version', () => {
   process.env.JWT_EXPIRES_IN = '7d';
   for (const role of ['customer','admin','super_admin']) {
     const claims = jwt.verify(signToken({ id: 'test', role }), JWT_SECRET);
     assert.equal(claims.iss, 'monkhagen-api'); assert.equal(claims.aud, 'monkhagen-web');
-    assert.equal(claims.exp - claims.iat, role === 'customer' ? 3600 : 900); assert.equal(claims.sessionVersion, 0);
+    assert.equal(claims.exp - claims.iat, 86400); assert.equal(claims.sessionVersion, 0);
   }
   delete process.env.JWT_EXPIRES_IN;
 });

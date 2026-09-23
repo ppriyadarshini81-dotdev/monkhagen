@@ -5,8 +5,8 @@ import { Product } from '../../models/product.model';
 import { ProductPageContent } from '../../models/product-page-content.model';
 import { ProductService } from '../../services/product.service';
 import { ProductPageContentService } from '../../services/product-page-content.service';
-import { AuthService } from '../../services/auth.service';
 import { CartService } from '../../services/cart.service';
+import { AnalyticsService } from '../../services/analytics.service';
 import { ProductDetailsComponent } from './product-details.component';
 
 describe('Product details shared content', () => {
@@ -34,8 +34,10 @@ describe('Product details shared content', () => {
       { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ slug: 'test-shirt' })) } },
       { provide: ProductService, useValue: productService },
       { provide: ProductPageContentService, useValue: contentService },
-      { provide: AuthService, useValue: { isLoggedIn: false } },
-      { provide: CartService, useValue: {} }
+      { provide: CartService, useValue: {
+        prepaidOffer: { code: 'MONKHAGEN10', discountPercent: 10, eligible: false, discountAmount: 0, totalAmount: 0 }
+      } },
+      { provide: AnalyticsService, useValue: { track: () => undefined } }
     ] }).compileComponents();
     fixture = TestBed.createComponent(ProductDetailsComponent);
   });

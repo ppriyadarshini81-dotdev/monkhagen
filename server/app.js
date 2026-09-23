@@ -17,10 +17,11 @@ function createApp() {
   app.use('/api/webhooks/razorpay', express.raw({ type: 'application/json', limit: '1mb' }), require('./routes/webhooks'));
   app.use(express.json({ limit: '2mb' }));
   app.use('/api', requestShape);
+  app.use('/api/admin/analytics', require('./routes/adminAnalytics'));
   const routes = { products: 'products', 'product-page-content': 'productPageContent', categories: 'categories',
     badges: 'badges', sizes: 'sizes', colors: 'colors', auth: 'auth', orders: 'orders', cart: 'cart',
     upload: 'upload', account: 'account', contact: 'contact', media: 'media', payments: 'payments',
-    shipping: 'shipping', maintenance: 'maintenance' };
+    shipping: 'shipping', maintenance: 'maintenance', analytics: 'analytics' };
   for (const [url, file] of Object.entries(routes)) app.use(`/api/${url}`, require(`./routes/${file}`));
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', brand: 'Monk Hagen' }));
   if (process.env.NODE_ENV === 'production') {

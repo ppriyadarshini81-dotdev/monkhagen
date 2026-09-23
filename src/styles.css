@@ -195,6 +195,88 @@ h3 {
   font-size: 13px;
 }
 
+/* Compact analytics micro-charts live globally to keep the lazy component's
+   style payload within Angular's per-component production budget. */
+app-admin-analytics .activity-strips { display: grid; gap: 7px; margin-top: 14px; }
+app-admin-analytics .activity-strips > div { height: 34px; display: flex; align-items: flex-end; gap: 3px; padding-left: 82px; position: relative; }
+app-admin-analytics .activity-strips span { position: absolute; left: 0; top: 9px; color: var(--mh-text-dim); font-size: 10px; }
+app-admin-analytics .activity-strips i { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0; background: #aab7fa; }
+app-admin-analytics .activity-strips > div:last-child i { background: #1e9b73; }
+app-admin-analytics .journey-segments { display: flex; overflow: hidden; border: 1px solid var(--mh-line); border-radius: 8px; }
+app-admin-analytics .journey-segments div { flex: 1; min-width: 0; padding: 10px 7px; border-right: 1px solid var(--mh-line); background: #fafaf8; }
+app-admin-analytics .journey-segments div:last-child { border: 0; }
+app-admin-analytics .journey-segments span { display: block; overflow: hidden; color: var(--mh-text-dim); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+app-admin-analytics .journey-segments strong { font-size: 13px; }
+
+/* Premium analytics colour system and interaction states. Kept globally
+   scoped so the lazy dashboard remains within its component CSS budget. */
+app-admin-analytics { --dash-blue: #3455e8; --dash-violet: #7357f5; --dash-teal: #0d9f83; --dash-amber: #d98a12; --dash-coral: #dc5964; }
+app-admin-analytics .analytics-head { padding: 30px; border: 1px solid rgba(80, 96, 205, .15); border-radius: 22px; background: linear-gradient(125deg, #fff 0%, #f0f3ff 50%, #eefbf8 100%); box-shadow: 0 18px 50px rgba(49, 61, 132, .08); }
+app-admin-analytics .analytics-head h1 { background: linear-gradient(100deg, #13183b, #3e49bd 58%, #087d71); background-clip: text; -webkit-background-clip: text; color: transparent; }
+app-admin-analytics .analytics-controls select,
+app-admin-analytics .analytics-controls input { border-color: #dce1f5; border-radius: 10px; background: rgba(255,255,255,.9); transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease; }
+app-admin-analytics .refresh { border-radius: 10px; background: linear-gradient(120deg, #2847ed, #7258f5); box-shadow: 0 9px 22px rgba(54, 68, 206, .22); transition: transform .2s ease, box-shadow .2s ease; }
+app-admin-analytics .kpi,
+app-admin-analytics .panel,
+app-admin-analytics .highlight-grid article,
+app-admin-analytics .audience-split > div,
+app-admin-analytics .stat-row > div,
+app-admin-analytics .mini-list article,
+app-admin-analytics tbody tr,
+app-admin-analytics .journey-segments > div,
+app-admin-analytics .hour-chart > span,
+app-admin-analytics .activity-strips i { transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease, background-color .22s ease, filter .22s ease, opacity .22s ease; }
+app-admin-analytics .kpi { --card-accent: var(--dash-blue); --card-tint: #eef2ff; position: relative; isolation: isolate; overflow: hidden; border-color: color-mix(in srgb, var(--card-accent) 18%, #e3e5ef); background: linear-gradient(145deg, #fff 34%, var(--card-tint)); box-shadow: 0 8px 25px rgba(35, 43, 92, .055); }
+app-admin-analytics .kpi::before { content: ''; position: absolute; z-index: -1; inset: 0 0 auto; height: 4px; background: var(--card-accent); }
+app-admin-analytics .kpi::after { content: ''; position: absolute; z-index: -1; width: 100px; height: 100px; right: -45px; bottom: -50px; border-radius: 50%; background: var(--card-accent); opacity: .08; transition: transform .3s ease, opacity .3s ease; }
+app-admin-analytics .kpi-grid .kpi:nth-child(5n + 2) { --card-accent: var(--dash-violet); --card-tint: #f3efff; }
+app-admin-analytics .kpi-grid .kpi:nth-child(5n + 3) { --card-accent: var(--dash-teal); --card-tint: #eafaf6; }
+app-admin-analytics .kpi-grid .kpi:nth-child(5n + 4) { --card-accent: var(--dash-amber); --card-tint: #fff7e8; }
+app-admin-analytics .kpi-grid .kpi:nth-child(5n) { --card-accent: var(--dash-coral); --card-tint: #fff0f2; }
+app-admin-analytics .kpi__label { color: var(--card-accent); }
+app-admin-analytics .kpi:hover { z-index: 2; transform: translateY(-6px); border-color: color-mix(in srgb, var(--card-accent) 45%, #fff); box-shadow: 0 18px 42px color-mix(in srgb, var(--card-accent) 18%, transparent); }
+app-admin-analytics .kpi:hover::after { opacity: .15; transform: scale(1.45); }
+app-admin-analytics .panel { position: relative; overflow: hidden; box-shadow: 0 8px 28px rgba(35, 43, 92, .045); transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease; }
+app-admin-analytics .panel::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 3px; background: linear-gradient(#5362f2, #7357f5); opacity: .75; }
+app-admin-analytics .panel:hover { transform: translateY(-3px); border-color: #cfd5f3; box-shadow: 0 18px 45px rgba(39, 47, 99, .09); }
+app-admin-analytics .two-column .panel:nth-child(2)::before { background: linear-gradient(#0d9f83, #62cfad); }
+app-admin-analytics .section-kicker { display: inline-flex; padding: 5px 8px; border-radius: 999px; background: #eef1ff; }
+app-admin-analytics .two-column .panel:nth-child(2) .section-kicker { color: var(--dash-teal); background: #eaf9f5; }
+app-admin-analytics .highlight-grid article { border: 1px solid #e1e5fa; border-left: 4px solid var(--dash-violet); border-radius: 10px; background: linear-gradient(135deg, #fff, #f5f2ff); }
+app-admin-analytics .highlight-grid article:nth-child(2) { border-left-color: var(--dash-teal); background: linear-gradient(135deg, #fff, #edfaf7); }
+app-admin-analytics .highlight-grid article:nth-child(3) { border-left-color: var(--dash-amber); background: linear-gradient(135deg, #fff, #fff7e9); }
+app-admin-analytics .highlight-grid article:nth-child(4) { border-left-color: var(--dash-coral); background: linear-gradient(135deg, #fff, #fff0f2); }
+app-admin-analytics .highlight-grid article:hover { transform: translateY(-4px) scale(1.01); box-shadow: 0 12px 28px rgba(59, 47, 145, .12); }
+app-admin-analytics .audience-split > div,
+app-admin-analytics .stat-row > div { border: 1px solid transparent; background: linear-gradient(145deg, #f7f8ff, #eef1ff); }
+app-admin-analytics .audience-split > div:nth-child(3n + 2),
+app-admin-analytics .stat-row > div:nth-child(2) { background: linear-gradient(145deg, #f3fffb, #e9f9f4); }
+app-admin-analytics .audience-split > div:nth-child(3n),
+app-admin-analytics .stat-row > div:nth-child(3) { background: linear-gradient(145deg, #fffaf0, #fff2dc); }
+app-admin-analytics .audience-split > div:hover,
+app-admin-analytics .stat-row > div:hover { transform: translateY(-3px); border-color: #d4daf7; box-shadow: 0 9px 22px rgba(48, 60, 137, .1); }
+app-admin-analytics .funnel__stage { padding: 8px 10px; border-radius: 9px; transition: background .2s ease, transform .2s ease; }
+app-admin-analytics .funnel__stage:hover { transform: translateX(4px); background: #f3f5ff; }
+app-admin-analytics .funnel__stage:hover .funnel__track span { filter: saturate(1.3) brightness(1.05); box-shadow: 0 3px 9px rgba(77, 76, 223, .3); }
+app-admin-analytics .hour-chart > span:hover,
+app-admin-analytics .activity-strips i:hover { opacity: 1; filter: saturate(1.45) brightness(.95); transform: scaleX(1.2); }
+app-admin-analytics .journey-segments > div:hover { z-index: 1; transform: translateY(-2px); background: #eef1ff; box-shadow: 0 6px 16px rgba(45, 57, 145, .1); }
+app-admin-analytics tbody tr:hover { background: #f0f3ff; box-shadow: inset 3px 0 var(--dash-blue); }
+app-admin-analytics th button:hover { color: var(--dash-blue); }
+app-admin-analytics .mini-list article:hover { padding-left: 9px; padding-right: 9px; border-radius: 8px; background: #f2f5ff; }
+app-admin-analytics .value-callout { background: linear-gradient(130deg, #f1f4ff, #eefbf8); }
+app-admin-analytics .payment-ring { box-shadow: 0 12px 30px rgba(53, 69, 184, .18); transition: transform .3s ease, box-shadow .3s ease; }
+app-admin-analytics .payment-ring:hover { transform: scale(1.045) rotate(2deg); box-shadow: 0 18px 38px rgba(53, 69, 184, .24); }
+app-admin-analytics .analytics-controls select:hover,
+app-admin-analytics .analytics-controls input:hover,
+app-admin-analytics .analytics-controls select:focus,
+app-admin-analytics .analytics-controls input:focus { outline: none; border-color: #7a87df; box-shadow: 0 0 0 4px rgba(75, 91, 214, .1); transform: translateY(-1px); }
+app-admin-analytics .refresh:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 13px 28px rgba(54, 68, 206, .3); }
+app-admin-analytics .refresh:active:not(:disabled) { transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+  app-admin-analytics *, app-admin-analytics *::before, app-admin-analytics *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

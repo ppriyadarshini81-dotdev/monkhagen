@@ -1,0 +1,198 @@
+<section class="analytics-shell">
+  <header class="analytics-head">
+    <div>
+      <span class="mh-eyebrow">Admin analytics</span>
+      <h1>Commerce intelligence</h1>
+      <p>Visitor behaviour, conversion and revenue in one operational view.</p>
+    </div>
+    <div class="analytics-controls">
+      <label>
+        <span>Date range</span>
+        <select [(ngModel)]="range" (change)="changeRange()">
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="this_month">This month</option>
+          <option value="custom">Custom range</option>
+        </select>
+      </label>
+      <ng-container *ngIf="range === 'custom'">
+        <label><span>From</span><input type="date" [(ngModel)]="customStart" /></label>
+        <label><span>To</span><input type="date" [(ngModel)]="customEnd" /></label>
+      </ng-container>
+      <button class="refresh" (click)="refresh()" [disabled]="loading">
+        <span [class.spinning]="loading">↻</span> Refresh
+      </button>
+    </div>
+  </header>
+
+  <div class="analytics-meta" *ngIf="overview">
+    <span>{{ overview.period.label }}</span>
+    <span>{{ overview.period.timezone }}</span>
+    <span *ngIf="refreshedAt">Updated {{ refreshedAt | date:'shortTime' }}</span>
+  </div>
+  <p class="analytics-error" *ngIf="error">{{ error }}</p>
+
+  <div class="skeleton-grid" *ngIf="loading && !overview" aria-label="Loading analytics">
+    <span *ngFor="let item of primaryKpis"></span>
+  </div>
+
+  <ng-container *ngIf="overview">
+    <div class="kpi-grid kpi-grid--primary">
+      <article class="kpi" *ngFor="let item of primaryKpis">
+        <span class="kpi__label">{{ item.label }}</span>
+        <strong>{{ value(item) }}</strong>
+        <small [class.positive]="(metric(item.key).changePercent || 0) > 0"
+               [class.negative]="(metric(item.key).changePercent || 0) < 0">
+          {{ changeLabel(metric(item.key)) }}
+        </small>
+      </article>
+    </div>
+
+    <div class="kpi-grid kpi-grid--secondary">
+      <article class="kpi kpi--small" *ngFor="let item of secondaryKpis">
+        <span class="kpi__label">{{ item.label }}</span>
+        <strong>{{ value(item) }}</strong>
+        <small>{{ changeLabel(metric(item.key)) }}</small>
+      </article>
+    </div>
+  </ng-container>
+
+  <section class="panel panel--wide" *ngIf="revenue">
+    <div class="panel__head">
+      <div><span class="section-kicker">Performance</span><h2>Revenue & orders</h2></div>
+      <strong>{{ currency(maxRevenue) }}<small> peak day</small></strong>
+    </div>
+    <div class="chart-wrap" *ngIf="revenue.points.length; else noRevenue">
+      <svg viewBox="0 0 900 260" role="img" aria-label="Revenue over time">
+        <defs>
+          <linearGradient id="revenueFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#7357ff" stop-opacity=".32" />
+            <stop offset=".55" stop-color="#2f68ff" stop-opacity=".12" />
+            <stop offset="1" stop-color="#12b89a" stop-opacity="0" />
+          </linearGradient>
+        </defs>
+        <line *ngFor="let y of [40, 85, 130, 175, 220]" x1="20" [attr.y1]="y" x2="880" [attr.y2]="y" class="chart-grid" />
+        <path [attr.d]="revenueArea" fill="url(#revenueFill)" />
+        <polyline [attr.points]="revenuePoints" class="chart-line" />
+      </svg>
+      <div class="chart-labels">
+        <span *ngFor="let point of revenue.points; let i = index"
+          [hidden]="revenue.points.length > 12 && i % math.ceil(revenue.points.length / 7) !== 0">
+          {{ shortDate(point.date) }}<b>{{ currency(point.revenue) }}</b><small>{{ point.orders }} orders</small>
+        </span>
+      </div>
+      <div class="activity-strips">
+        <div><span>Visitors</span><i *ngFor="let point of revenue.points" [style.height.%]="point.visitors * 100 / maxDailyVisitors" [attr.title]="shortDate(point.date) + ': ' + point.visitors"></i></div>
+        <div><span>Add to cart</span><i *ngFor="let point of revenue.points" [style.height.%]="point.addToCarts * 100 / maxDailyAdds" [attr.title]="shortDate(point.date) + ': ' + point.addToCarts"></i></div>
+      </div>
+    </div>
+    <ng-template #noRevenue><div class="empty">Revenue will appear after the first successful payment in this period.</div></ng-template>
+  </section>
+
+  <div class="two-column">
+    <section class="panel" *ngIf="funnel">
+      <div class="panel__head"><div><span class="section-kicker">Conversion</span><h2>Commerce funnel</h2></div></div>
+      <div class="funnel">
+        <div class="funnel__stage" *ngFor="let stage of funnel.stages; let first = first">
+          <div class="funnel__labels"><span>{{ stage.label }}</span><strong>{{ stage.count | number }}</strong></div>
+          <div class="funnel__track"><span [style.width.%]="funnelWidth(stage.count)"></span></div>
+          <small *ngIf="!first">{{ stage.conversionFromPrevious }}% continued · {{ stage.dropOffFromPrevious }}% drop-off</small>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" *ngIf="visitors">
+      <div class="panel__head"><div><span class="section-kicker">Audience</span><h2>Visitor behaviour</h2></div></div>
+      <div class="audience-split">
+        <div><strong>{{ visitors.summary.newVisitors | number }}</strong><span>New visitors</span></div>
+        <div><strong>{{ visitors.summary.returningVisitors | number }}</strong><span>Returning visitors</span></div>
+        <div><strong>{{ visitors.summary.newUsers | number }}</strong><span>New users</span></div>
+        <div><strong>{{ visitors.summary.customersPurchased | number }}</strong><span>Customers purchased</span></div>
+        <div><strong>{{ visitors.summary.customersNeverPurchased | number }}</strong><span>Never purchased</span></div>
+        <div><strong>{{ visitors.summary.repeatCustomers | number }}</strong><span>Repeat customers</span></div>
+      </div>
+      <h3 class="minor-title">Journey segments</h3>
+      <div class="journey-segments">
+        <div *ngFor="let segment of behaviorSegments"><span>{{ segment.label }}</span><strong>{{ segment.count }}</strong></div>
+      </div>
+      <h3 class="minor-title">Visitors by hour</h3>
+      <div class="hour-chart" aria-label="Visitors by hour of day">
+        <span *ngFor="let point of visitors.hourly" [style.height.%]="point.visitors * 100 / maxHourlyVisitors"
+          [attr.title]="point.hour + ':00 — ' + point.visitors + ' visitors'"><i>{{ point.hour }}</i></span>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel panel--wide" *ngIf="products">
+    <div class="panel__head"><div><span class="section-kicker">Merchandising</span><h2>Product performance</h2></div></div>
+    <div class="highlight-grid">
+      <article *ngFor="let item of highlights"><span>{{ item.label }}</span><strong>{{ item.product?.name || 'No data yet' }}</strong><small>{{ item.value }}</small></article>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Product</th><th><button (click)="sortProducts('views')">Views</button></th><th>Unique</th>
+          <th><button (click)="sortProducts('adds')">Adds</button></th><th>Add rate</th><th>Checkout</th>
+          <th><button (click)="sortProducts('units')">Units</button></th><th>Orders</th>
+          <th><button (click)="sortProducts('revenue')">Revenue</button></th>
+          <th><button (click)="sortProducts('conversion')">Conversion</button></th>
+        </tr></thead>
+        <tbody>
+          <tr *ngFor="let product of products.products">
+            <td><strong>{{ product.name }}</strong></td><td>{{ product.views }}</td><td>{{ product.uniqueViewers }}</td>
+            <td>{{ product.addToCarts }}</td><td>{{ product.addToCartRate }}%</td><td>{{ product.checkouts }}</td>
+            <td>{{ product.unitsSold }}</td><td>{{ product.orders }}</td><td>{{ currency(product.revenue) }}</td>
+            <td>{{ product.conversionRate }}%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="two-column">
+    <section class="panel" *ngIf="carts">
+      <div class="panel__head"><div><span class="section-kicker">Intent</span><h2>Cart & checkout</h2></div></div>
+      <div class="stat-row">
+        <div><strong>{{ carts.summary.active }}</strong><span>Active</span></div>
+        <div><strong>{{ carts.summary.abandoned }}</strong><span>Abandoned</span></div>
+        <div><strong>{{ carts.summary.recovered }}</strong><span>Recovered</span></div>
+      </div>
+      <div class="value-callout"><span>Estimated abandoned value</span><strong>{{ currency(carts.summary.estimatedAbandonedValue) }}</strong><small>Inactive for at least 24 hours</small></div>
+      <div class="mini-list" *ngIf="carts.carts.length; else noCarts">
+        <article *ngFor="let cart of carts.carts.slice(0, 8)">
+          <div><strong>#{{ cart.customerReference }}</strong><span>{{ cart.products || 'Empty cart' }}</span></div>
+          <div><strong>{{ currency(cart.value) }}</strong><span>{{ cart.ageHours }}h ago</span></div>
+        </article>
+      </div>
+      <ng-template #noCarts><div class="empty">No cart activity in this period.</div></ng-template>
+    </section>
+
+    <section class="panel" *ngIf="payments">
+      <div class="panel__head"><div><span class="section-kicker">Payments</span><h2>Payment performance</h2></div></div>
+      <div class="payment-ring" [style.--success]="payments.summary.successRate + '%'">
+        <div><strong>{{ payments.summary.successRate }}%</strong><span>Success rate</span></div>
+      </div>
+      <div class="stat-row">
+        <div><strong>{{ payments.summary.attempts }}</strong><span>Attempts</span></div>
+        <div><strong>{{ payments.summary.failed }}</strong><span>Failed</span></div>
+        <div><strong>{{ payments.summary.pending }}</strong><span>Pending</span></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel panel--wide" *ngIf="payments">
+    <div class="panel__head"><div><span class="section-kicker">Operations</span><h2>Recent payment issues</h2></div></div>
+    <div class="table-wrap" *ngIf="payments.issues.length; else noIssues">
+      <table><thead><tr><th>Order</th><th>Customer ref</th><th>Amount</th><th>Failure category</th><th>Attempted</th></tr></thead>
+        <tbody><tr *ngFor="let issue of payments.issues">
+          <td><strong>{{ issue.orderReference }}</strong></td><td>#{{ issue.customerReference }}</td>
+          <td>{{ currency(issue.amount) }}</td><td><span class="status status--failed">{{ issue.failureCategory }}</span></td>
+          <td>{{ issue.attemptedAt | date:'medium' }}</td>
+        </tr></tbody>
+      </table>
+    </div>
+    <ng-template #noIssues><div class="empty">No failed payment attempts in this period.</div></ng-template>
+  </section>
+</section>

@@ -26,7 +26,6 @@ export const routes: Routes = [
   },
   {
     path: 'cart',
-    canActivate: [customerGuard],
     loadComponent: () =>
       import('./pages/cart/cart.component').then((m) => m.CartComponent),
     title: 'Cart — Monk Hagen'
@@ -36,6 +35,18 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./pages/login/login.component').then((m) => m.LoginComponent),
     title: 'Login — Monk Hagen'
+  },
+  {
+    path: 'dashboard',
+    canActivate: [adminGuard],
+    loadComponent: () =>
+      import('./pages/admin-analytics/admin-analytics.component').then((m) => m.AdminAnalyticsComponent),
+    title: 'Dashboard — Monk Hagen'
+  },
+  {
+    path: 'admin/analytics',
+    redirectTo: 'dashboard',
+    pathMatch: 'full'
   },
   {
     path: 'admin',

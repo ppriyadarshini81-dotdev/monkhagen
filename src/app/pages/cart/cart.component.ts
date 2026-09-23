@@ -1,13 +1,19 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { combineLatest, filter, take } from 'rxjs';
 import { Address, AddressPayload } from '../../models/account.model';
 import { CartItem } from '../../models/cart.model';
 import { AccountService } from '../../services/account.service';
 import { AuthService } from '../../services/auth.service';
 import { CartService } from '../../services/cart.service';
 import { PaymentOrder, PaymentService, RazorpaySuccess } from '../../services/payment.service';
+import { AnalyticsService } from '../../services/analytics.service';
+import { OrderService } from '../../services/order.service';
+
+type CheckoutStep = 'address' | 'payment';
+type PaymentMethod = 'razorpay' | 'cod';
 
 @Component({
   selector: 'app-cart',
@@ -16,7 +22,7 @@ import { PaymentOrder, PaymentService, RazorpaySuccess } from '../../services/pa
   templateUrl: './cart.component.html',
   styleUrl: './cart.component.css'
 })
-export class CartComponent {
+export class CartComponent implements OnInit, AfterViewInit {
   @ViewChild('addressDialog') addressDialog!: ElementRef<HTMLDialogElement>;
   addingAddress = false;
   loadingAddresses = false;
@@ -29,20 +35,56 @@ export class CartComponent {
   error = '';
   checkoutError = '';
   orderId: string | null = null;
+  checkoutStep: CheckoutStep = 'address';
+  paymentMethod: PaymentMethod = 'razorpay';
+  private checkoutToken = '';
 
   constructor(
     public cart: CartService,
     private account: AccountService,
     private auth: AuthService,
-    private payments: PaymentService
+    private payments: PaymentService,
+    private analytics: AnalyticsService,
+    private orders: OrderService,
+    private router: Router,
+    private route: ActivatedRoute
   ) {}
 
+  ngOnInit(): void {
+    this.analytics.track('CART_VIEWED');
+  }
+
+  ngAfterViewInit(): void {
+    if (!this.auth.isLoggedIn || this.route.snapshot.queryParamMap.get('checkout') !== '1') return;
+    combineLatest([this.auth.user$, this.cart.loading$]).pipe(
+      filter(([user, loading]) => Boolean(user) && !loading),
+      take(1)
+    ).subscribe(() => {
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { checkout: null },
+        queryParamsHandling: 'merge',
+        replaceUrl: true
+      });
+      queueMicrotask(() => this.checkout());
+    });
+  }
+
   checkout(): void {
-    if (this.placing) return;
+    if (this.placing || this.cart.loading) return;
+    if (!this.auth.isLoggedIn) {
+      this.cart.closePreview();
+      this.router.navigate(['/login'], { queryParams: { redirect: '/cart?checkout=1' } });
+      return;
+    }
     this.error = '';
     this.checkoutError = '';
     this.addressAttempted = false;
+    this.checkoutStep = 'address';
+    this.paymentMethod = 'razorpay';
+    this.checkoutToken ||= this.newCheckoutToken();
     this.addressDialog.nativeElement.showModal();
+    this.analytics.track('CHECKOUT_STARTED');
     this.loadAddresses();
   }
 
@@ -68,7 +110,17 @@ export class CartComponent {
   }
 
   get grandTotal(): number {
-    return this.cart.total + this.shippingFee;
+    return this.cart.total - this.checkoutDiscount + this.shippingFee;
+  }
+
+  get checkoutDiscount(): number {
+    return this.paymentMethod === 'razorpay' && this.cart.prepaidOffer.eligible
+      ? this.cart.prepaidOffer.discountAmount
+      : 0;
+  }
+
+  get cartSummaryTotal(): number {
+    return this.cart.total - (this.cart.prepaidOffer.eligible ? this.cart.prepaidOffer.discountAmount : 0) + this.shippingFee;
   }
 
   continueCheckout(): void {
@@ -83,22 +135,50 @@ export class CartComponent {
       this.addressAttempted = true;
       return;
     }
-    this.placing = true;
     if (this.selectedAddressId) {
-      this.startPayment(this.selectedAddressId);
+      this.showPaymentStep(this.selectedAddressId);
       return;
     }
 
+    this.placing = true;
     this.account.addAddress(this.addressPayload()).subscribe({
       next: (address) => {
         this.addresses = [...this.addresses, address];
         this.selectedAddressId = address.id;
         this.lastSelectedAddressId = address.id;
         this.addingAddress = false;
-        this.startPayment(address.id);
+        this.showPaymentStep(address.id);
       },
       error: (err) => this.fail(err?.error?.message || 'Could not save the shipping address.')
     });
+  }
+
+  backToAddress(): void {
+    if (this.placing) return;
+    this.checkoutError = '';
+    this.checkoutStep = 'address';
+  }
+
+  placeOrder(): void {
+    if (this.placing || !this.selectedAddressId) return;
+    this.checkoutError = '';
+    this.placing = true;
+
+    if (this.paymentMethod === 'cod') {
+      this.orders.checkout(this.selectedAddressId, this.checkoutToken).subscribe({
+        next: (order) => {
+          this.orderId = order.orderNumber || order.id;
+          this.cart.reset();
+          this.checkoutToken = '';
+          this.placing = false;
+          this.addressDialog.nativeElement.close();
+        },
+        error: (err) => this.fail(err?.error?.message || 'Could not place the cash on delivery order.')
+      });
+      return;
+    }
+
+    this.startPayment(this.selectedAddressId);
   }
 
   selectAddress(addressId: string): void {
@@ -181,8 +261,15 @@ export class CartComponent {
     });
   }
 
+  private showPaymentStep(addressId: string): void {
+    this.selectedAddressId = addressId;
+    this.checkoutStep = 'payment';
+    this.placing = false;
+    this.analytics.track('ADDRESS_SELECTED');
+  }
+
   private startPayment(addressId: string): void {
-    this.payments.createOrder(addressId, this.newCheckoutToken()).subscribe({
+    this.payments.createOrder(addressId, this.checkoutToken).subscribe({
       next: (order) => this.openRazorpay(order),
       error: (err) => this.fail(err?.error?.message || 'Could not prepare the payment.')
     });
@@ -198,6 +285,9 @@ export class CartComponent {
       });
       this.verifyPayment(order, result);
     } catch (error) {
+      if (error instanceof Error && error.message.includes('closed')) {
+        this.analytics.track('PAYMENT_WINDOW_CLOSED');
+      }
       this.fail(error instanceof Error ? error.message : 'Payment was not completed.');
     }
   }
@@ -207,6 +297,7 @@ export class CartComponent {
       next: (verified) => {
         this.orderId = verified.orderNumber;
         this.cart.reset();
+        this.checkoutToken = '';
         this.placing = false;
       },
       error: (err) => this.fail(

@@ -7,10 +7,14 @@
 
   <div class="mh-pd__grid">
     <!-- Gallery -->
-    <div class="mh-pd__gallery">
-      <div class="mh-pd__main">
-        <img [src]="product.images[activeImage]" [alt]="product.name" />
+    <div class="mh-pd__gallery" (wheel)="imageTrackpadSlide($event)">
+      <div class="mh-pd__main" (touchstart)="imageTouchStart($event)" (touchmove)="imageTouchMove($event)" (touchend)="imageTouchEnd($event)">
+        <img [src]="cachedMediaUrl(product.images[activeImage])" [alt]="product.name" />
+        <button class="mh-pd__open-image" type="button" (click)="openImageViewer()" aria-label="Open enlarged product image"></button>
         <span class="mh-pd__badge" *ngIf="product.badge">{{ product.badge }}</span>
+        <button class="mh-pd__zoom-trigger" type="button" (click)="openImageViewer()" aria-label="Open enlarged product image" aria-haspopup="dialog">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.5 15.5 4 4M10.5 8v5M8 10.5h5"></path></svg>
+        </button>
         <ng-container *ngIf="product.images.length > 1">
           <button class="mh-pd__arrow mh-pd__arrow--prev" type="button"
             (click)="changeImage(-1)" aria-label="Previous product image">
@@ -25,10 +29,12 @@
       <div class="mh-pd__thumbs" *ngIf="product.images.length > 1">
         <button
           *ngFor="let img of product.images; let i = index"
+          type="button"
           [class.active]="i === activeImage"
-          (click)="activeImage = i"
+          (click)="selectImage(i)"
+          [attr.aria-label]="'Show product image ' + (i + 1)"
         >
-          <img [src]="img" [alt]="product.name + ' ' + (i + 1)" />
+          <img [src]="cachedMediaUrl(img)" [alt]="product.name + ' ' + (i + 1)" />
         </button>
       </div>
     </div>
@@ -38,11 +44,24 @@
       <span class="mh-eyebrow">{{ product.category }}</span>
       <h1>{{ product.name }}</h1>
       <div class="mh-pd__meta">
-        <span class="mh-pd__price">₹{{ product.price | number }}</span>
-        <button class="mh-pd__size-link" type="button" *ngIf="pageContent?.sizeChartImageUrl"
-          (click)="openSizeChart()" aria-haspopup="dialog">Size chart</button>
+        <div class="mh-pd__mrp">
+          <span><b>MRP:</b> <strong>&#8377;{{ product.price | number: '1.2-2' }}</strong></span>
+          <small>(Inclusive of all taxes)</small>
+        </div>
         <span class="mh-pd__stock" *ngIf="product.stock === 0">Sold out</span>
       </div>
+
+      <section class="mh-pd__offers" aria-labelledby="available-offers-title" *ngIf="cart.prepaidOffer.eligible">
+        <h2 id="available-offers-title">Available Offers</h2>
+        <article class="mh-pd__offer-card">
+          <span class="mh-pd__offer-icon" aria-hidden="true">%</span>
+          <div>
+            <strong>{{ cart.prepaidOffer.discountPercent }}% OFF</strong>
+            <span>On your first prepaid order</span>
+            <code>Code: {{ cart.prepaidOffer.code }}</code>
+          </div>
+        </article>
+      </section>
 
       <div class="mh-pd__opt" *ngIf="product.colors.length">
         <span class="mh-label">Color</span>
@@ -58,7 +77,11 @@
       </div>
 
       <div class="mh-pd__opt" *ngIf="product.sizes.length">
-        <span class="mh-label">Size</span>
+        <div class="mh-pd__option-head">
+          <span class="mh-label">Size</span>
+          <button class="mh-pd__size-link" type="button" *ngIf="pageContent?.sizeChartImageUrl"
+            (click)="openSizeChart()" aria-haspopup="dialog">Size chart</button>
+        </div>
         <div class="mh-pd__choices">
           <button
             *ngFor="let s of product.sizes"
@@ -124,6 +147,35 @@
     </header>
     <img *ngIf="sizeChartDialog.open && pageContent?.sizeChartImageUrl" class="mh-pd__size-chart"
       [src]="pageContent?.sizeChartImageUrl" alt="Monk Hagen size chart" decoding="async" />
+  </div>
+</dialog>
+
+<dialog #productImageDialog class="mh-pd__image-dialog" aria-label="Enlarged product images"
+  (click)="closeImageOnBackdrop($event)" (keydown)="imageViewerKeydown($event)">
+  <div class="mh-pd__image-viewer" *ngIf="product" (wheel)="imageTrackpadSlide($event)">
+    <header class="mh-pd__image-toolbar">
+      <span>{{ activeImage + 1 }} / {{ product.images.length }}</span>
+      <div class="mh-pd__zoom-controls">
+        <button type="button" (click)="setImageZoom(imageZoom - 0.5)" [disabled]="imageZoom <= 1" aria-label="Zoom out">&minus;</button>
+        <button type="button" class="mh-pd__zoom-value" (click)="setImageZoom(1)" aria-label="Reset zoom">{{ imageZoom * 100 | number: '1.0-0' }}%</button>
+        <button type="button" (click)="setImageZoom(imageZoom + 0.5)" [disabled]="imageZoom >= 3" aria-label="Zoom in">+</button>
+        <button type="button" class="mh-pd__image-close" (click)="closeImageViewer()" aria-label="Close enlarged image">&times;</button>
+      </div>
+    </header>
+    <div class="mh-pd__image-stage" (touchstart)="imageTouchStart($event)" (touchmove)="imageTouchMove($event)" (touchend)="imageTouchEnd($event)">
+      <img [src]="cachedMediaUrl(product.images[activeImage])" [alt]="product.name + ' enlarged image ' + (activeImage + 1)"
+        [style.transform]="'scale(' + imageZoom + ')'" />
+      <ng-container *ngIf="product.images.length > 1">
+        <button class="mh-pd__viewer-arrow mh-pd__viewer-arrow--prev" type="button" (click)="changeImage(-1)" aria-label="Previous product image">&#8592;</button>
+        <button class="mh-pd__viewer-arrow mh-pd__viewer-arrow--next" type="button" (click)="changeImage(1)" aria-label="Next product image">&#8594;</button>
+      </ng-container>
+    </div>
+    <div class="mh-pd__viewer-thumbs" *ngIf="product.images.length > 1">
+      <button *ngFor="let img of product.images; let i = index" type="button" [class.active]="i === activeImage"
+        (click)="selectImage(i)" [attr.aria-label]="'Open product image ' + (i + 1)">
+        <img [src]="cachedMediaUrl(img)" [alt]="product.name + ' thumbnail ' + (i + 1)" />
+      </button>
+    </div>
   </div>
 </dialog>
 

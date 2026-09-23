@@ -182,7 +182,7 @@ Google login / verified Firebase email-password login
      plus bounded Firebase account/revocation checks
 ```
 
-Application tokens are HS256-signed with issuer `monkhagen-api` and audience `monkhagen-web`. Customer lifetime is capped at one hour; administrator lifetime at fifteen minutes. `JWT_EXPIRES_IN` does not override these security ceilings.
+Application tokens are HS256-signed with issuer `monkhagen-api` and audience `monkhagen-web`. Customer and administrator lifetimes are capped at one day. `JWT_EXPIRES_IN` may shorten this lifetime but cannot extend it beyond the security ceiling.
 
 The browser stores application token/user state under `mh_token` and `mh_user`. This is bearer-token authentication, not cookie authentication. Logout clears browser state and requests server-side session-version invalidation. A failed logout request cannot guarantee server invalidation, although local state is cleared.
 

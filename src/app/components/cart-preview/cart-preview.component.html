@@ -1,0 +1,59 @@
+<div class="mh-cart-preview" *ngIf="open$ | async" (click)="closeOnBackdrop($event)">
+  <aside class="mh-cart-preview__panel" role="dialog" aria-modal="true" aria-labelledby="cart-preview-title">
+    <header class="mh-cart-preview__header">
+      <div>
+        <span>Added to your bag</span>
+        <h2 id="cart-preview-title">Cart &bull; {{ cart.count }} {{ cart.count === 1 ? 'item' : 'items' }}</h2>
+      </div>
+      <button type="button" class="mh-cart-preview__close" (click)="close()" aria-label="Close cart preview">&times;</button>
+    </header>
+
+    <div class="mh-cart-preview__offer" *ngIf="cart.prepaidOffer.eligible">
+      {{ cart.prepaidOffer.discountPercent }}% off your first prepaid order
+      <strong>{{ cart.prepaidOffer.code }}</strong>
+    </div>
+
+    <div class="mh-cart-preview__items" *ngIf="cart.items.length; else emptyCart">
+      <article class="mh-cart-preview__item" *ngFor="let item of cart.items">
+        <a class="mh-cart-preview__image" [routerLink]="['/product', item.productSlug || item.productId]" (click)="close()">
+          <img *ngIf="item.imageUrl" [src]="cachedMediaUrl(item.imageUrl)" [alt]="item.productName || 'Product image'" />
+          <span *ngIf="!item.imageUrl" aria-hidden="true">MH</span>
+        </a>
+        <div class="mh-cart-preview__details">
+          <div class="mh-cart-preview__item-head">
+            <a [routerLink]="['/product', item.productSlug || item.productId]" (click)="close()">{{ item.productName }}</a>
+            <button type="button" (click)="remove(item)" [disabled]="isUpdating(item)" [attr.aria-label]="'Remove ' + item.productName">&times;</button>
+          </div>
+          <p><span *ngIf="item.size">Size: {{ item.size }}</span><span *ngIf="item.color">Color: {{ item.color }}</span></p>
+          <div class="mh-cart-preview__line">
+            <div class="mh-cart-preview__qty" aria-label="Quantity controls">
+              <button type="button" (click)="changeQuantity(item, -1)" [disabled]="item.quantity <= 1 || isUpdating(item)" aria-label="Decrease quantity">&minus;</button>
+              <span>{{ item.quantity }}</span>
+              <button type="button" (click)="changeQuantity(item, 1)" [disabled]="isUpdating(item) || (item.stock !== null && item.quantity >= item.stock)" aria-label="Increase quantity">+</button>
+            </div>
+            <strong>&#8377;{{ (item.price || 0) * item.quantity | number: '1.2-2' }}</strong>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <ng-template #emptyCart>
+      <div class="mh-cart-preview__empty">Your cart is empty.</div>
+    </ng-template>
+
+    <p class="mh-cart-preview__error" role="alert" *ngIf="error">{{ error }}</p>
+
+    <footer class="mh-cart-preview__footer" *ngIf="cart.items.length">
+      <div class="mh-cart-preview__saving" *ngIf="cart.prepaidOffer.eligible">
+        <span>Welcome Offer</span>
+        <strong>&minus;&#8377;{{ cart.prepaidOffer.discountAmount | number: '1.2-2' }}</strong>
+      </div>
+      <div class="mh-cart-preview__total">
+        <span>Subtotal <small *ngIf="cart.prepaidOffer.eligible">after Welcome Offer</small></span>
+        <strong>&#8377;{{ prepaidTotal | number: '1.2-2' }}</strong>
+      </div>
+      <a class="mh-cart-preview__checkout" routerLink="/cart" (click)="close()">View cart &amp; checkout</a>
+      <button type="button" class="mh-cart-preview__continue" (click)="close()">Continue shopping</button>
+    </footer>
+  </aside>
+</div>

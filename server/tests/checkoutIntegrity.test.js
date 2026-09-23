@@ -26,8 +26,8 @@ const attempt = () => ({ addressId: ADDRESS, checkoutToken: crypto.randomUUID() 
 
 // Transaction/row-lock double with rollback/savepoint snapshots. All gateway,
 // shipping, mail and SQL I/O is replaced; no production business data is written.
-function setup({ stock = 3, quantity = 1 } = {}) {
-  let state = { stock, quantity, orders: [], items: [], refunds: new Map(), events: new Set(),
+function setup({ stock = 3, quantity = 1, priorOrders = [] } = {}) {
+  let state = { stock, quantity, orders: structuredClone(priorOrders), items: [], refunds: new Map(), events: new Set(),
     converted: new Set(), shipments: new Set() };
   const statements = [], kicks = [];
   remoteCreates = 0;
@@ -54,6 +54,9 @@ function setup({ stock = 3, quantity = 1 } = {}) {
       if (sql.startsWith('SELECT ci.product_id')) return { rows: [{ product_id: PRODUCT, variant_id: VARIANT,
         product_name: 'Test product', quantity: state.quantity, product_active: true, variant_active: true,
         category_active: true, stock: state.stock, unit_price: '100.00', size: 'M', color: 'Black' }] };
+      if (sql.startsWith('SELECT EXISTS')) return { rows: [{ has_order: state.orders.some(row =>
+        row.user_id === params[0] && (row.payment_method === 'cod' ||
+          ['paid','refunded','partially_refunded'].includes(row.payment_status))) }] };
       if (sql.startsWith('SELECT * FROM orders')) {
         let records = state.orders;
         if (sql.includes('inventory_reservation_expires_at <= NOW()')) records = records.filter(row =>
@@ -77,7 +80,8 @@ function setup({ stock = 3, quantity = 1 } = {}) {
       if (sql.startsWith('INSERT INTO orders')) {
         const prepaid = sql.includes("'razorpay'");
         const row = { id: crypto.randomUUID(), user_id: params[0], cart_id: params[1], checkout_token: params[2],
-          order_number: params[3], total_amount: params[4], subtotal: params[4], discount_amount: '0', shipping_amount: '0',
+          order_number: params[3], total_amount: prepaid ? params[6] : params[4], subtotal: params[4],
+          discount_amount: prepaid ? params[5] : '0', shipping_amount: '0',
           payment_method: prepaid ? 'razorpay' : 'cod', payment_status: 'pending', order_status: prepaid ? 'placed' : 'confirmed',
           inventory_reserved_at: prepaid ? new Date() : null, inventory_reservation_expires_at: new Date(Date.now() + 900000),
           inventory_deducted_at: prepaid ? null : new Date(), fulfillment_hold_reason: null, refunded_amount: '0' };
@@ -145,11 +149,23 @@ test('prepaid checkout reserves stock once and same-token retries reuse the serv
   const input = attempt();
   const [first, second] = await Promise.all([payments.createPaymentOrder(USER, input), payments.createPaymentOrder(USER, input)]);
   assert.equal(first.localOrderId, second.localOrderId);
-  assert.equal(first.amount, 10000);
+  assert.equal(first.amount, 9000);
+  assert.equal(fixture.state.orders[0].subtotal, '100.00');
+  assert.equal(fixture.state.orders[0].discount_amount, '10.00');
+  assert.equal(fixture.state.orders[0].total_amount, '90.00');
   assert.equal(fixture.state.stock, 1);
   assert.equal(remoteCreates, 1);
   assert.equal(fixture.state.orders.length, 1);
   assert.equal(fixture.state.shipments.size, 0);
+});
+test('first prepaid offer is not applied after the customer has already placed a COD order', async () => {
+  const fixture = setup({ priorOrders: [{ id: crypto.randomUUID(), user_id: USER, payment_method: 'cod',
+    payment_status: 'pending', order_status: 'confirmed' }] });
+  const payment = await payments.createPaymentOrder(USER, attempt());
+  assert.equal(payment.amount, 10000);
+  const order = fixture.state.orders.at(-1);
+  assert.equal(order.discount_amount, '0.00');
+  assert.equal(order.total_amount, '100.00');
 });
 test('concurrent customers cannot buy the last stock twice or create an unbacked payment order', async () => {
   const fixture = setup({ stock: 1 });
@@ -174,6 +190,13 @@ test('capture consumes a reservation without a second deduction; duplicate verif
   assert.equal(fixture.state.stock, 0);
   assert.equal(fixture.state.shipments.size, 1);
   assert.ok(fixture.state.orders[0].inventory_deducted_at);
+});
+test('COD rejects an out-of-stock cart without creating an order or Razorpay order', async () => {
+  const fixture = setup({ stock: 0 });
+  await assert.rejects(Order.createCod(USER, attempt()), /stock/i);
+  assert.equal(fixture.state.orders.length, 0);
+  assert.equal(fixture.state.shipments.size, 0);
+  assert.equal(remoteCreates, 0);
 });
 test('expired and failed reservations restore stock once, and expired attempts cannot be reused', async () => {
   const fixture = setup({ stock: 2 });
@@ -217,6 +240,7 @@ test('COD is server-priced, allocates stock and converts its cart atomically; du
   assert.equal(fixture.state.converted.has(USER), true);
   assert.equal(fixture.state.shipments.size, 1);
   assert.ok(fixture.state.orders[0].inventory_deducted_at);
+  assert.equal(remoteCreates, 0);
 });
 test('legacy COD retries without tokens cannot process a converted cart again', async () => {
   const fixture = setup();
@@ -235,8 +259,8 @@ test('processed partial/full refunds deduplicate refund IDs and capture replay c
   assert.equal(fixture.state.orders[0].refunded_amount, '40.00');
   assert.equal(fixture.state.orders[0].payment_status, 'partially_refunded');
   assert.equal(fixture.state.refunds.size, 1);
-  await payments.processWebhook(...event('refund.processed', { refund: { entity: { ...refund, id: 'rfnd_mock_2', amount: 6000 } } }));
-  assert.equal(fixture.state.orders[0].refunded_amount, '100.00');
+  await payments.processWebhook(...event('refund.processed', { refund: { entity: { ...refund, id: 'rfnd_mock_2', amount: 5000 } } }));
+  assert.equal(fixture.state.orders[0].refunded_amount, '90.00');
   const kicks = fixture.kicks.length;
   assert.equal((await payments.verifyPayment(USER, verify)).paymentStatus, 'refunded');
   assert.equal(fixture.kicks.length, kicks);
@@ -258,11 +282,11 @@ test('refund delivered before capture establishes financial state and holds ship
   const fixture = setup({ stock: 1 });
   await payments.createPaymentOrder(USER, attempt());
   captured(fixture.state.orders[0]);
-  providerPayment = { ...providerPayment, status: 'refunded', amount_refunded: 10000 };
-  const refund = { id: 'rfnd_early', payment_id: 'pay_mock', amount: 10000, currency: 'INR', status: 'processed' };
+  providerPayment = { ...providerPayment, status: 'refunded', amount_refunded: 9000 };
+  const refund = { id: 'rfnd_early', payment_id: 'pay_mock', amount: 9000, currency: 'INR', status: 'processed' };
   await payments.processWebhook(...event('refund.processed', { refund: { entity: refund } }));
   assert.equal(fixture.state.orders[0].payment_status, 'refunded');
-  assert.equal(fixture.state.orders[0].refunded_amount, '100.00');
+  assert.equal(fixture.state.orders[0].refunded_amount, '90.00');
   assert.equal(fixture.state.orders[0].fulfillment_hold_reason, 'ORDER_REFUND_REVIEW_REQUIRED');
   assert.equal(fixture.kicks.length, 0);
   await payments.processWebhook(...event('payment.captured', { payment: { entity: { ...providerPayment, status: 'captured' } } }));

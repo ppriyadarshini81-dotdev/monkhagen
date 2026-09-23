@@ -1,9 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { Component, Input, OnChanges, OnDestroy } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { CartService } from '../../services/cart.service';
-import { AuthService } from '../../services/auth.service';
 import { ProductService } from '../../services/product.service';
 import { cachedMediaUrl } from '../../utils/media-url';
 import { sortSizes } from '../../utils/size-order';
@@ -34,9 +33,7 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
 
   constructor(
     private cart: CartService,
-    private auth: AuthService,
-    private productService: ProductService,
-    private router: Router
+    private productService: ProductService
   ) {}
 
   ngOnChanges(): void {
@@ -115,13 +112,6 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
     event.preventDefault();
     event.stopPropagation();
 
-    if (!this.auth.isLoggedIn) {
-      this.router.navigate(['/login'], {
-        queryParams: { redirect: this.router.url }
-      });
-      return;
-    }
-
     this.addError = '';
     if (this.quickProduct) {
       this.showSizePicker = true;
@@ -158,6 +148,7 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
         this.adding = false;
         this.showSizePicker = false;
         this.added = true;
+        this.cart.openPreview();
         setTimeout(() => (this.added = false), 1400);
       },
       error: (err) => {

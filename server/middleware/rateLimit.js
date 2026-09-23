@@ -38,4 +38,5 @@ const adminLimiter = createLimiter('admin', { limit: 120, windowMs: 60000, authe
 const checkoutLimiter = createLimiter('checkout', { limit: 5, windowMs: 15 * 60000, authenticated: true });
 const verifyLimiter = createLimiter('payment-verify', { limit: 30, windowMs: 5 * 60000, authenticated: true });
 const returnLimiter = createLimiter('returns', { limit: 10, windowMs: 15 * 60000, authenticated: true });
-module.exports = { PostgresRateLimitStore, createLimiter, adminLimiter, checkoutLimiter, verifyLimiter, returnLimiter };
+const analyticsLimiter = createLimiter('analytics', { limit: 180, windowMs: 60000 });
+module.exports = { PostgresRateLimitStore, createLimiter, adminLimiter, checkoutLimiter, verifyLimiter, returnLimiter, analyticsLimiter };

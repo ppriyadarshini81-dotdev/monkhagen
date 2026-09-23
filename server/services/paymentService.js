@@ -5,6 +5,8 @@ const { sendOrderConfirmation } = require('./orderConfirmationEmail');
 const Shipment = require('../models/Shipment');
 const shipping = require('./shippingService');
 const inventory = require('./inventoryService');
+const analytics = require('./analyticsService');
+const offers = require('./offerService');
 
 const CURRENCY = 'INR';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -26,6 +28,27 @@ function fromPaise(value) {
 function orderNumber() {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   return `MH-${date}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+}
+
+function failureCategory(payment) {
+  const safe = value => typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,80}$/.test(value) ? value : null;
+  return [safe(payment?.error_source), safe(payment?.error_step), safe(payment?.error_reason), safe(payment?.error_code)]
+    .filter(Boolean).join(':').slice(0, 255) || 'unspecified';
+}
+
+async function recordPaymentAttempt(orderId, payment, status) {
+  if (!orderId || typeof payment?.id !== 'string' || !/^[a-zA-Z0-9_]{1,255}$/.test(payment.id)) return;
+  try {
+    await pool.query(`INSERT INTO payment_attempts
+      (order_id, gateway_payment_id, status, failure_category)
+      VALUES ($1,$2,$3,$4)
+      ON CONFLICT (gateway_payment_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        failure_category = EXCLUDED.failure_category,
+        updated_at = NOW()`, [orderId, payment.id, status, status === 'failed' ? failureCategory(payment) : null]);
+  } catch (error) {
+    console.warn('Payment analytics was not recorded.', { code: error.code || 'PAYMENT_ANALYTICS_FAILED' });
+  }
 }
 
 function safeEqualHex(expected, received) {
@@ -77,22 +100,25 @@ async function createPaymentOrder(userId, { addressId, checkoutToken }) {
     const pending = await client.query(`SELECT id FROM orders WHERE cart_id = $1 AND payment_status = 'pending'
       AND inventory_reserved_at IS NOT NULL AND inventory_released_at IS NULL FOR UPDATE`, [cart.id]);
     if (pending.rows.length) throw httpError(409, 'A checkout for this cart is already pending. Retry it or wait for it to expire.');
+    const prepaidOffer = await offers.firstPrepaidOffer(client, userId, amount);
+    const discount = prepaidOffer.discountPaise;
+    const payable = prepaidOffer.totalPaise;
     await inventory.deduct(client, items);
     const localOrderNumber = orderNumber();
     const result = await client.query(`INSERT INTO orders
       (user_id, cart_id, checkout_token, order_number, subtotal, discount_amount, shipping_amount, total_amount,
        payment_method, payment_status, order_status, inventory_reserved_at, inventory_reservation_expires_at)
-      VALUES ($1,$2,$3,$4,$5,0,0,$5,'razorpay','pending','placed',NOW(),NOW() + INTERVAL '15 minutes') RETURNING id`,
-      [userId, cart.id, checkoutToken, localOrderNumber, fromPaise(amount)]);
+      VALUES ($1,$2,$3,$4,$5,$6,0,$7,'razorpay','pending','placed',NOW(),NOW() + INTERVAL '15 minutes') RETURNING id`,
+      [userId, cart.id, checkoutToken, localOrderNumber, fromPaise(amount), fromPaise(discount), fromPaise(payable)]);
     const localOrderId = result.rows[0].id;
     await inventory.snapshotAddress(client, localOrderId, address);
     await inventory.snapshotItems(client, localOrderId, items);
-    const remote = await razorpay.orders.create({ amount, currency: CURRENCY, receipt: localOrderNumber,
+    const remote = await razorpay.orders.create({ amount: payable, currency: CURRENCY, receipt: localOrderNumber,
       notes: { local_order_id: localOrderId, order_number: localOrderNumber } });
     if (!remote?.id) throw httpError(502, 'Razorpay did not return an order ID.');
     await client.query('UPDATE orders SET razorpay_order_id = $1, updated_at = NOW() WHERE id = $2', [remote.id, localOrderId]);
     await client.query('COMMIT');
-    return { keyId, razorpayOrderId: remote.id, amount, currency: CURRENCY, localOrderId, orderNumber: localOrderNumber };
+    return { keyId, razorpayOrderId: remote.id, amount: payable, currency: CURRENCY, localOrderId, orderNumber: localOrderNumber };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
@@ -207,6 +233,10 @@ async function verifyPayment(userId, { localOrderId, razorpayPaymentId, razorpay
     client.release();
   }
 
+  await recordPaymentAttempt(order.id, payment, 'successful');
+  await analytics.recordOrderEvent(finalization.order, 'PAYMENT_SUCCESS', 'payment-success');
+  await analytics.recordOrderEvent(finalization.order, 'ORDER_CREATED', 'order-created');
+
   // The queue row is committed. Shipping failures cannot roll back or fail a captured payment.
   if (!process.env.VERCEL) {
     if (finalization.order.payment_status === 'paid' && !finalization.order.fulfillment_hold_reason) void shipping.processPendingOrder(order.id);
@@ -238,6 +268,9 @@ async function processWebhook(rawBody, headers) {
   const client = await pool.connect();
   let finalizedOrderId = null;
   let dispatchAllowed = false;
+  let analyticsOrder = null;
+  let paymentAttempt = null;
+  let paymentAttemptStatus = null;
   try {
     await client.query('BEGIN');
     const claim = await client.query(
@@ -264,12 +297,21 @@ async function processWebhook(rawBody, headers) {
         currency: payment?.currency ?? razorpayOrder?.currency
       });
       finalizedOrderId = finalization.order.id;
+      analyticsOrder = finalization.order;
+      paymentAttempt = payment;
+      paymentAttemptStatus = 'successful';
       dispatchAllowed = finalization.order.payment_status === 'paid' && !finalization.order.fulfillment_hold_reason;
     } else if (eventType === 'payment.failed' && payment?.order_id) {
-      const pending = await client.query("SELECT * FROM orders WHERE razorpay_order_id = $1 AND payment_status = 'pending' FOR UPDATE", [payment.order_id]);
+      const pending = await client.query("SELECT * FROM orders WHERE razorpay_order_id = $1 FOR UPDATE", [payment.order_id]);
+      if (pending.rows[0]) {
+        analyticsOrder = pending.rows[0];
+        paymentAttempt = payment;
+        paymentAttemptStatus = 'failed';
+      }
       if (pending.rows[0]?.payment_status === 'pending') {
         await inventory.releaseReservation(client, pending.rows[0]);
-        await client.query("UPDATE orders SET payment_status = 'failed', updated_at = NOW() WHERE id = $1 AND payment_status = 'pending'", [pending.rows[0].id]);
+        const failed = await client.query("UPDATE orders SET payment_status = 'failed', updated_at = NOW() WHERE id = $1 AND payment_status = 'pending' RETURNING *", [pending.rows[0].id]);
+        analyticsOrder = failed.rows[0] || analyticsOrder;
       }
     } else if (eventType === 'refund.processed') {
       await recordProcessedRefund(client, payload.payload?.refund?.entity, payment);
@@ -280,6 +322,16 @@ async function processWebhook(rawBody, headers) {
     throw error;
   } finally {
     client.release();
+  }
+
+  if (analyticsOrder && paymentAttemptStatus) {
+    await recordPaymentAttempt(analyticsOrder.id, paymentAttempt, paymentAttemptStatus);
+    await analytics.recordOrderEvent(analyticsOrder,
+      paymentAttemptStatus === 'successful' ? 'PAYMENT_SUCCESS' : 'PAYMENT_FAILED',
+      paymentAttemptStatus === 'successful' ? 'payment-success' : `payment-failed:${paymentAttempt?.id || eventId}`);
+    if (paymentAttemptStatus === 'successful') {
+      await analytics.recordOrderEvent(analyticsOrder, 'ORDER_CREATED', 'order-created');
+    }
   }
 
   if (finalizedOrderId && !process.env.VERCEL) {
