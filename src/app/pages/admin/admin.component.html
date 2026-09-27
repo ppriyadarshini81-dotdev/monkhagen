@@ -412,6 +412,7 @@
       <p class="mh-order-alert" *ngIf="shipmentError(order) as shippingError">
         <strong>Shipment needs attention</strong><span>{{ shippingError }}</span>
       </p>
+      <p class="mh-error" role="alert" *ngIf="invoiceError">{{ invoiceError }}</p>
 
       <div class="mh-order-dialog__grid">
         <section class="mh-order-panel mh-order-panel--items">
@@ -474,6 +475,9 @@
     <div class="mh-order-dialog__foot">
       <small>Internal ID: {{ order.id }}</small>
       <div>
+        <button *ngIf="order.shipment?.shiprocketOrderId" class="mh-btn mh-btn--ghost" type="button" [disabled]="!!invoiceBusyOrderId" (click)="downloadInvoice(order)">
+          {{ invoiceBusyOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}
+        </button>
         <button class="mh-btn mh-btn--ghost" type="button" (click)="closeOrderDialog()">Close</button>
         <button *ngIf="canRetryShipment(order)" class="mh-btn mh-btn--gold" type="button" [disabled]="!!shippingBusyOrderId" (click)="retryShipment(order)">
           {{ shippingBusyOrderId === order.id ? 'Creating shipment...' : 'Create shipment' }}

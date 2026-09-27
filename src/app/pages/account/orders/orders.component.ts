@@ -2,6 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { AccountService } from '../../../services/account.service';
 import { Order, TrackingInfo } from '../../../models/account.model';
+import { saveInvoice } from '../../../utils/invoice-download';
 
 @Component({
   selector: 'app-account-orders',
@@ -22,6 +23,8 @@ export class AccountOrdersComponent implements OnInit {
   tracking: TrackingInfo | null = null;
   trackingLoading = false;
   trackingError = '';
+  invoiceLoadingOrderId = '';
+  invoiceError = '';
 
   constructor(private account: AccountService) {}
 
@@ -75,6 +78,23 @@ export class AccountOrdersComponent implements OnInit {
 
   closeTracking(): void {
     this.trackingDialog?.nativeElement.close();
+  }
+
+  downloadInvoice(order: Order): void {
+    if (!order.invoiceAvailable || this.invoiceLoadingOrderId) return;
+    this.invoiceError = '';
+    this.invoiceLoadingOrderId = order.id;
+    this.account.getInvoice(order.id).subscribe({
+      next: (response) => {
+        this.invoiceLoadingOrderId = '';
+        try { saveInvoice(response, `${order.orderNumber}_Invoice.pdf`); }
+        catch { this.invoiceError = 'Invoice is not available yet. Please try again later.'; }
+      },
+      error: () => {
+        this.invoiceLoadingOrderId = '';
+        this.invoiceError = 'Invoice is not available yet. Please try again later.';
+      }
+    });
   }
 
   clearDetails(): void {

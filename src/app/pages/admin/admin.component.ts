@@ -13,6 +13,7 @@ import { OrderService, Order } from '../../services/order.service';
 import { UploadService } from '../../services/upload.service';
 import { AuthService } from '../../services/auth.service';
 import { ShippingService } from '../../services/shipping.service';
+import { saveInvoice } from '../../utils/invoice-download';
 import { ProductPageContentEditorComponent } from '../../components/product-page-content-editor/product-page-content-editor.component';
 
 interface ProductForm {
@@ -62,6 +63,8 @@ export class AdminComponent implements OnInit {
   ordersLoading = false;
   ordersError = '';
   shippingBusyOrderId = '';
+  invoiceBusyOrderId = '';
+  invoiceError = '';
   selectedOrder: Order | null = null;
   orderSearch = '';
   orderFilter = 'all';
@@ -207,6 +210,7 @@ export class AdminComponent implements OnInit {
 
   openOrder(order: Order): void {
     this.selectedOrder = order;
+    this.invoiceError = '';
     queueMicrotask(() => {
       const dialog = this.orderDialog?.nativeElement;
       if (dialog && !dialog.open) dialog.showModal();
@@ -269,6 +273,23 @@ export class AdminComponent implements OnInit {
         this.shippingBusyOrderId = '';
         this.error = err?.error?.message || 'Could not create the Shiprocket shipment.';
         this.loadOrders();
+      }
+    });
+  }
+
+  downloadInvoice(order: Order): void {
+    if (!order.shipment?.shiprocketOrderId || this.invoiceBusyOrderId) return;
+    this.invoiceError = '';
+    this.invoiceBusyOrderId = order.id;
+    this.shippingService.getInvoice(order.id).subscribe({
+      next: (response) => {
+        this.invoiceBusyOrderId = '';
+        try { saveInvoice(response, `${order.orderNumber || order.id}_Invoice.pdf`); }
+        catch { this.invoiceError = 'Invoice is not available yet. Please try again later.'; }
+      },
+      error: () => {
+        this.invoiceBusyOrderId = '';
+        this.invoiceError = 'Invoice is not available yet. Please try again later.';
       }
     });
   }

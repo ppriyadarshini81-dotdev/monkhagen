@@ -71,6 +71,7 @@ export interface Order {
   trackingStatus: string | null;
   pickupStatus: string | null;
   estimatedDelivery: string | null;
+  invoiceAvailable: boolean;
   shippedAt: string | null;
   deliveredAt: string | null;
   createdAt: string;

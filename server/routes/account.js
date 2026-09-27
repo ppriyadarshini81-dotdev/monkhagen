@@ -8,6 +8,7 @@ validation.params(router);
 // All account routes require authentication
 router.use(authenticate);
 const accountMutationLimiter = createLimiter('account-mutations', { limit: 60, windowMs: 15 * 60000, authenticated: true });
+const invoiceLimiter = createLimiter('invoice-downloads', { limit: 10, windowMs: 60000, authenticated: true });
 router.use((req, res, next) => ['POST','PUT','PATCH','DELETE'].includes(req.method) ? accountMutationLimiter(req, res, next) : next());
 
 // Profile
@@ -26,6 +27,7 @@ router.patch('/addresses/:id/default', ctrl.setDefaultAddress);
 router.get('/orders',                    ctrl.getOrders);
 router.get('/orders/:orderId',           ctrl.getOrder);
 router.get('/orders/:orderId/tracking',  ctrl.getTracking);
+router.get('/orders/:orderId/invoice', invoiceLimiter, ctrl.getInvoice);
 
 // Returns
 router.get('/returns',   ctrl.getReturns);

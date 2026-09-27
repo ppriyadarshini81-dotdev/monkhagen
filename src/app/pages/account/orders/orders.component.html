@@ -7,6 +7,7 @@
 
   <div *ngIf="loading" class="mh-orders-empty">Loading your orders...</div>
   <div *ngIf="!loading && loadError" class="mh-orders-empty mh-orders-empty--error">{{ loadError }}</div>
+  <p class="mh-orders-empty mh-orders-empty--error" role="alert" *ngIf="invoiceError">{{ invoiceError }}</p>
   <div *ngIf="!loading && !loadError && orders.length === 0" class="mh-orders-empty">
     <strong>No confirmed orders yet</strong>
     <span>Your confirmed orders will appear here.</span>
@@ -56,6 +57,7 @@
       <footer class="mh-customer-order__foot">
         <span class="mh-delivery-state"><i></i>{{ deliveryLabel(order) }}</span>
         <div>
+          <button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button>
           <button type="button" class="mh-order-action mh-order-action--quiet" (click)="openDetails(order)">View details</button>
           <button type="button" class="mh-order-action mh-order-action--primary" (click)="openTracking(order)">Track order <span aria-hidden="true">&#8594;</span></button>
         </div>
@@ -105,7 +107,7 @@
         </section>
       </div>
     </div>
-    <footer class="mh-customer-dialog__foot"><small>{{ isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order)) }}</small><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
+    <footer class="mh-customer-dialog__foot"><small>{{ isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order)) }}</small><div><button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
   </ng-container>
 </dialog>
 

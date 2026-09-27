@@ -101,3 +101,30 @@ test('rejects unsafe credential destinations and missing configuration', () => {
     assert.throws(() => getConfig({ SHIPROCKET_EMAIL: 'x', SHIPROCKET_PASSWORD: 'y', SHIPROCKET_BASE_URL: url }));
   }
 });
+
+test('downloads invoice PDFs without forwarding Shiprocket credentials', async () => {
+  let request;
+  const client = createShiprocketClient({ config: settings, fetchImpl: async (url, options) => {
+    request = { url, options };
+    return new Response(Buffer.from('%PDF-1.4 test invoice'), {
+      headers: { 'Content-Type': 'text/pdf' }
+    });
+  } });
+  const document = await client.downloadInvoice('https://documents.example.test/invoice.pdf');
+  assert.equal(document.subarray(0, 5).toString(), '%PDF-');
+  assert.equal(request.url.hostname, 'documents.example.test');
+  assert.equal(request.options.redirect, 'error');
+  assert.equal(request.options.headers.Authorization, undefined);
+});
+
+test('rejects unsafe or invalid invoice documents', async () => {
+  const client = createShiprocketClient({ config: settings, fetchImpl: async () => new Response('not a pdf', {
+    headers: { 'Content-Type': 'text/html' }
+  }) });
+  for (const url of ['http://documents.example.test/invoice.pdf', 'https://localhost/invoice.pdf',
+    'https://127.0.0.1/invoice.pdf', 'https://user:pass@documents.example.test/invoice.pdf']) {
+    await assert.rejects(client.downloadInvoice(url), error => error.code === 'SHIPROCKET_INVALID_RESPONSE');
+  }
+  await assert.rejects(client.downloadInvoice('https://documents.example.test/invoice.pdf'),
+    error => error.code === 'SHIPROCKET_INVALID_RESPONSE');
+});

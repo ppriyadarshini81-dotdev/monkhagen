@@ -218,6 +218,7 @@ function fmtOrder(o, items, addr) {
     trackingStatus: o.shipment_tracking_status || null,
     pickupStatus: o.shipment_pickup_status || null,
     estimatedDelivery: o.shipment_estimated_delivery || null,
+    invoiceAvailable: Boolean(o.invoice_available),
     shippedAt: o.shipped_at || null,
     deliveredAt: o.delivered_at || null,
     createdAt: o.created_at,
@@ -251,7 +252,8 @@ exports.getOrders = asyncHandler(async (req, res) => {
        s.shipping_status AS shipment_shipping_status,
        s.tracking_status AS shipment_tracking_status,
        s.pickup_status AS shipment_pickup_status,
-       s.estimated_delivery AS shipment_estimated_delivery
+       s.estimated_delivery AS shipment_estimated_delivery,
+       (s.shiprocket_order_id IS NOT NULL) AS invoice_available
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      WHERE o.user_id = $1
        AND (o.payment_status = 'paid' OR (o.payment_method = 'cod' AND o.payment_status = 'pending'))
@@ -271,7 +273,8 @@ exports.getOrder = asyncHandler(async (req, res) => {
        s.shipping_status AS shipment_shipping_status,
        s.tracking_status AS shipment_tracking_status,
        s.pickup_status AS shipment_pickup_status,
-       s.estimated_delivery AS shipment_estimated_delivery
+       s.estimated_delivery AS shipment_estimated_delivery,
+       (s.shiprocket_order_id IS NOT NULL) AS invoice_available
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      WHERE o.id = $1 AND o.user_id = $2
        AND (o.payment_status = 'paid' OR (o.payment_method = 'cod' AND o.payment_status = 'pending'))`,
@@ -279,6 +282,15 @@ exports.getOrder = asyncHandler(async (req, res) => {
   );
   if (!rows[0]) return res.status(404).json({ message: 'Order not found.' });
   res.json(await enrichOrder(rows[0]));
+});
+
+exports.getInvoice = asyncHandler(async (req, res) => {
+  const invoice = await shipping.invoice(req.params.orderId, req.user);
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `attachment; filename="${invoice.filename}"`);
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.send(invoice.document);
 });
 
 exports.getTracking = asyncHandler(async (req, res) => {

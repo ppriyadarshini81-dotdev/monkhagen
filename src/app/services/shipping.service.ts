@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -18,5 +18,12 @@ export class ShippingService {
 
   createShipment(orderId: string): Observable<ShipmentResult> {
     return this.http.post<ShipmentResult>(`${this.api}/create-shipment`, { orderId });
+  }
+
+  getInvoice(orderId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.api}/${orderId}/invoice`, {
+      observe: 'response',
+      responseType: 'blob'
+    });
   }
 }

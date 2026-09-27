@@ -170,5 +170,18 @@ function normalizeTracking(data) {
   };
 }
 
+function normalizeInvoice(data) {
+  if (data?.is_invoice_created === false || data?.data?.is_invoice_created === false) {
+    throw shippingError(404, 'INVOICE_NOT_AVAILABLE', 'Invoice is not available yet. Please try again later.');
+  }
+  const candidate = data?.invoice_url ?? data?.invoiceUrl ?? data?.url ??
+    data?.data?.invoice_url ?? data?.data?.invoiceUrl ?? data?.data?.url;
+  const invoiceUrl = safeUrl(candidate);
+  if (!invoiceUrl) {
+    throw shippingError(502, 'SHIPROCKET_INVALID_RESPONSE', 'Shiprocket did not return a valid invoice URL.');
+  }
+  return invoiceUrl;
+}
+
 module.exports = { uuid, positive, providerId, serviceabilityInput, packageDetails, assertFulfillmentSafe, assertShippable,
-  buildOrderPayload, normalizeCouriers, normalizeTracking, optionalNumber, safeUrl };
+  buildOrderPayload, normalizeCouriers, normalizeTracking, normalizeInvoice, optionalNumber, safeUrl };

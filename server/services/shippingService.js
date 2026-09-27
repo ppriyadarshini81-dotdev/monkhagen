@@ -1,7 +1,7 @@
 const Shipment = require('../models/Shipment');
 const { shiprocket, shippingError } = require('../config/shiprocket');
 const { uuid, providerId, serviceabilityInput, packageDetails, assertShippable, assertFulfillmentSafe,
-  buildOrderPayload, normalizeCouriers, normalizeTracking, optionalNumber, safeUrl } = require('./shippingMapping');
+  buildOrderPayload, normalizeCouriers, normalizeTracking, normalizeInvoice, optionalNumber, safeUrl } = require('./shippingMapping');
 
 const REVIEW_MESSAGE = 'A previous shipping operation has an uncertain outcome. Reconcile it with Shiprocket before retrying.';
 
@@ -34,6 +34,26 @@ function indiaTimestamp(value) {
     ? value.replace(' ', 'T') + '+05:30' : value;
   const date = new Date(normalized);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function invoiceFailure(error) {
+  const message = 'Invoice is not available yet. Please try again later.';
+  if (error.code === 'SHIPROCKET_TIMEOUT') return shippingError(504, 'INVOICE_TIMEOUT', message);
+  if (error.code === 'SHIPROCKET_AUTH_FAILED' || error.code === 'SHIPROCKET_NOT_CONFIGURED' ||
+      error.code === 'SHIPROCKET_PERMISSION_DENIED') {
+    return shippingError(503, 'INVOICE_PROVIDER_UNAVAILABLE', message);
+  }
+  if (error.upstreamStatus === 429) return shippingError(429, 'INVOICE_RATE_LIMITED', message);
+  if ([400, 404, 409, 422].includes(error.upstreamStatus)) {
+    return shippingError(404, 'INVOICE_NOT_AVAILABLE', message);
+  }
+  return shippingError(502, 'INVOICE_UNAVAILABLE', message);
+}
+
+function invoiceFilename(source, shiprocketOrderId) {
+  const orderReference = String(source.order_number || source.id)
+    .replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'Order';
+  return `${orderReference}_Invoice_${shiprocketOrderId}.pdf`;
 }
 
 function createShippingService({ repository = Shipment, api = shiprocket } = {}) {
@@ -231,6 +251,28 @@ function createShippingService({ repository = Shipment, api = shiprocket } = {})
     });
   }
 
+  async function invoice(orderId, user) {
+    orderId = uuid(orderId);
+    const source = await repository.invoiceSource(orderId);
+    if (!source || (source.user_id !== user.id && !['admin', 'super_admin'].includes(user.role))) {
+      throw shippingError(404, 'ORDER_NOT_FOUND', 'Order not found.');
+    }
+    let shiprocketOrderId;
+    try { shiprocketOrderId = providerId(source.shiprocket_order_id, 'shiprocket_order_id'); }
+    catch { throw shippingError(404, 'INVOICE_NOT_AVAILABLE', 'Invoice is not available yet. Please try again later.'); }
+    try {
+      const result = await api.request('/orders/print/invoice', {
+        method: 'POST', body: { ids: [shiprocketOrderId] }
+      });
+      const invoiceUrl = normalizeInvoice(result);
+      const document = await api.downloadInvoice(invoiceUrl);
+      return { document, filename: invoiceFilename(source, shiprocketOrderId) };
+    } catch (error) {
+      if (error.code?.startsWith('INVOICE_')) throw error;
+      throw invoiceFailure(error);
+    }
+  }
+
   // Recover a remote success lost to a timeout/crash without trusting IDs or status supplied by Angular.
   async function reconcile(orderId, remoteOrderId) {
     orderId = uuid(orderId);
@@ -283,7 +325,7 @@ function createShippingService({ repository = Shipment, api = shiprocket } = {})
     }
   }
 
-  return { serviceability, createShipment, assignAwb, generatePickup, generateLabel, tracking, reconcile, processPendingOrder };
+  return { serviceability, createShipment, assignAwb, generatePickup, generateLabel, tracking, invoice, reconcile, processPendingOrder };
 }
 
 module.exports = { ...createShippingService(), createShippingService };

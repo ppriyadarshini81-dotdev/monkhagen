@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { User } from '../models/user.model';
@@ -58,6 +58,13 @@ export class AccountService {
 
   getTracking(orderId: string): Observable<TrackingInfo> {
     return this.http.get<TrackingInfo>(`${this.api}/orders/${orderId}/tracking`);
+  }
+
+  getInvoice(orderId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.api}/orders/${orderId}/invoice`, {
+      observe: 'response',
+      responseType: 'blob'
+    });
   }
 
   // ── Returns ────────────────────────────────────────────────
