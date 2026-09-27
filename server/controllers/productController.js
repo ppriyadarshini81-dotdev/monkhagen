@@ -7,6 +7,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 exports.list = asyncHandler(async (req, res) => {
   const { category, search, featured } = req.query;
   const products = await Product.findAll({ category, search, featured: featured === 'true', ...require('../middleware/validation').pagination(req.query) });
+  res.set('Cache-Control', 'no-store');
   res.json(products);
 });
 
@@ -28,6 +29,7 @@ exports.adminGetOne = asyncHandler(async (req, res) => {
 // GET /api/products/categories
 exports.categories = asyncHandler(async (_req, res) => {
   const cats = await Category.find();
+  res.set('Cache-Control', 'no-store');
   res.json(cats.map((c) => c.name));
 });
 
@@ -38,6 +40,7 @@ exports.getOne = asyncHandler(async (req, res) => {
     ? await Product.findById(idOrSlug, { activeOnly: true })
     : await Product.findBySlug(idOrSlug, { activeOnly: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
+  res.set('Cache-Control', 'no-store');
   res.json(product);
 });
 
