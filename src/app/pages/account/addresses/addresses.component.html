@@ -24,12 +24,16 @@
         <div class="mh-field mh-field--full"><label class="mh-label" for="addr-landmark">Landmark (optional)</label>
           <input id="addr-landmark" class="mh-input" [(ngModel)]="form.landmark" name="lm" maxlength="255" (blur)="touched.add('landmark')" [attr.aria-invalid]="!!visibleError('landmark')" aria-describedby="addr-landmark-error" />
           <p id="addr-landmark-error" class="mh-field-error" *ngIf="visibleError('landmark')">{{ visibleError('landmark') }}</p></div>
-        <div class="mh-field"><label class="mh-label" for="addr-city">City *</label>
-          <input id="addr-city" class="mh-input" [(ngModel)]="form.city" name="city" required maxlength="100" autocomplete="address-level2" (blur)="touched.add('city')" [attr.aria-invalid]="!!visibleError('city')" aria-describedby="addr-city-error" />
-          <p id="addr-city-error" class="mh-field-error" *ngIf="visibleError('city')">{{ visibleError('city') }}</p></div>
         <div class="mh-field"><label class="mh-label" for="addr-state">State *</label>
-          <input id="addr-state" class="mh-input" [(ngModel)]="form.state" name="state" required maxlength="100" autocomplete="address-level1" (blur)="touched.add('state')" [attr.aria-invalid]="!!visibleError('state')" aria-describedby="addr-state-error" />
+          <select id="addr-state" class="mh-input mh-select" [ngModel]="form.state" (ngModelChange)="stateChanged($event)" name="state" required autocomplete="address-level1" (blur)="touched.add('state')" [disabled]="locationsLoading || !!locationError" [attr.aria-invalid]="!!visibleError('state')" aria-describedby="addr-state-error">
+            <option value="">Select State</option><option *ngFor="let state of stateOptions" [value]="state">{{ state }}</option>
+          </select>
           <p id="addr-state-error" class="mh-field-error" *ngIf="visibleError('state')">{{ visibleError('state') }}</p></div>
+        <div class="mh-field"><label class="mh-label" for="addr-city">City *</label>
+          <select id="addr-city" class="mh-input mh-select" [(ngModel)]="form.city" name="city" required autocomplete="address-level2" (blur)="touched.add('city')" [disabled]="!form.state || locationsLoading || !!locationError" [attr.aria-invalid]="!!visibleError('city')" aria-describedby="addr-city-error">
+            <option value="">{{ form.state ? 'Select City' : 'Select state first' }}</option><option *ngFor="let city of cityOptions" [value]="city">{{ city }}</option>
+          </select>
+          <p id="addr-city-error" class="mh-field-error" *ngIf="visibleError('city')">{{ visibleError('city') }}</p></div>
         <div class="mh-field"><label class="mh-label" for="addr-pin">PIN code *</label>
           <input id="addr-pin" class="mh-input" [(ngModel)]="form.postalCode" name="pin" required inputmode="numeric" maxlength="6" autocomplete="postal-code" (blur)="touched.add('postalCode')" [attr.aria-invalid]="!!visibleError('postalCode')" aria-describedby="addr-pin-error" />
           <p id="addr-pin-error" class="mh-field-error" *ngIf="visibleError('postalCode')">{{ visibleError('postalCode') }}</p></div>
@@ -38,6 +42,7 @@
             <option>Home</option><option>Work</option><option>Other</option>
           </select></div>
       </div>
+      <p class="mh-error" *ngIf="locationError">{{ locationError }}</p>
       <p class="mh-error" *ngIf="error">{{ error }}</p>
       <div class="mh-addr-form__actions">
         <button class="mh-btn mh-btn--gold" type="submit" [disabled]="saving">

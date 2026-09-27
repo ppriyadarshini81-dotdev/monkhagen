@@ -2,6 +2,7 @@ const { pool } = require('../config/db');
 const User = require('../models/User');
 const asyncHandler = require('../middleware/asyncHandler');
 const addressValidationError = require('../services/addressValidation');
+const { loadIndiaLocations, resolveIndiaLocation } = require('../services/indiaLocations');
 const shipping = require('../services/shippingService');
 const returns = require('../services/returnService');
 
@@ -65,13 +66,19 @@ exports.getDefaultAddress = asyncHandler(async (req, res) => {
   res.json(rows[0] ? fmtAddr(rows[0]) : null);
 });
 
+exports.getAddressLocations = asyncHandler(async (_req, res) => {
+  res.set('Cache-Control', 'private, max-age=86400');
+  res.json(await loadIndiaLocations());
+});
+
 exports.addAddress = asyncHandler(async (req, res) => {
-  const validationError = addressValidationError(req.body);
+  const validationError = await addressValidationError(req.body, { validateLocation: true });
   if (validationError) return res.status(400).json({ message: validationError });
   const { fullName, phone, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
   if (!fullName || !phone || !addressLine1 || !city || !state || !postalCode) {
     return res.status(400).json({ message: 'fullName, phone, addressLine1, city, state and postalCode are required.' });
   }
+  const location = await resolveIndiaLocation(state, city);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -86,7 +93,8 @@ exports.addAddress = asyncHandler(async (req, res) => {
     const { rows } = await client.query(
       `INSERT INTO customer_addresses (user_id, full_name, phone, address_line1, address_line2, landmark, city, state, postal_code, country, address_type, is_default)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [req.user.id, fullName, phone, addressLine1, addressLine2 || null, landmark || null, city, state, postalCode, country, addressType, makeDefault]
+      [req.user.id, fullName, phone, addressLine1, addressLine2 || null, landmark || null,
+        location.city, location.state, postalCode, 'India', addressType, makeDefault]
     );
     await client.query('COMMIT');
     res.status(201).json(fmtAddr(rows[0]));
@@ -99,21 +107,26 @@ exports.addAddress = asyncHandler(async (req, res) => {
 });
 
 exports.updateAddress = asyncHandler(async (req, res) => {
-  const validationError = addressValidationError(req.body);
-  if (validationError) return res.status(400).json({ message: validationError });
   const { id } = req.params;
   const { rows: owned } = await pool.query(
-    'SELECT id FROM customer_addresses WHERE id = $1 AND user_id = $2', [id, req.user.id]
+    'SELECT id, city, state FROM customer_addresses WHERE id = $1 AND user_id = $2', [id, req.user.id]
   );
   if (!owned[0]) return res.status(404).json({ message: 'Address not found.' });
 
+  const validationError = await addressValidationError(req.body, {
+    validateLocation: true,
+    legacyLocation: { city: owned[0].city, state: owned[0].state }
+  });
+  if (validationError) return res.status(400).json({ message: validationError });
   const { fullName, phone, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
+  const location = await resolveIndiaLocation(state, city);
   const { rows } = await pool.query(
     `UPDATE customer_addresses
      SET full_name=$1, phone=$2, address_line1=$3, address_line2=$4, landmark=$5,
          city=$6, state=$7, postal_code=$8, country=$9, address_type=$10, updated_at=NOW()
      WHERE id=$11 AND user_id=$12 RETURNING *`,
-    [fullName, phone, addressLine1, addressLine2 || null, landmark || null, city, state, postalCode, country, addressType, id, req.user.id]
+    [fullName, phone, addressLine1, addressLine2 || null, landmark || null,
+      location?.city || city.trim(), location?.state || state.trim(), postalCode, 'India', addressType, id, req.user.id]
   );
   res.json(fmtAddr(rows[0]));
 });

@@ -16,7 +16,7 @@ async function checkoutSnapshot(client, userId, addressId) {
   const addresses = await client.query('SELECT * FROM customer_addresses WHERE id = $1 AND user_id = $2', [addressId, userId]);
   const address = addresses.rows[0];
   if (!address) throw error(400, 'Select a shipping address saved to your account.');
-  const invalid = addressValidationError({ fullName: address.full_name, phone: address.phone,
+  const invalid = await addressValidationError({ fullName: address.full_name, phone: address.phone,
     addressLine1: address.address_line1, city: address.city, state: address.state,
     postalCode: address.postal_code, country: address.country });
   if (invalid) throw error(400, invalid);

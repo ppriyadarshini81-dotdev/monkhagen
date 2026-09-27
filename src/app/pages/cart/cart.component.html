@@ -126,13 +126,17 @@
           <small class="mh-field-error" *ngIf="(addressControl.touched || addressAttempted) && addressFieldError('address')">{{ addressFieldError('address') }}</small>
         </label>
         <div class="mh-cart__row2">
-          <label class="mh-address-field">City *
-            <input #cityControl="ngModel" class="mh-input" [class.mh-input--invalid]="(cityControl.touched || addressAttempted) && addressFieldError('city')" name="city" autocomplete="address-level2" [(ngModel)]="shipping.city" required minlength="2" maxlength="100" />
-            <small class="mh-field-error" *ngIf="(cityControl.touched || addressAttempted) && addressFieldError('city')">{{ addressFieldError('city') }}</small>
-          </label>
           <label class="mh-address-field">State *
-            <input #stateControl="ngModel" class="mh-input" [class.mh-input--invalid]="(stateControl.touched || addressAttempted) && addressFieldError('state')" name="state" autocomplete="address-level1" [(ngModel)]="shipping.state" required minlength="2" maxlength="100" />
+            <select #stateControl="ngModel" class="mh-input mh-select" [class.mh-input--invalid]="(stateControl.touched || addressAttempted) && addressFieldError('state')" name="state" autocomplete="address-level1" [ngModel]="shipping.state" (ngModelChange)="stateChanged($event)" required [disabled]="locationsLoading || !!locationError">
+              <option value="">Select State</option><option *ngFor="let state of stateOptions" [value]="state">{{ state }}</option>
+            </select>
             <small class="mh-field-error" *ngIf="(stateControl.touched || addressAttempted) && addressFieldError('state')">{{ addressFieldError('state') }}</small>
+          </label>
+          <label class="mh-address-field">City *
+            <select #cityControl="ngModel" class="mh-input mh-select" [class.mh-input--invalid]="(cityControl.touched || addressAttempted) && addressFieldError('city')" name="city" autocomplete="address-level2" [(ngModel)]="shipping.city" required [disabled]="!shipping.state || locationsLoading || !!locationError">
+              <option value="">{{ shipping.state ? 'Select City' : 'Select state first' }}</option><option *ngFor="let city of cityOptions" [value]="city">{{ city }}</option>
+            </select>
+            <small class="mh-field-error" *ngIf="(cityControl.touched || addressAttempted) && addressFieldError('city')">{{ addressFieldError('city') }}</small>
           </label>
           <label class="mh-address-field">PIN code *
             <input #pinControl="ngModel" class="mh-input" [class.mh-input--invalid]="(pinControl.touched || addressAttempted) && addressFieldError('zip')" name="pin" autocomplete="postal-code" inputmode="numeric" [(ngModel)]="shipping.zip" required pattern="[1-9][0-9]{5}" maxlength="6" />
@@ -144,6 +148,7 @@
           </label>
         </div>
       </div>
+      <p class="mh-error" *ngIf="addingAddress && locationError">{{ locationError }}</p>
     </fieldset>
     <fieldset *ngIf="checkoutStep === 'payment'" class="mh-payment-methods" [disabled]="placing">
       <legend class="mh-address-legend">PAYMENT METHOD</legend>

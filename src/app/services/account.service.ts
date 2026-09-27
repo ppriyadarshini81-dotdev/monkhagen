@@ -1,15 +1,16 @@
 import { HttpClient, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, shareReplay } from 'rxjs';
 import { User } from '../models/user.model';
 import {
-  Address, AddressPayload, Order, TrackingInfo,
+  Address, AddressPayload, IndiaLocations, Order, TrackingInfo,
   ReturnRequest, ReturnPayload, CreditTransaction
 } from '../models/account.model';
 
 @Injectable({ providedIn: 'root' })
 export class AccountService {
   private readonly api = '/api/account';
+  private addressLocations$?: Observable<IndiaLocations>;
 
   constructor(private http: HttpClient) {}
 
@@ -45,6 +46,12 @@ export class AccountService {
 
   setDefaultAddress(id: string): Observable<Address> {
     return this.http.patch<Address>(`${this.api}/addresses/${id}/default`, {});
+  }
+
+  getAddressLocations(): Observable<IndiaLocations> {
+    return this.addressLocations$ ||= this.http.get<IndiaLocations>(`${this.api}/addresses/locations`).pipe(
+      shareReplay({ bufferSize: 1, refCount: false })
+    );
   }
 
   // ── Orders ─────────────────────────────────────────────────

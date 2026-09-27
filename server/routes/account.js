@@ -18,6 +18,7 @@ router.put('/profile', validation.body('profile'), ctrl.updateProfile);
 // Addresses
 router.get('/addresses',             ctrl.getAddresses);
 router.get('/addresses/default',     ctrl.getDefaultAddress);
+router.get('/addresses/locations',   ctrl.getAddressLocations);
 router.post('/addresses',            ctrl.addAddress);
 router.put('/addresses/:id',         ctrl.updateAddress);
 router.delete('/addresses/:id',      ctrl.deleteAddress);

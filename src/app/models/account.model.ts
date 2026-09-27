@@ -97,6 +97,12 @@ export interface TrackingInfo {
   lastCheckedAt: string | null;
 }
 
+export interface IndiaLocations {
+  country: 'India';
+  attribution: string;
+  states: Array<{ name: string; cities: string[] }>;
+}
+
 export interface ReturnItem {
   id: string;
   orderItemId: string;

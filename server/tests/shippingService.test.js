@@ -59,6 +59,10 @@ test('maps immutable order snapshots, INR totals, variant SKUs and package units
   assert.equal(body.billing_customer_name, 'Test');
   assert.equal(body.billing_last_name, 'Customer');
   assert.equal(body.billing_phone, '9876543210');
+  assert.equal(body.billing_city, 'Delhi');
+  assert.equal(body.billing_state, 'Delhi');
+  assert.equal(body.billing_pincode, '110001');
+  assert.equal(body.billing_country, 'India');
   assert.equal(body.sub_total, 1499);
   assert.equal(body.shipping_charges, 99);
   assert.deepEqual(body.order_items[0], { name: 'Test Tee', sku: 'TEE-M-BLACK', units: 1, selling_price: 1499 });
