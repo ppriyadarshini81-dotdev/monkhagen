@@ -6,7 +6,6 @@
 
   <p class="mh-success" *ngIf="message && !editing">{{ message }}</p>
 
-  <!-- View mode -->
   <div *ngIf="!editing" class="mh-profile__fields">
     <div class="mh-profile__field">
       <span class="mh-label">Full name</span>
@@ -14,7 +13,7 @@
     </div>
     <div class="mh-profile__field">
       <span class="mh-label">Email</span>
-      <span>{{ user?.email || '—' }}
+      <span>{{ user?.email || 'Not linked' }}
         <span *ngIf="user?.emailVerified" class="mh-badge mh-badge--green">Verified</span>
       </span>
     </div>
@@ -28,30 +27,54 @@
     </div>
   </div>
 
-  <!-- Edit mode -->
+  <div *ngIf="!editing && !user?.emailVerified" class="mh-profile__email-prompt">
+    <strong>Have an existing account?</strong>
+    <p>Verify its Google email to restore your saved addresses, orders, cart and profile details.</p>
+    <button class="mh-btn mh-btn--ghost" type="button" (click)="startEdit()">Add and verify email</button>
+  </div>
+
   <form *ngIf="editing" (ngSubmit)="save()" class="mh-profile__form">
     <div class="mh-field">
-      <label class="mh-label">Full name</label>
-      <input class="mh-input" [(ngModel)]="form.name" name="name" required />
+      <label class="mh-label" for="profile-name">Full name</label>
+      <input id="profile-name" class="mh-input" [(ngModel)]="form.name" name="name" required />
     </div>
     <div class="mh-field">
-      <label class="mh-label">Phone</label>
-      <input class="mh-input" [(ngModel)]="form.phone" name="phone" placeholder="10-digit number" />
+      <label class="mh-label" for="profile-phone">Phone</label>
+      <input id="profile-phone" class="mh-input" [(ngModel)]="form.phone" name="phone" placeholder="10-digit number" />
     </div>
     <div class="mh-field">
-      <label class="mh-label">Date of birth</label>
-      <input class="mh-input" type="date" [(ngModel)]="form.dateOfBirth" name="dateOfBirth" />
+      <label class="mh-label" for="profile-dob">Date of birth</label>
+      <input id="profile-dob" class="mh-input" type="date" [(ngModel)]="form.dateOfBirth" name="dateOfBirth" />
     </div>
-    <div class="mh-field mh-profile__form-note">
-      <span class="mh-label">Email</span>
-      <span class="mh-text-dim" style="font-size:13px">{{ user?.email }} — managed by Google</span>
+
+    <div class="mh-profile__email-link">
+      <div class="mh-field">
+        <label class="mh-label" for="profile-email">Email address</label>
+        <input
+          id="profile-email"
+          class="mh-input"
+          type="email"
+          [(ngModel)]="form.email"
+          name="email"
+          autocomplete="email"
+          placeholder="Enter the email used for your saved account"
+        />
+      </div>
+      <p>
+        Verify the same Google email used for your existing Monk Hagen account to restore its saved
+        name, addresses, orders, cart and other account details.
+      </p>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="verifyEmail()" [disabled]="verifyingEmail">
+        {{ verifyingEmail ? 'Verifying…' : 'Verify email with Google' }}
+      </button>
     </div>
+
     <p class="mh-error" *ngIf="error">{{ error }}</p>
     <div class="mh-profile__actions">
-      <button class="mh-btn mh-btn--gold" type="submit" [disabled]="saving">
+      <button class="mh-btn mh-btn--gold" type="submit" [disabled]="saving || verifyingEmail">
         {{ saving ? 'Saving…' : 'Save' }}
       </button>
-      <button class="mh-btn mh-btn--ghost" type="button" (click)="cancelEdit()">Cancel</button>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="cancelEdit()" [disabled]="verifyingEmail">Cancel</button>
     </div>
   </form>
 </section>

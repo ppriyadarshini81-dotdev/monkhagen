@@ -25,10 +25,11 @@ class PostgresRateLimitStore {
   async resetKey(key) { await this.database.query('DELETE FROM security_rate_limits WHERE key_hash = $1', [this.key(key)]); }
 }
 
-function createLimiter(scope, { limit, windowMs, authenticated = false }) {
+function createLimiter(scope, { limit, windowMs, authenticated = false, keyGenerator = null }) {
   return rateLimit({
     windowMs, limit, store: new PostgresRateLimitStore(scope),
-    keyGenerator: req => authenticated && req.user ? `user:${req.user.id}` : ipKeyGenerator(req.ip),
+    keyGenerator: req => keyGenerator ? keyGenerator(req) :
+      (authenticated && req.user ? `user:${req.user.id}` : ipKeyGenerator(req.ip)),
     standardHeaders: 'draft-8', legacyHeaders: false, passOnStoreError: false,
     message: { message: 'Too many requests. Please try again later.' }
   });

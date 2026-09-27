@@ -1,72 +1,76 @@
-const { pool } = require('../config/db');
 const User = require('../models/User');
 const { signToken } = require('../middleware/auth');
 const asyncHandler = require('../middleware/asyncHandler');
-const { developmentOtpCode } = require('../config/security');
+const analytics = require('../services/analyticsService');
+const msg91 = require('../services/msg91OtpService');
+const { normalizeIndianMobile, toE164Indian } = require('../services/phoneNumber');
 
-function otpUnavailable() {
-  const error = new Error('OTP authentication provider is not configured.');
-  error.status = 503;
-  return error;
+function invalidPhone(res) {
+  return res.status(400).json({ message: 'Enter a valid 10-digit Indian mobile number.' });
 }
 
-// Calls MSG91 when configured; local fallback requires an explicit fixed code.
-async function msg91Send(phone) {
-  const { MSG91_AUTH_KEY, MSG91_TEMPLATE_ID } = process.env;
-  if (MSG91_AUTH_KEY && MSG91_TEMPLATE_ID) {
-    const res = await fetch(
-      `https://api.msg91.com/api/v5/otp?template_id=${MSG91_TEMPLATE_ID}&mobile=91${phone}`,
-      { method: 'POST', headers: { authkey: MSG91_AUTH_KEY } }
-    );
-    if (!res.ok) throw new Error('MSG91 send OTP failed.');
-  } else if (developmentOtpCode()) {
-    console.log('Development OTP requested; customer details suppressed.');
-  } else throw otpUnavailable();
-}
-
-async function msg91Verify(phone, otp) {
-  const { MSG91_AUTH_KEY } = process.env;
-  if (MSG91_AUTH_KEY) {
-    const res = await fetch(
-      `https://api.msg91.com/api/v5/otp/verify?mobile=91${phone}&otp=${otp}`,
-      { headers: { authkey: MSG91_AUTH_KEY } }
-    );
-    const data = await res.json();
-    return data.type === 'success';
+function permittedOtpCustomer(user, res) {
+  if (!user.isActive) {
+    res.status(403).json({ message: 'This account is unavailable. Contact support.' });
+    return false;
   }
-  const developmentCode = developmentOtpCode();
-  if (!developmentCode) throw otpUnavailable();
-  return String(otp) === developmentCode;
+  if (['admin', 'super_admin'].includes(user.role)) {
+    res.status(403).json({ message: 'Use the administrator Google sign-in method for this account.' });
+    return false;
+  }
+  if (!user.phoneVerified) {
+    res.status(409).json({
+      message: 'This mobile number is attached to another account but is not verified. Sign in with Google or contact support to link it safely.'
+    });
+    return false;
+  }
+  return true;
 }
 
-// POST /api/auth/send-otp
+// POST /api/auth/otp/send
 exports.sendOtp = asyncHandler(async (req, res) => {
-  const { phone } = req.body;
-  if (!phone || !/^\d{10}$/.test(phone)) {
-    return res.status(400).json({ message: '10-digit mobile number is required.' });
-  }
-  await msg91Send(phone);
-  res.json({ message: 'OTP sent successfully.' });
+  const phone = normalizeIndianMobile(req.body?.phone);
+  if (!phone) return invalidPhone(res);
+  await msg91.sendOtp(toE164Indian(phone));
+  res.set('Cache-Control', 'no-store');
+  res.json({ message: 'Verification code sent.' });
 });
 
-// POST /api/auth/verify-otp
+// POST /api/auth/otp/verify
 exports.verifyOtp = asyncHandler(async (req, res) => {
-  const { phone, otp, name } = req.body;
-  if (!phone || !otp) {
-    return res.status(400).json({ message: 'phone and otp are required.' });
+  const phone = normalizeIndianMobile(req.body?.phone);
+  const otp = typeof req.body?.otp === 'string' ? req.body.otp.trim() : '';
+  if (!phone) return invalidPhone(res);
+  if (!/^\d{6}$/.test(otp)) {
+    return res.status(400).json({ message: 'Enter the 6-digit verification code.' });
   }
-  const valid = await msg91Verify(phone, otp);
-  if (!valid) {
-    return res.status(401).json({ message: 'Invalid or expired OTP.' });
+
+  if (!await msg91.verifyOtp(toE164Indian(phone), otp)) {
+    return res.status(401).json({ message: 'The verification code is incorrect or has expired.' });
   }
 
   let user = await User.findByPhone(phone);
-  const isNewUser = !user;
-  if (isNewUser) {
-    user = await User.createByPhone({ phone, name: name?.trim() || `User${phone.slice(-4)}` });
-  } else {
+  let created = false;
+  if (user) {
+    if (!permittedOtpCustomer(user, res)) return;
     await User.updateLastLogin(user.id);
+  } else {
+    try {
+      user = await User.createByPhone({ phone, name: 'User' });
+      created = true;
+    } catch (error) {
+      if (error.code !== '23505') throw error;
+      user = await User.findByPhone(phone);
+      if (!user) throw error;
+      if (!permittedOtpCustomer(user, res)) return;
+      await User.updateLastLogin(user.id);
+    }
   }
 
-  res.json({ token: signToken(user), user: user.toJSON(), isNewUser });
+  res.set('Cache-Control', 'no-store');
+  await analytics.recordServerEvent(req, created ? 'SIGNUP' : 'LOGIN', {
+    userId: user.id,
+    dedupeKey: `auth:${created ? 'signup' : 'login'}:phone:${user.id}:${Date.now()}`
+  });
+  res.json({ token: signToken(user), user: user.toJSON(), isNewUser: created });
 });

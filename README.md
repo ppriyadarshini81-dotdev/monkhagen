@@ -76,6 +76,10 @@ FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
 ADMIN_GOOGLE_EMAIL=
 
+# Backend-only customer OTP configuration
+MSG91_AUTH_KEY=
+MSG91_TEMPLATE_ID=
+
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
@@ -99,7 +103,7 @@ The `CONTACT_EMAIL` address receives contact-form submissions and a blind copy o
 
 Shiprocket variables and operational setup are documented in [docs/shiprocket.md](docs/shiprocket.md).
 
-Google is the normal customer sign-in path. Deprecated OTP routes are disabled by default. For a temporary legacy integration, set `ENABLE_LEGACY_OTP=true` and configure MSG91. Local development without MSG91 additionally requires an explicit six-digit `DEV_OTP_CODE`; this fallback is unavailable in production.
+Customers can sign in with an MSG91 mobile OTP or Firebase Google Sign-In. MSG91 credentials remain backend-only, and there is no fixed development OTP fallback. The configured administrator identity continues to require verified Google Sign-In.
 
 ## Install and run
 

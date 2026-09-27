@@ -36,20 +36,8 @@ function allowedCorsOrigins(environment = process.env) {
   return ['http://localhost:4200', 'http://127.0.0.1:4200'];
 }
 
-function legacyOtpEnabled(environment = process.env) {
-  return environment.NODE_ENV !== 'production' && environment.ENABLE_LEGACY_OTP === 'true';
-}
-
-function developmentOtpCode(environment = process.env) {
-  if (environment.NODE_ENV === 'production') return null;
-  const code = environment.DEV_OTP_CODE?.trim();
-  return /^\d{6}$/.test(code || '') ? code : null;
-}
-
 module.exports = {
   adminGoogleEmail,
   allowedCorsOrigins,
-  developmentOtpCode,
-  jwtSecret,
-  legacyOtpEnabled
+  jwtSecret
 };

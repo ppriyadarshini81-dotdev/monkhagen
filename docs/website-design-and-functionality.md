@@ -32,7 +32,7 @@ Monk Hagen is a premium streetwear e-commerce website. Visitors discover product
 | Capability | Current implementation |
 | --- | --- |
 | Storefront | Home, catalog, product details, About, Contact and refund policy |
-| Customer identity | Firebase Google login and verified email/password login using any supported email address |
+| Customer identity | MSG91 mobile OTP login and Firebase Google login |
 | Administrator identity | Designated verified Google account only; no active admin-password login |
 | Product management | Categories, badges, managed sizes/colors, images, variants and inventory |
 | Product information | Per-product description plus database-managed shared care, size chart and delivery content |
@@ -171,15 +171,24 @@ Migrations use a transaction-scoped advisory lock and a migration-name ledger. M
 ### 3.4 Authentication sequence
 
 ```text
-Google login / verified Firebase email-password login
+Google login
   -> browser obtains Firebase ID token
   -> POST /api/auth/firebase
   -> backend verifies ID token, verification state and identity binding
   -> backend determines role; designated Google identity required for admin
   -> backend issues short-lived application JWT
+
+Mobile OTP login
+  -> POST /api/auth/otp/send (backend calls MSG91)
+  -> customer enters the SMS code
+  -> POST /api/auth/otp/verify (backend verifies through MSG91)
+  -> backend finds or creates the verified phone customer
+  -> backend issues the same application JWT
+
+Both paths
   -> browser attaches JWT only to application API requests
   -> each protected request rechecks database user, role and session version
-     plus bounded Firebase account/revocation checks
+     plus bounded Firebase account/revocation checks for Firebase sessions
 ```
 
 Application tokens are HS256-signed with issuer `monkhagen-api` and audience `monkhagen-web`. Customer and administrator lifetimes are capped at one day. `JWT_EXPIRES_IN` may shorten this lifetime but cannot extend it beyond the security ceiling.
@@ -332,25 +341,18 @@ Content ownership is explicit:
 
 Initial shared content includes a 2–4 day estimate and note about some locations taking up to seven days. Initial care covers cold/30°C washing, inside-out washing, similar colours, no bleach, no prolonged soaking and avoiding direct ironing on print. These are initial database values, not immutable frontend constants; administrators can change them.
 
-### 4.5 Login, registration and password recovery
+### 4.5 Customer login
 
 **Frontend:** `pages/login/`, `services/firebase.service.ts`, `auth.service.ts`.  
-**Backend:** Firebase authentication controller, auth middleware and user model.
+**Backend:** MSG91 OTP/Firebase authentication controllers, auth middleware and user model.
 
-- Sign in using Google or a previously created Firebase email/password account.
-- Registration accepts non-Gmail addresses, including Yahoo, Outlook and Zoho addresses.
-- The new password belongs to the Monk Hagen Firebase account, not to the customer's mailbox.
-- Firebase manages password credentials; application PostgreSQL does not store customer registration passwords.
-- Registration checks at least eight characters and a special character; confirmation mismatch is validated when leaving the confirmation field and at submission.
-- Password visibility controls support both password fields.
-- Registration sends a verification email and signs the Firebase session out.
-- A green success-check dialog explains verification; only **Okay** takes the user to blank Sign in fields.
-- Registration background stays on registration until acknowledgment; email is not automatically copied into login.
-- Google login is hidden on the Create account screen; the panel layout avoids tab-switch size jumps.
-- Unverified email-password accounts cannot complete application login.
-- Password-recovery responses avoid disclosing whether an account exists.
+- Sign in using an Indian mobile number and a six-digit MSG91 code, or continue with Google.
+- Customer email/password fields are not shown on the storefront login page.
+- OTP secrets stay on the backend; the browser receives only the existing application JWT after provider verification.
+- Resend has a 45-second browser countdown plus independent server limits per IP and normalized phone number.
+- An unverified profile phone is never silently merged into an existing Google account.
 
-Administrator login is Google-only for `ADMIN_GOOGLE_EMAIL`. Legacy password columns/dependencies are not evidence of an enabled admin-password endpoint. Legacy OTP is explicitly development-only and disabled by default.
+Administrator login is Google-only for `ADMIN_GOOGLE_EMAIL`. Legacy password columns/dependencies are not evidence of an enabled admin-password endpoint.
 
 ### 4.6 Profile and address book
 
@@ -564,7 +566,7 @@ Protected customer records are selected with owner predicates, not solely UUID l
 
 ### 7.1 Firebase
 
-Browser Firebase SDK handles Google popup login, email registration, verification and recovery. Backend Firebase Admin verifies tokens and account state. Production must authorize deployed domains in Firebase and enable both Google and Email/Password where customer registration is required.
+Browser Firebase SDK handles Google popup login. Backend Firebase Admin verifies tokens and account state. Production must authorize deployed domains in Firebase and keep the Google provider enabled.
 
 The designated administrator must authenticate through Google even if the same email address can be registered with a password. The backend does not grant administrator access just because a browser supplied an email or role.
 
@@ -663,6 +665,8 @@ Product descriptions/care are rendered as text rather than arbitrary trusted HTM
 | Operation | Baseline allowance |
 | --- | --- |
 | Authentication | 10 requests / 15 minutes, IP-scoped |
+| OTP SMS send | 5 / 15 minutes per IP; 1 / 45 seconds, 3 / 15 minutes and 10 / day per phone |
+| OTP verification | 20 / 15 minutes per IP and 5 / 15 minutes per phone |
 | Contact | 5 / 15 minutes, IP-scoped |
 | Administrator access | 120 / minute, verified user-scoped |
 | Checkout/payment creation | 5 / 15 minutes |
@@ -712,6 +716,7 @@ Set local secrets privately in the root `.env`, which is ignored by Git. Do not 
 | Local DB fallback | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Used only when URL is absent |
 | API identity | `JWT_SECRET`, `JWT_EXPIRES_IN`, `ADMIN_GOOGLE_EMAIL` | Strong secret, bounded lifetime, explicit Google administrator |
 | Firebase server | `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | Admin SDK private configuration, never frontend configuration |
+| Customer mobile OTP | `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` | Backend-only MSG91 OTP API credentials and approved template |
 | Browser policy | `CORS_ORIGINS`, `TRUST_PROXY` | Exact HTTPS production origins; trusted proxy networks only |
 | Razorpay | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Match test/live environment and webhook configuration |
 | Shiprocket login | `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_BASE_URL`, `SHIPROCKET_TIMEOUT_MS` | Server-only; restricted HTTPS API base |
@@ -720,7 +725,6 @@ Set local secrets privately in the root `.env`, which is ignored by Git. Do not 
 | SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `CONTACT_EMAIL` | Official inbox for submissions/order BCC |
 | Maintenance | `CRON_SECRET` | Strong secret of at least 32 characters; exact bearer authorization |
 | Vercel parsing | `NODEJS_HELPERS` | Set to `0`; application fails closed if required raw-body safeguard is absent on Vercel |
-| Legacy development only | `ENABLE_LEGACY_OTP`, `DEV_OTP_CODE` | Disabled by default and unavailable as production auth fallback |
 
 Frontend Firebase web configuration is currently managed in [environment.ts](../src/environments/environment.ts). Backend environment changes do not automatically rewrite this browser build configuration. Private Firebase credentials must never be added there.
 
@@ -798,9 +802,9 @@ These are dated development checks, not new tests executed by this documentation
 ### 11.2 End-to-end acceptance scenarios
 
 1. Visitor can browse active products; inactive products do not leak through public APIs.
-2. Google customer login and verified Yahoo/other-email registration/login work.
-3. Registration shows acknowledgment dialog and blank Sign in screen after Okay.
-4. Non-designated Google users and password-based identities cannot access administrator endpoints.
+2. MSG91 mobile OTP and Firebase Google customer login work.
+3. OTP paste, resend cooldown and change-number controls work.
+4. Non-designated identities cannot access administrator endpoints.
 5. Customer cannot read/edit another customer's addresses/cart/orders/returns/credits.
 6. Invalid address fields show errors inside address-book/checkout forms.
 7. Product size-chart dialog, care accordion, gallery and hover slideshow behave on desktop/mobile.
@@ -873,9 +877,9 @@ This is a high-level summary of work represented by the repository and recent Gi
 | Shipping | Shiprocket login/create mapping, durable retry state, tracking and administrator shipment details |
 | Checkout/order UX | Wider professional address dialog, internal scrolling, field errors, saved-address fallback, paid-only customer list, details/tracking popups and thumbnails |
 | Performance | Deferred Razorpay script, stable card/image handling, cached media responses and hover image cycling |
-| Universal customer email | Firebase email/password registration, verification/recovery and non-Gmail support |
+| Customer mobile login | MSG91 OTP send/verify, abuse limits and verified-phone customer mapping |
 | Neon migration support | `DATABASE_URL`-first pool, local fallback, safe connection diagnostics |
-| Registration UX | Stable panel, password-special-character/match validation, visibility controls, green verification acknowledgment and clean Sign in transition |
+| Login UX | Indian mobile input, masked verification screen, six OTP positions, paste, resend countdown and Google alternative |
 | Product content | Editable shared delivery/care/size chart, per-product details, size popup and aligned accordions; customer stock-count removal |
 | Visual refinements | Five-slide two-second hero, removed pause control, About styling and product hover slideshows |
 | Critical security | Designated Google-only administrator; legacy privileged passwords disabled |
