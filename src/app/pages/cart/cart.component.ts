@@ -109,8 +109,12 @@ export class CartComponent implements OnInit, AfterViewInit {
     return 0;
   }
 
+  get codFee(): number {
+    return this.paymentMethod === 'cod' ? 100 : 0;
+  }
+
   get grandTotal(): number {
-    return this.cart.total - this.checkoutDiscount + this.shippingFee;
+    return this.cart.total - this.checkoutDiscount + this.shippingFee + this.codFee;
   }
 
   get checkoutDiscount(): number {

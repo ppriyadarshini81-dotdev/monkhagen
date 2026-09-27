@@ -34,6 +34,7 @@ function publicOffer(offer) {
     code: offer.code,
     discountPercent: offer.discountPercent,
     eligible: offer.eligible,
+    eligibilityVerified: true,
     discountAmount: offer.discountPaise / 100,
     totalAmount: offer.totalPaise / 100
   };

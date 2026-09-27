@@ -432,7 +432,7 @@
           <dl class="mh-order-totals">
             <div><dt>Subtotal</dt><dd>&#8377;{{ (order.subtotal ?? order.totalAmount ?? order.total ?? 0) | number }}</dd></div>
             <div *ngIf="order.discountAmount"><dt>Discount</dt><dd>&minus;&#8377;{{ order.discountAmount | number }}</dd></div>
-            <div><dt>Shipping</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Free' }}</dd></div>
+            <div><dt>{{ order.paymentMethod === 'cod' && order.shippingAmount ? 'COD charge' : 'Shipping' }}</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Free' }}</dd></div>
             <div class="mh-order-totals__grand"><dt>Total</dt><dd>&#8377;{{ (order.totalAmount ?? order.total ?? 0) | number }}</dd></div>
           </dl>
         </section>

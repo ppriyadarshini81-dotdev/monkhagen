@@ -3,6 +3,8 @@ const Shipment = require('./Shipment');
 const inventory = require('../services/inventoryService');
 const { validateTransition } = require('../services/orderStatusPolicy');
 
+const COD_FEE_PAISE = 10000;
+
 function genOrderNumber() {
   const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   const r = Math.random().toString(36).slice(2, 6).toUpperCase();
@@ -91,12 +93,14 @@ const Order = {
         AND inventory_released_at IS NULL AND payment_status = 'pending' FOR UPDATE`, [snapshot.cart.id]);
       if (pending.rows.length) throw inventory.error(409, 'A prepaid checkout for this cart is pending. Retry it or wait for it to expire.');
       await inventory.deduct(client, snapshot.items);
-      const amount = (snapshot.amount / 100).toFixed(2);
+      const subtotal = (snapshot.amount / 100).toFixed(2);
+      const codFee = (COD_FEE_PAISE / 100).toFixed(2);
+      const total = ((snapshot.amount + COD_FEE_PAISE) / 100).toFixed(2);
       const result = await client.query(`INSERT INTO orders
         (user_id, cart_id, checkout_token, order_number, subtotal, discount_amount, shipping_amount, total_amount,
          payment_method, payment_status, order_status, inventory_deducted_at)
-        VALUES ($1,$2,$3,$4,$5,0,0,$5,'cod','pending','confirmed',NOW()) RETURNING *`,
-        [userId, snapshot.cart.id, checkoutToken || null, genOrderNumber(), amount]);
+        VALUES ($1,$2,$3,$4,$5,0,$6,$7,'cod','pending','confirmed',NOW()) RETURNING *`,
+        [userId, snapshot.cart.id, checkoutToken || null, genOrderNumber(), subtotal, codFee, total]);
       order = result.rows[0];
       await inventory.snapshotAddress(client, order.id, snapshot.address);
       await inventory.snapshotItems(client, order.id, snapshot.items);

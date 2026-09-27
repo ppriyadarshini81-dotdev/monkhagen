@@ -49,6 +49,12 @@ describe('CartService guest cart', () => {
     const added = await firstValueFrom(cart.add(product, 2, 'M', 'Black'));
     expect(added.items[0].quantity).toBe(2);
     expect(cart.count).toBe(2);
+    expect(added.prepaidOffer).toEqual(jasmine.objectContaining({
+      eligible: true,
+      eligibilityVerified: false,
+      discountAmount: 299.8,
+      totalAmount: 2698.2
+    }));
     expect(http.post).not.toHaveBeenCalled();
     expect(localStorage.getItem('mh_guest_cart_v1')).not.toBeNull();
 
@@ -62,7 +68,7 @@ describe('CartService guest cart', () => {
     const guest = await firstValueFrom(cart.add(product, 2, 'M', 'Black'));
     const emptyServerCart: Cart = {
       cartId: 'server-cart', items: [], total: 0,
-      prepaidOffer: { code: 'MONKHAGEN10', discountPercent: 10, eligible: true, discountAmount: 0, totalAmount: 0 }
+      prepaidOffer: { code: 'MONKHAGEN10', discountPercent: 10, eligible: true, eligibilityVerified: true, discountAmount: 0, totalAmount: 0 }
     };
     const mergedServerCart: Cart = {
       ...emptyServerCart,

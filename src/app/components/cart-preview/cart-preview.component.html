@@ -11,6 +11,7 @@
     <div class="mh-cart-preview__offer" *ngIf="cart.prepaidOffer.eligible">
       {{ cart.prepaidOffer.discountPercent }}% off your first prepaid order
       <strong>{{ cart.prepaidOffer.code }}</strong>
+      <small *ngIf="!cart.prepaidOffer.eligibilityVerified">Sign in to validate</small>
     </div>
 
     <div class="mh-cart-preview__items" *ngIf="cart.items.length; else emptyCart">

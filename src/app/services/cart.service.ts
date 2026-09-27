@@ -6,7 +6,8 @@ import { Product } from '../models/product.model';
 import { AuthService } from './auth.service';
 
 const EMPTY_OFFER: PrepaidOffer = {
-  code: 'MONKHAGEN10', discountPercent: 10, eligible: false, discountAmount: 0, totalAmount: 0
+  code: 'MONKHAGEN10', discountPercent: 10, eligible: false, eligibilityVerified: false,
+  discountAmount: 0, totalAmount: 0
 };
 const EMPTY_CART: Cart = { cartId: '', items: [], total: 0, prepaidOffer: EMPTY_OFFER };
 const GUEST_CART_KEY = 'mh_guest_cart_v1';
@@ -197,11 +198,18 @@ export class CartService {
   private guestCart(): Cart {
     const items = this.readGuestItems();
     const total = items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+    const discountAmount = Math.round(total * EMPTY_OFFER.discountPercent) / 100;
     return {
       cartId: 'guest',
       items,
       total,
-      prepaidOffer: { ...EMPTY_OFFER, totalAmount: total }
+      prepaidOffer: {
+        ...EMPTY_OFFER,
+        eligible: true,
+        eligibilityVerified: false,
+        discountAmount,
+        totalAmount: total - discountAmount
+      }
     };
   }
 

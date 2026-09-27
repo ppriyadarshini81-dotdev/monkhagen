@@ -31,6 +31,7 @@
 
 .mh-cart-preview__offer { padding: 13px 24px; background: #f2f5ff; color: #17234d; font-size: 12px; letter-spacing: .04em; text-align: center; }
 .mh-cart-preview__offer strong { margin-left: 7px; color: #2848ed; }
+.mh-cart-preview__offer small { display: block; margin-top: 5px; color: #66708d; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
 
 .mh-cart-preview__items { flex: 1 1 auto; min-height: 0; padding: 6px 24px; overflow-y: auto; }
 .mh-cart-preview__item { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 16px; padding: 20px 0; border-bottom: 1px solid #e7e5e1; }

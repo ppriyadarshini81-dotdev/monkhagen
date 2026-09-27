@@ -80,8 +80,8 @@ function setup({ stock = 3, quantity = 1, priorOrders = [] } = {}) {
       if (sql.startsWith('INSERT INTO orders')) {
         const prepaid = sql.includes("'razorpay'");
         const row = { id: crypto.randomUUID(), user_id: params[0], cart_id: params[1], checkout_token: params[2],
-          order_number: params[3], total_amount: prepaid ? params[6] : params[4], subtotal: params[4],
-          discount_amount: prepaid ? params[5] : '0', shipping_amount: '0',
+          order_number: params[3], total_amount: params[6], subtotal: params[4],
+          discount_amount: prepaid ? params[5] : '0', shipping_amount: prepaid ? '0' : params[5],
           payment_method: prepaid ? 'razorpay' : 'cod', payment_status: 'pending', order_status: prepaid ? 'placed' : 'confirmed',
           inventory_reserved_at: prepaid ? new Date() : null, inventory_reservation_expires_at: new Date(Date.now() + 900000),
           inventory_deducted_at: prepaid ? null : new Date(), fulfillment_hold_reason: null, refunded_amount: '0' };
@@ -234,7 +234,9 @@ test('COD is server-priced, allocates stock and converts its cart atomically; du
   const input = attempt();
   const [first, second] = await Promise.all([Order.createCod(USER, input), Order.createCod(USER, input)]);
   assert.equal(first.id, second.id);
-  assert.equal(first.totalAmount, 100);
+  assert.equal(first.subtotal, 100);
+  assert.equal(first.shippingAmount, 100);
+  assert.equal(first.totalAmount, 200);
   assert.equal(fixture.state.stock, 0);
   assert.equal(fixture.state.orders.length, 1);
   assert.equal(fixture.state.converted.has(USER), true);

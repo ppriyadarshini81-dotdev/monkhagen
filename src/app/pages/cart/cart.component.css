@@ -185,6 +185,7 @@
 .mh-cart__offer-copy code { display: inline-block; margin-top: 9px; padding: 5px 8px; border-radius: 5px; background: var(--mh-bg-elev-2); color: var(--mh-text); font-family: inherit; font-size: 10px; font-weight: 650; letter-spacing: .03em; }
 .mh-cart__offer-applied { align-self: end; color: #087f3d; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .mh-cart__offer-applied span { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-right: 3px; border-radius: 50%; background: #e4f7eb; }
+.mh-cart__offer-pending { align-self: end; color: var(--mh-text-dim); font-size: 11px; font-weight: 650; white-space: nowrap; }
 
 
 .mh-address-dialog {
@@ -263,6 +264,7 @@
 .mh-payment-option__copy strong { display: block; font-size: 15px; }
 .mh-payment-option__copy small { display: block; margin-top: 5px; color: var(--mh-text-dim); font-size: 11px; font-weight: 400; line-height: 1.5; }
 .mh-payment-option__tag { padding: 5px 8px; border-radius: 999px; background: var(--mh-bg-elev-2); color: var(--mh-text-dim); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.mh-payment-option__tag--cod { background: #050505; color: #fff; font-weight: 700; }
 .mh-payment-note { padding: 14px 16px; border-radius: 10px; background: var(--mh-bg-elev); color: var(--mh-text-dim); font-size: 12px; line-height: 1.6; }
 .mh-payment-actions { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
 .mh-payment-actions .mh-btn--ghost { min-width: 105px; }
@@ -275,8 +277,8 @@
   .mh-address-option { padding: 16px; }
   .mh-address-form-head { flex-direction: column; gap: 0; }
   .mh-address-cancel { margin: -10px 0 18px; }
-  .mh-payment-option { grid-template-columns: auto 38px minmax(0, 1fr); padding: 16px; }
-  .mh-payment-option__tag { display: none; }
+  .mh-payment-option { grid-template-columns: auto 38px minmax(0, 1fr) auto; gap: 10px; padding: 16px; }
+  .mh-payment-option__tag { padding-inline: 6px; font-size: 8px; }
   .mh-payment-option__icon { width: 38px; height: 38px; }
   .mh-payment-actions { grid-template-columns: 1fr; }
   .mh-payment-actions .mh-btn--ghost { order: 2; }

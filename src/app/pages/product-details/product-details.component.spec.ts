@@ -35,7 +35,7 @@ describe('Product details shared content', () => {
       { provide: ProductService, useValue: productService },
       { provide: ProductPageContentService, useValue: contentService },
       { provide: CartService, useValue: {
-        prepaidOffer: { code: 'MONKHAGEN10', discountPercent: 10, eligible: false, discountAmount: 0, totalAmount: 0 }
+        prepaidOffer: { code: 'MONKHAGEN10', discountPercent: 10, eligible: false, eligibilityVerified: true, discountAmount: 0, totalAmount: 0 }
       } },
       { provide: AnalyticsService, useValue: { track: () => undefined } }
     ] }).compileComponents();

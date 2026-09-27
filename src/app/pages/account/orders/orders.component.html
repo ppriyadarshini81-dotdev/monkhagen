@@ -99,7 +99,7 @@
             <div><dt>Payment status</dt><dd>{{ isPendingCod(order) ? 'Pending / COD' : statusLabel(order.paymentStatus) }}</dd></div>
             <div><dt>Subtotal</dt><dd>&#8377;{{ order.subtotal | number }}</dd></div>
             <div *ngIf="order.discountAmount"><dt>Discount</dt><dd>&minus;&#8377;{{ order.discountAmount | number }}</dd></div>
-            <div><dt>Delivery</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Complimentary' }}</dd></div>
+            <div><dt>{{ order.paymentMethod === 'cod' && order.shippingAmount ? 'COD charge' : 'Delivery' }}</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Complimentary' }}</dd></div>
             <div><dt>{{ isPendingCod(order) ? 'Amount due on delivery' : 'Total paid' }}</dt><dd>&#8377;{{ order.totalAmount | number }}</dd></div>
           </dl>
         </section>
