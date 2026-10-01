@@ -40,6 +40,7 @@ export class ProductDetailsComponent implements OnInit {
   careItems: string[] = [];
   @ViewChild('sizeChartDialog') sizeChartDialog?: ElementRef<HTMLDialogElement>;
   @ViewChild('productImageDialog') productImageDialog?: ElementRef<HTMLDialogElement>;
+  @ViewChild('productImageStage') productImageStage?: ElementRef<HTMLElement>;
   @ViewChild('reviewDialog') reviewDialog?: ElementRef<HTMLDialogElement>;
   @ViewChild('reviewPhotoDialog') reviewPhotoDialog?: ElementRef<HTMLDialogElement>;
   reviewSummary: ReviewSummary = { average: 0, total: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
@@ -60,6 +61,9 @@ export class ProductDetailsComponent implements OnInit {
   activeReviewPhoto = '';
   readonly starValues = [1, 2, 3, 4, 5];
   imageZoom = 1;
+  imageViewerOpen = false;
+  private failedZoomImages = new Set<number>();
+  private loadedViewerImages = new Set<number>();
   private touchStartX: number | null = null;
   private touchCurrentX: number | null = null;
   private touchPointCount = 0;
@@ -83,13 +87,39 @@ export class ProductDetailsComponent implements OnInit {
   openImageViewer(): void {
     if (this.suppressImageOpen) return;
     if (!this.product?.images.length) return;
-    this.imageZoom = 1.2;
+    this.imageZoom = 1;
+    this.loadedViewerImages = new Set([this.activeImage]);
+    this.imageViewerOpen = true;
     this.productImageDialog?.nativeElement.showModal();
+    queueMicrotask(() => this.scrollViewerTo(this.activeImage, false));
   }
 
   closeImageViewer(): void {
     this.imageZoom = 1;
+    this.imageViewerOpen = false;
+    this.loadedViewerImages.clear();
     this.productImageDialog?.nativeElement.close();
+  }
+
+  imageViewerClosed(): void {
+    this.imageZoom = 1;
+    this.imageViewerOpen = false;
+    this.loadedViewerImages.clear();
+  }
+
+  viewerImageUrl(index = this.activeImage): string {
+    if (!this.product) return '';
+    const zoomUrl = this.product.zoomImages?.[index];
+    return this.loadedViewerImages.has(index) && zoomUrl && !this.failedZoomImages.has(index)
+      ? zoomUrl
+      : this.product.images[index];
+  }
+
+  viewerImageFailed(event: Event, index = this.activeImage): void {
+    const zoomUrl = this.product?.zoomImages?.[index];
+    if (!this.product || !zoomUrl || this.failedZoomImages.has(index)) return;
+    this.failedZoomImages.add(index);
+    (event.currentTarget as HTMLImageElement).src = this.cachedMediaUrl(this.product.images[index]);
   }
 
   closeImageOnBackdrop(event: MouseEvent): void {
@@ -102,7 +132,40 @@ export class ProductDetailsComponent implements OnInit {
 
   selectImage(index: number): void {
     this.activeImage = index;
-    this.imageZoom = this.productImageDialog?.nativeElement.open ? 1.2 : 1;
+    this.imageZoom = 1;
+    if (this.productImageDialog?.nativeElement.open) {
+      this.loadedViewerImages.add(index);
+      this.scrollViewerTo(index);
+    }
+  }
+
+  viewerScrolled(event: Event): void {
+    const stage = event.currentTarget as HTMLElement;
+    const frames = Array.from(stage.querySelectorAll<HTMLElement>('[data-viewer-index]'));
+    if (!frames.length) return;
+    const stageCentre = stage.scrollTop + stage.clientHeight / 2;
+    const active = frames.reduce((closest, frame) => {
+      const distance = Math.abs(frame.offsetTop + frame.offsetHeight / 2 - stageCentre);
+      return distance < closest.distance ? { frame, distance } : closest;
+    }, { frame: frames[0], distance: Number.POSITIVE_INFINITY }).frame;
+    const index = Number(active.dataset['viewerIndex']);
+    if (!Number.isSafeInteger(index) || index === this.activeImage) return;
+    this.activeImage = index;
+    this.imageZoom = 1;
+    this.loadedViewerImages.add(index);
+  }
+
+  toggleViewerZoom(index: number): void {
+    this.activeImage = index;
+    this.loadedViewerImages.add(index);
+    this.imageZoom = this.imageZoom > 1 ? 1 : 2;
+  }
+
+  private scrollViewerTo(index: number, smooth = true): void {
+    const stage = this.productImageStage?.nativeElement;
+    const frame = stage?.querySelector<HTMLElement>(`[data-viewer-index="${index}"]`);
+    if (!stage || !frame) return;
+    stage.scrollTo({ top: frame.offsetTop, behavior: smooth ? 'smooth' : 'auto' });
   }
 
   imageViewerKeydown(event: KeyboardEvent): void {
@@ -196,6 +259,7 @@ export class ProductDetailsComponent implements OnInit {
           this.selectedSize = null;
           this.selectedColor = product.colors[0] ?? null;
           this.activeImage = 0;
+          this.failedZoomImages.clear();
           this.quantity = 1;
           this.loading = false;
           this.analytics.track('PRODUCT_VIEWED', this.router.url, product.id);
@@ -402,7 +466,11 @@ export class ProductDetailsComponent implements OnInit {
     const imageCount = this.product?.images.length || 0;
     if (imageCount < 2) return;
     this.activeImage = (this.activeImage + delta + imageCount) % imageCount;
-    this.imageZoom = this.productImageDialog?.nativeElement.open ? 1.2 : 1;
+    this.imageZoom = 1;
+    if (this.productImageDialog?.nativeElement.open) {
+      this.loadedViewerImages.add(this.activeImage);
+      this.scrollViewerTo(this.activeImage);
+    }
   }
 
   addToCart(): void {

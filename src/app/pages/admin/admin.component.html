@@ -116,13 +116,43 @@
         <div class="mh-admin__full">
           <label class="mh-label">Image URLs (comma separated)</label>
           <input class="mh-input" [(ngModel)]="form.images" placeholder="https://…, https://…" />
+          <label class="mh-label mh-admin__zoom-label">Zoom Image URLs (comma separated)</label>
+          <input class="mh-input" [(ngModel)]="form.zoomImages"
+            placeholder="https://high-resolution.example/front.webp, , https://high-resolution.example/detail.webp" />
+          <small class="mh-admin__image-help">Leave an empty position when a display image has no zoom image.</small>
           <div class="mh-admin__upload">
             <label class="mh-admin__uploadbtn">
               {{ uploading ? 'Uploading…' : '⬆ Upload images (R2)' }}
               <input type="file" accept="image/*" multiple (change)="onImagesSelected($event)" hidden [disabled]="uploading" />
             </label>
-            <div class="mh-admin__thumbs" *ngIf="form.images">
-              <img *ngFor="let url of form.images.split(',')" [src]="url.trim()" alt="" />
+            <div class="mh-admin__image-manager" *ngIf="imagePairs.length">
+              <article class="mh-admin__image-pair" *ngFor="let pair of imagePairs; let i = index"
+                [class.is-dragging]="draggedImageIndex === i" draggable="true"
+                (dragstart)="startImageDrag(i, $event)" (dragover)="allowImageDrop($event)"
+                (drop)="dropImage(i, $event)" (dragend)="draggedImageIndex = null">
+                <header>
+                  <strong>{{ i === 0 ? 'PRIMARY' : 'Image ' + (i + 1) }}</strong>
+                  <span>Drag to reorder</span>
+                </header>
+                <div class="mh-admin__image-pair-media">
+                  <div><span>Display</span><img [src]="pair.imageUrl" [alt]="'Display image ' + (i + 1)" /></div>
+                  <div><span>{{ pair.zoomImageUrl ? 'Zoom available' : 'No zoom' }}</span>
+                    <img *ngIf="pair.zoomImageUrl; else noZoomImage" [src]="pair.zoomImageUrl" [alt]="'Zoom image ' + (i + 1)" />
+                    <ng-template #noZoomImage><span class="mh-admin__zoom-empty">Optional</span></ng-template>
+                  </div>
+                </div>
+                <div class="mh-admin__image-pair-actions">
+                  <button type="button" (click)="moveImage(i, -1)" [disabled]="i === 0" aria-label="Move image left">&#8592;</button>
+                  <button type="button" (click)="moveImage(i, 1)" [disabled]="i === imagePairs.length - 1" aria-label="Move image right">&#8594;</button>
+                  <label>
+                    {{ uploadingZoomIndex === i ? 'Uploading...' : (pair.zoomImageUrl ? 'Replace zoom' : 'Add zoom') }}
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden
+                      [disabled]="uploadingZoomIndex !== null" (change)="onZoomImageSelected($event, i)" />
+                  </label>
+                  <button type="button" *ngIf="pair.zoomImageUrl" (click)="removeZoomImage(i)">Remove zoom</button>
+                  <button type="button" class="danger" (click)="removeImage(i)">Remove pair</button>
+                </div>
+              </article>
             </div>
           </div>
         </div>

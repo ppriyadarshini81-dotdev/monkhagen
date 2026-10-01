@@ -24,7 +24,12 @@ test('catalog bodies strictly validate prices, quantities, IDs, booleans and med
     const post = body => fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     for (const body of [[], { ...valid, basePrice: -1 }, { ...valid, basePrice: '100' }, { ...valid, basePrice: 0.001 },
       { ...valid, isActive: 'false' }, { ...valid, categoryId: 'bad' }, { ...valid, images: ['javascript:alert(1)'] },
-      { ...valid, images: ['https://user:password@example.com/a.png'] }, { ...valid, variants: [{ size: 'M', color: 'Black', stock: -1 }] }]) assert.equal((await post(body)).status, 400);
+      { ...valid, images: ['https://user:password@example.com/a.png'] },
+      { ...valid, zoomImages: ['https://example.com/zoom.webp'] },
+      { ...valid, images: ['https://example.com/a.webp'], zoomImages: ['javascript:alert(1)'] },
+      { ...valid, variants: [{ size: 'M', color: 'Black', stock: -1 }] }]) assert.equal((await post(body)).status, 400);
+    assert.equal((await post({ ...valid, images: ['https://example.com/a.webp', 'https://example.com/b.webp'],
+      zoomImages: ['https://example.com/a-zoom.webp', null] })).status, 200);
     assert.equal((await post(valid)).status, 200);
   });
 });

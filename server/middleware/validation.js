@@ -46,6 +46,9 @@ function body(kind) {
       optional('images', value => Array.isArray(value) && value.length <= 20 && value.every(image =>
         typeof image === 'string' ? mediaUrl(image) && Boolean(image) : object(image) && mediaUrl(image.url) && Boolean(image.url) &&
         (image.cloudinaryPublicId == null || text(image.cloudinaryPublicId, 255))));
+      optional('zoomImages', value => Array.isArray(value) && value.length <= 20 && value.every(image =>
+        image == null || image === '' || (typeof image === 'string' && mediaUrl(image) && Boolean(image))));
+      if (data.zoomImages !== undefined && !Array.isArray(data.images)) valid = false;
       optional('variants', value => Array.isArray(value) && value.length <= 250 && value.every(variant => object(variant) &&
         text(variant.size, 50, 1) && text(variant.color, 50, 1) &&
         (variant.stock === undefined || integer(variant.stock, 1000000)) &&

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
+import { Component, DoCheck, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Product } from '../../models/product.model';
 import { Category } from '../../models/category.model';
@@ -17,6 +17,7 @@ import { saveInvoice } from '../../utils/invoice-download';
 import { ProductPageContentEditorComponent } from '../../components/product-page-content-editor/product-page-content-editor.component';
 import { ReviewService } from '../../services/review.service';
 import { AdminReview } from '../../models/review.model';
+import { fieldsFromImagePairs, imagePairsFromFields, moveImagePair, ProductImagePair, removeImagePair } from '../../utils/product-image-pairs';
 
 interface ProductForm {
   id?: string;
@@ -27,6 +28,7 @@ interface ProductForm {
   sizeIds: string[];
   colorIds: string[];
   images: string;
+  zoomImages: string;
   stock: number | null;
   badgeId: string;
   featured: boolean;
@@ -53,7 +55,7 @@ type OptionType = 'sizes' | 'colors';
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.css'
 })
-export class AdminComponent implements OnInit {
+export class AdminComponent implements OnInit, DoCheck {
   @ViewChild('orderDialog') orderDialog?: ElementRef<HTMLDialogElement>;
   tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' | 'returns' | 'reviews' | 'content' = 'products';
   products: Product[] = [];
@@ -85,6 +87,11 @@ export class AdminComponent implements OnInit {
   showForm = false;
   editing = false;
   uploading = false;
+  uploadingZoomIndex: number | null = null;
+  draggedImageIndex: number | null = null;
+  imagePairs: ProductImagePair[] = [];
+  private lastDisplayImageUrls = '';
+  private lastZoomImageUrls = '';
   form: ProductForm = this.emptyForm();
 
   showCatForm = false;
@@ -124,6 +131,13 @@ export class AdminComponent implements OnInit {
     this.loadCustomerReviews();
   }
 
+  ngDoCheck(): void {
+    if (this.form.images === this.lastDisplayImageUrls && this.form.zoomImages === this.lastZoomImageUrls) return;
+    this.imagePairs = imagePairsFromFields(this.form.images, this.form.zoomImages);
+    this.lastDisplayImageUrls = this.form.images;
+    this.lastZoomImageUrls = this.form.zoomImages;
+  }
+
   emptyForm(): ProductForm {
     return {
       name: '',
@@ -133,6 +147,7 @@ export class AdminComponent implements OnInit {
       sizeIds: [],
       colorIds: [],
       images: '',
+      zoomImages: '',
       stock: null,
       badgeId: '',
       featured: false
@@ -373,6 +388,7 @@ export class AdminComponent implements OnInit {
   newProduct(): void {
     this.editing = false;
     this.form = this.emptyForm();
+    this.imagePairs = [];
     this.showForm = true;
     this.message = '';
     this.error = '';
@@ -397,10 +413,12 @@ export class AdminComponent implements OnInit {
             v.colorId || this.colors.find((color) => color.name === v.color)?.id || ''
           ).filter(Boolean))],
           images: product.images.join(', '),
+          zoomImages: (product.zoomImages || []).map(url => url || '').join(', '),
           stock: product.stock,
           badgeId: product.badgeId || '',
           featured: product.featured
         };
+        this.imagePairs = imagePairsFromFields(this.form.images, this.form.zoomImages);
         this.showForm = true;
       },
       error: (err) => (this.error = err?.error?.message || 'Could not load product details.')
@@ -416,10 +434,10 @@ export class AdminComponent implements OnInit {
     this.error = '';
     this.uploadService.uploadImages(input.files).subscribe({
       next: ({ urls }) => {
-        const existing = this.form.images
-          ? this.form.images.split(',').map((s) => s.trim()).filter(Boolean)
-          : [];
-        this.form.images = [...existing, ...urls].join(', ');
+        this.setImagePairs([
+          ...this.imagePairs,
+          ...urls.map(imageUrl => ({ imageUrl, zoomImageUrl: null }))
+        ]);
         this.uploading = false;
         input.value = '';
       },
@@ -430,16 +448,87 @@ export class AdminComponent implements OnInit {
     });
   }
 
+  updateDisplayImageUrls(value: string): void {
+    this.form.images = value;
+    this.imagePairs = imagePairsFromFields(this.form.images, this.form.zoomImages);
+  }
+
+  updateZoomImageUrls(value: string): void {
+    this.form.zoomImages = value;
+    this.imagePairs = imagePairsFromFields(this.form.images, this.form.zoomImages);
+  }
+
+  private setImagePairs(pairs: ProductImagePair[]): void {
+    this.imagePairs = pairs;
+    const fields = fieldsFromImagePairs(pairs);
+    this.form.images = fields.images;
+    this.form.zoomImages = fields.zoomImages;
+    this.lastDisplayImageUrls = fields.images;
+    this.lastZoomImageUrls = fields.zoomImages;
+  }
+
+  startImageDrag(index: number, event: DragEvent): void {
+    this.draggedImageIndex = index;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(index));
+    }
+  }
+
+  allowImageDrop(event: DragEvent): void {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  }
+
+  dropImage(index: number, event: DragEvent): void {
+    event.preventDefault();
+    if (this.draggedImageIndex === null) return;
+    this.setImagePairs(moveImagePair(this.imagePairs, this.draggedImageIndex, index));
+    this.draggedImageIndex = null;
+  }
+
+  moveImage(index: number, delta: -1 | 1): void {
+    this.setImagePairs(moveImagePair(this.imagePairs, index, index + delta));
+  }
+
+  removeImage(index: number): void {
+    this.setImagePairs(removeImagePair(this.imagePairs, index));
+  }
+
+  onZoomImageSelected(event: Event, index: number): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file || this.uploadingZoomIndex !== null) return;
+    this.uploadingZoomIndex = index;
+    this.error = '';
+    this.uploadService.uploadImages([file]).subscribe({
+      next: ({ urls }) => {
+        const pairs = this.imagePairs;
+        if (pairs[index] && urls[0]) pairs[index] = { ...pairs[index], zoomImageUrl: urls[0] };
+        this.setImagePairs(pairs);
+        this.uploadingZoomIndex = null;
+        input.value = '';
+      },
+      error: err => {
+        this.error = err?.error?.message || 'Zoom image upload failed.';
+        this.uploadingZoomIndex = null;
+      }
+    });
+  }
+
+  removeZoomImage(index: number): void {
+    const pairs = this.imagePairs;
+    if (!pairs[index]) return;
+    pairs[index] = { ...pairs[index], zoomImageUrl: null };
+    this.setImagePairs(pairs);
+  }
+
   cancel(): void {
     this.showForm = false;
   }
 
   private toPayload(): ProductWrite {
-    const split = (s: string) =>
-      s
-        .split(',')
-        .map((x) => x.trim())
-        .filter(Boolean);
+    const pairs = this.imagePairs;
     const selectedSizes = this.sizes.filter((size) => this.form.sizeIds.includes(size.id));
     const selectedColors = this.colors.filter((color) => this.form.colorIds.includes(color.id));
     const variantSelections = selectedSizes.flatMap((size) =>
@@ -459,7 +548,8 @@ export class AdminComponent implements OnInit {
       categoryId: this.form.categoryId,
       badgeId: this.form.badgeId || null,
       description: this.form.description,
-      images: split(this.form.images),
+      images: pairs.map(pair => pair.imageUrl),
+      zoomImages: pairs.map(pair => pair.zoomImageUrl),
       sizeIds: [...this.form.sizeIds],
       colorIds: [...this.form.colorIds],
       variants: variantSelections.map((variant, index) => ({

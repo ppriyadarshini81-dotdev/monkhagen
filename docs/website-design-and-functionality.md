@@ -322,7 +322,7 @@ Home currently requests featured products and a separate general product list, t
 **Frontend:** `src/app/pages/product-details/`, `components/product-page-content-editor/`.  
 **Backend:** `models/Product.js`, `ProductPageContent.js`; product and product-page-content routes.
 
-- Product gallery, image navigation and thumbnails.
+- Product gallery, image navigation and thumbnails use lightweight display images. The enlarged viewer supports vertical scrolling through every photo and double-click zoom; each optional position-matched high-resolution image loads only as its section becomes active, and a failed zoom image falls back once to its display image.
 - Managed color/size choices and quantity controls; sizes use consistent ordering.
 - Add to Cart validates required selections and displays errors.
 - Numerical stock counts are hidden from the customer product-details UI; “Sold out” remains meaningful.
@@ -435,7 +435,7 @@ Credits show the customer's balance and bounded transaction history. No browser-
 **Frontend:** `pages/admin/`.  
 **Backend:** protected product/category/badge/size/color routes and models.
 
-- Manage products, descriptions, prices, status, images and size/color variants.
+- Manage products, descriptions, prices, status, paired display/zoom images and size/color variants. Image cards support pair-safe drag/drop ordering, accessible move controls, removal and per-pair R2 zoom uploads; the first pair is primary.
 - Manage categories, badges and available size/color options.
 - Manage variant inventory without exposing stock counts in the customer details UI.
 - Upload image assets to R2 and use existing permitted media URLs.
@@ -481,7 +481,7 @@ Courier selection and forward-shipment actions remain deliberate operator contro
 | `categories`, `badges`, `sizes`, `colors` | Managed catalog classification/options |
 | `products` | Category, base price, description, badge and active state |
 | `product_size_details`, `product_color_details` | Product-to-managed-option associations |
-| `product_images` | Product image ordering and primary-image designation |
+| `product_images` | Product display URL, optional paired zoom URL, ordering and primary-image designation |
 | `product_reviews` | One delivered-purchase review per customer/product, with immutable purchase linkage and moderation state |
 | `product_review_images` | Generated R2 keys and public URLs for up to five review photos |
 | `product_review_helpful` | Unique customer/review helpful votes |
@@ -619,6 +619,8 @@ See [Shiprocket setup and operations](shiprocket.md) for the existing integratio
 ### 7.5 Cloudflare R2
 
 R2 uses the S3-compatible backend SDK. Access keys are never provided to the frontend. Public media URLs are used for display, with eligible configured-origin images routed through the bounded media proxy.
+
+Product display and zoom uploads reuse the same authenticated, content-inspected R2 endpoint. Uploads are not resized or upscaled by the application; administrators provide the optimized display asset and optional real high-resolution counterpart.
 
 Uploads use application-generated keys rather than unsafe client filenames. Immutable cache metadata applies to newly uploaded versioned objects; replacing content at an existing URL can cause stale-cache behavior. Use new URLs for changed assets.
 

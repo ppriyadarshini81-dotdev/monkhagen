@@ -10,6 +10,7 @@ export interface ProductWrite {
   badgeId: string | null;
   description: string;
   images: string[];
+  zoomImages: Array<string | null>;
   sizeIds: string[];
   colorIds: string[];
   variants: Array<{

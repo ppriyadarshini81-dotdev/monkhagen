@@ -28,6 +28,7 @@ function formatImage(row) {
   return {
     id: row.id,
     url: row.image_url,
+    zoomUrl: row.zoom_image_url || null,
     cloudinaryPublicId: row.cloudinary_public_id || null,
     displayOrder: row.display_order,
     isPrimary: row.is_primary
@@ -50,6 +51,9 @@ function formatRow(row, images = [], variants = [], sizeDetails = [], colorDetai
   const price = prices.length
     ? Math.min(...prices)
     : Number(row.min_price !== null && row.min_price !== undefined ? row.min_price : row.base_price);
+  const zoomImages = images.some((image) => image.zoomUrl)
+    ? images.map((image) => image.zoomUrl || null)
+    : [];
   return {
     id: row.id,
     name: row.name,
@@ -66,6 +70,7 @@ function formatRow(row, images = [], variants = [], sizeDetails = [], colorDetai
     categoryId: row.category_id,
     categorySlug: row.category_slug || null,
     images: images.map((i) => i.url),
+    zoomImages,
     imageObjects: images,
     variants,
     sizes,
@@ -143,17 +148,20 @@ async function fetchVariantsAndImages(productId, { activeOnly = false } = {}) {
   };
 }
 
-async function replaceImages(client, productId, images) {
+async function replaceImages(client, productId, images, zoomImages = []) {
   await client.query('DELETE FROM product_images WHERE product_id = $1', [productId]);
   for (let i = 0; i < images.length; i++) {
     const image = images[i];
     const url = typeof image === 'string' ? image : image.url;
     if (!url) continue;
+    const zoomUrl = typeof image === 'string'
+      ? (zoomImages[i] || null)
+      : (image.zoomUrl || image.zoomImageUrl || zoomImages[i] || null);
     await client.query(
       `INSERT INTO product_images
-         (product_id, image_url, cloudinary_public_id, display_order, is_primary)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [productId, url, typeof image === 'string' ? null : image.cloudinaryPublicId || null, i, i === 0]
+         (product_id, image_url, zoom_image_url, cloudinary_public_id, display_order, is_primary)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [productId, url, zoomUrl, typeof image === 'string' ? null : image.cloudinaryPublicId || null, i, i === 0]
     );
   }
 }
@@ -276,7 +284,7 @@ const Product = {
 
   async create({
     name, categoryId, description = '', basePrice, featured = false, badgeId = null,
-    images = [], variants = [], sizeIds = [], colorIds = []
+    images = [], zoomImages = [], variants = [], sizeIds = [], colorIds = []
   }) {
     const slug = `${slugify(name)}-${Date.now().toString(36).slice(-4)}`;
     const client = await pool.connect();
@@ -288,7 +296,7 @@ const Product = {
         [name, slug, categoryId, description, basePrice, featured, badgeId || null]
       );
       const productId = rows[0].id;
-      await replaceImages(client, productId, images);
+      await replaceImages(client, productId, images, zoomImages);
       await replaceProductOptions(client, productId, 'product_size_details', 'size_id', sizeIds);
       await replaceProductOptions(client, productId, 'product_color_details', 'color_id', colorIds);
       await replaceVariants(client, productId, variants);
@@ -330,7 +338,7 @@ const Product = {
           values
         );
       }
-      if (Array.isArray(data.images)) await replaceImages(client, id, data.images);
+      if (Array.isArray(data.images)) await replaceImages(client, id, data.images, data.zoomImages || []);
       if (Array.isArray(data.sizeIds)) {
         await replaceProductOptions(client, id, 'product_size_details', 'size_id', data.sizeIds);
       }

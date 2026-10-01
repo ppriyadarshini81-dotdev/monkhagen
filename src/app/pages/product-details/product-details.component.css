@@ -214,11 +214,13 @@
 .mh-pd__zoom-controls button:disabled { opacity: .35; cursor: default; }
 .mh-pd__zoom-controls .mh-pd__zoom-value { min-width: 68px; font-size: 11px; }
 .mh-pd__zoom-controls .mh-pd__image-close { width: 52px; height: 52px; margin-left: 8px; font-size: 32px; font-weight: 200; }
-.mh-pd__image-stage { position: relative; grid-column: 2; display: grid; place-items: center; min-width: 0; min-height: 0; overflow: auto; background: #f7f7f7; overscroll-behavior: contain; touch-action: pan-y pinch-zoom; }
-.mh-pd__image-stage img { display: block; width: auto; max-width: 100%; height: auto; max-height: 100%; object-fit: contain; transform-origin: center; transition: transform .2s ease; }
+.mh-pd__image-stage { position: relative; grid-column: 2; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; background: #f7f7f7; overscroll-behavior: contain; scroll-snap-type: y proximity; touch-action: pan-y pinch-zoom; }
+.mh-pd__viewer-frame { display: grid; place-items: center; width: 100%; height: 100%; min-height: 100%; margin: 0; overflow: hidden; scroll-snap-align: start; border-bottom: 1px solid #e5e5e5; }
+.mh-pd__viewer-frame img { display: block; width: auto; max-width: 100%; height: auto; max-height: 100%; object-fit: contain; cursor: zoom-in; transform-origin: center; transition: transform .2s ease; user-select: none; -webkit-user-drag: none; }
+.mh-pd__viewer-frame.is-active img[style*="scale(2"] { cursor: zoom-out; }
 .mh-pd__viewer-arrow { position: absolute; z-index: 6; top: 50%; display: grid; place-items: center; width: 58px; height: 58px; border: 1px solid #ddd; border-radius: 5px; background: rgb(255 255 255 / 94%); color: #777; box-shadow: 0 4px 14px rgb(0 0 0 / 9%); font-size: 28px; cursor: pointer; transform: translateY(-50%); }
 .mh-pd__viewer-arrow:hover { border-color: var(--mh-accent); color: #111; background: #fff; }
-.mh-pd__viewer-arrow--prev { left: 14px; }
+.mh-pd__viewer-arrow--prev { left: 82px; }
 .mh-pd__viewer-arrow--next { right: 14px; }
 .mh-pd__viewer-thumbs { grid-column: 1; grid-row: 1; z-index: 5; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 14px 9px; overflow-y: auto; background: #f0f0f0; border-right: 1px solid #ddd; }
 .mh-pd__viewer-thumbs button { flex: 0 0 auto; width: 48px; height: 58px; padding: 0; overflow: hidden; border: 1px solid transparent; border-radius: 2px; background: #fff; opacity: .68; cursor: pointer; }

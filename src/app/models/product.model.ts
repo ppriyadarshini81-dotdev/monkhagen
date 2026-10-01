@@ -13,6 +13,7 @@ export interface ProductVariant {
 export interface ProductImage {
   id: string;
   url: string;
+  zoomUrl: string | null;
   cloudinaryPublicId: string | null;
   displayOrder: number;
   isPrimary: boolean;
@@ -35,6 +36,7 @@ export interface Product {
   sizeIds: string[];
   colorIds: string[];
   images: string[];
+  zoomImages?: Array<string | null>;
   imageObjects?: ProductImage[];
   variants?: ProductVariant[];
   rating: number;

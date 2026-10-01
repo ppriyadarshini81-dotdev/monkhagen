@@ -145,4 +145,66 @@ describe('Product details shared content', () => {
     expect(root.querySelector('.mh-pd__details')?.textContent).toContain('<script>alert(1)</script>');
     expect(root.querySelector('.mh-pd__details script')).toBeNull();
   });
+
+  it('does not render a high-resolution image until the enlarged viewer opens', () => {
+    const zoomUrl = 'https://example.com/product-zoom.webp';
+    productService.getProduct.and.returnValue(of({ ...product, zoomImages: [zoomUrl] }));
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    expect(Array.from(root.querySelectorAll('img')).some(image => image.src === zoomUrl)).toBeFalse();
+
+    root.querySelector<HTMLButtonElement>('.mh-pd__zoom-trigger')!.click();
+    fixture.detectChanges();
+    expect(root.querySelector<HTMLImageElement>('.mh-pd__image-stage img')?.src).toBe(zoomUrl);
+  });
+
+  it('uses the normal image when no matching zoom image exists', () => {
+    productService.getProduct.and.returnValue(of({ ...product, zoomImages: [] }));
+    fixture.detectChanges();
+    fixture.componentInstance.openImageViewer();
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelector<HTMLImageElement>('.mh-pd__image-stage img')?.src).toBe(pixel);
+  });
+
+  it('falls back once to the matching normal image when a zoom image fails', () => {
+    const zoomUrl = 'https://example.com/broken-zoom.webp';
+    productService.getProduct.and.returnValue(of({ ...product, zoomImages: [zoomUrl] }));
+    fixture.detectChanges();
+    fixture.componentInstance.openImageViewer();
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    const image = root.querySelector<HTMLImageElement>('.mh-pd__image-stage img')!;
+    image.dispatchEvent(new Event('error'));
+    fixture.detectChanges();
+    expect(image.src).toBe(pixel);
+    expect(fixture.componentInstance.viewerImageUrl()).toBe(pixel);
+  });
+
+  it('shows every photo in a vertical viewer, lazy-loads each active zoom image and double-clicks to zoom', () => {
+    const secondDisplay = 'https://example.com/second-display.webp';
+    const firstZoom = 'https://example.com/first-zoom.webp';
+    const secondZoom = 'https://example.com/second-zoom.webp';
+    productService.getProduct.and.returnValue(of({
+      ...product,
+      images: [pixel, secondDisplay],
+      zoomImages: [firstZoom, secondZoom]
+    }));
+    fixture.detectChanges();
+    fixture.componentInstance.openImageViewer();
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    const images = root.querySelectorAll<HTMLImageElement>('.mh-pd__viewer-frame img');
+    expect(images.length).toBe(2);
+    expect(fixture.componentInstance.imageZoom).toBe(1);
+    expect(images[0].src).toBe(firstZoom);
+    expect(images[1].src).toBe(secondDisplay);
+
+    fixture.componentInstance.selectImage(1);
+    fixture.detectChanges();
+    expect(images[1].src).toBe(secondZoom);
+    images[1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.imageZoom).toBe(2);
+  });
 });

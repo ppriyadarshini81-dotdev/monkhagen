@@ -58,8 +58,16 @@ exports.update = asyncHandler(async (req, res) => {
   const payload = sanitize(req.body);
   const removed = [];
   if (Array.isArray(payload.images)) {
+    // Older admin/API clients send only display images. Preserve any existing
+    // zoom association by display URL instead of silently clearing it.
+    if (!Array.isArray(payload.zoomImages)) {
+      const existingZoomByUrl = new Map((product.imageObjects || []).map(image => [image.url, image.zoomUrl || null]));
+      payload.zoomImages = payload.images.map(image => existingZoomByUrl.get(image?.url ?? image) || null);
+    }
     const newUrls = new Set(payload.images.map((i) => i?.url ?? i));
     removed.push(...product.images.filter((url) => !newUrls.has(url)));
+    const newZoomUrls = new Set((payload.zoomImages || []).filter(Boolean));
+    removed.push(...(product.zoomImages || []).filter((url) => url && !newZoomUrls.has(url)));
   }
 
   const updated = await Product.update(req.params.id, payload);
@@ -75,14 +83,14 @@ exports.remove = asyncHandler(async (req, res) => {
 
   await Product.findByIdAndDelete(req.params.id);
   // A blocked/failed database delete must never remove live product assets.
-  await Promise.allSettled(product.images.map(deleteFile));
+  await Promise.allSettled([...product.images, ...(product.zoomImages || []).filter(Boolean)].map(deleteFile));
   res.json({ message: 'Product deleted.', id: product.id });
 });
 
 function sanitize(body) {
   const allowed = [
     'name', 'description', 'basePrice', 'categoryId', 'featured', 'badgeId',
-    'isActive', 'images', 'variants', 'sizeIds', 'colorIds'
+    'isActive', 'images', 'zoomImages', 'variants', 'sizeIds', 'colorIds'
   ];
   const out = {};
   for (const key of allowed) {
