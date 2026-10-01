@@ -3,6 +3,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const shipping = require('../services/shippingService');
 const analytics = require('../services/analyticsService');
 const emails = require('../services/transactionalEmailService');
+const sms = require('../services/transactionalSmsService');
 
 // POST /api/orders — checkout
 exports.create = asyncHandler(async (req, res) => {
@@ -15,6 +16,7 @@ exports.create = asyncHandler(async (req, res) => {
     dedupeKey: `order-created:${order.id}`
   });
   await emails.orderConfirmed(order.id).catch(() => {});
+  await sms.orderConfirmed(order.id).catch(() => {});
   if (!process.env.VERCEL) void shipping.processPendingOrder(order.id);
   res.status(201).json(order);
 });

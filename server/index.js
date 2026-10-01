@@ -3,6 +3,7 @@ const { connectDB } = require('./config/db');
 const { createApp } = require('./app');
 const { startShippingWorker } = require('./services/shippingWorker');
 const { startEmailWorker } = require('./services/emailWorker');
+const { startSmsWorker } = require('./services/smsWorker');
 const { startMaintenanceWorker } = require('./services/securityMaintenance');
 
 const app = createApp();
@@ -13,6 +14,7 @@ connectDB().then(() => {
     if (!process.env.VERCEL) {
       startShippingWorker();
       startEmailWorker();
+      startSmsWorker();
       startMaintenanceWorker();
     }
   });

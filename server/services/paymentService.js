@@ -8,6 +8,7 @@ const inventory = require('./inventoryService');
 const analytics = require('./analyticsService');
 const offers = require('./offerService');
 const emails = require('./transactionalEmailService');
+const sms = require('./transactionalSmsService');
 
 const CURRENCY = 'INR';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -248,6 +249,7 @@ async function verifyPayment(userId, { localOrderId, razorpayPaymentId, razorpay
     if (finalization.order.payment_status === 'paid' && !finalization.order.fulfillment_hold_reason) void shipping.processPendingOrder(order.id);
   }
   if (finalization.order.payment_status === 'paid') await notifySafely(() => sendOrderConfirmation(order.id));
+  if (finalization.order.payment_status === 'paid') await notifySafely(() => sms.orderConfirmed(order.id));
   return {
     localOrderId: order.id,
     orderNumber: finalization.order.order_number,
@@ -346,6 +348,7 @@ async function processWebhook(rawBody, headers) {
     if (dispatchAllowed) void shipping.processPendingOrder(finalizedOrderId);
   }
   if (finalizedOrderId) await notifySafely(() => sendOrderConfirmation(finalizedOrderId));
+  if (finalizedOrderId) await notifySafely(() => sms.orderConfirmed(finalizedOrderId));
   if (completedRefund?.returnId) await notifySafely(() => emails.refundCompleted(completedRefund.returnId, completedRefund.refundId));
   return { duplicate: false };
 }
