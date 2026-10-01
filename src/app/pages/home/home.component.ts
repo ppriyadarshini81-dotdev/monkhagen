@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, Optional } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
@@ -8,6 +8,7 @@ import { ProductService } from '../../services/product.service';
 import { CategoryService } from '../../services/category.service';
 import { ProductCardComponent } from '../../components/product-card/product-card.component';
 import { MEDIA } from '../../config/media-assets';
+import { ProductScrollRestorationService } from '../../services/product-scroll-restoration.service';
 
 @Component({
   selector: 'app-home',
@@ -87,7 +88,8 @@ export class HomeComponent implements OnInit, OnDestroy {
 
   constructor(
     private productService: ProductService,
-    private categoryService: CategoryService
+    private categoryService: CategoryService,
+    @Optional() private productScroll?: ProductScrollRestorationService
   ) {}
 
   ngOnInit(): void {
@@ -95,6 +97,7 @@ export class HomeComponent implements OnInit, OnDestroy {
       next: (products) => {
         this.featured = products.slice(0, 4);
         this.loading = false;
+        this.productScroll?.restoreAfterProductsRender();
       },
       error: () => (this.loading = false)
     });
@@ -102,6 +105,7 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.productService.getProducts().subscribe({
       next: (products) => {
         this.newArrivals = products.slice(0, 8);
+        this.productScroll?.restoreAfterProductsRender();
       }
     });
 

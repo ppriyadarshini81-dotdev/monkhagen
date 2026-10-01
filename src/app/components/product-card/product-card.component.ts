@@ -1,11 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnChanges, OnDestroy } from '@angular/core';
+import { Component, Input, OnChanges, OnDestroy, Optional } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { CartService } from '../../services/cart.service';
 import { ProductService } from '../../services/product.service';
 import { cachedMediaUrl } from '../../utils/media-url';
 import { sortSizes } from '../../utils/size-order';
+import { ProductScrollRestorationService } from '../../services/product-scroll-restoration.service';
 
 @Component({
   selector: 'app-product-card',
@@ -33,8 +34,14 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
 
   constructor(
     private cart: CartService,
-    private productService: ProductService
+    private productService: ProductService,
+    @Optional() private productScroll?: ProductScrollRestorationService
   ) {}
+
+  rememberPosition(event: MouseEvent): void {
+    if (event.defaultPrevented) return;
+    this.productScroll?.remember(this.product.id, event.currentTarget as HTMLElement);
+  }
 
   ngOnChanges(): void {
     this.stopImageTimer();

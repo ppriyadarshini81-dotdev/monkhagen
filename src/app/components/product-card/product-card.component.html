@@ -1,6 +1,8 @@
 <a
   class="mh-pcard"
   [routerLink]="['/product', product.slug]"
+  [attr.data-scroll-product-id]="product.id"
+  (click)="rememberPosition($event)"
   (mouseenter)="onMouseEnter()"
   (mouseleave)="onMouseLeave()"
 >
