@@ -27,8 +27,12 @@
           </div>
           <p><span *ngIf="item.size">Size: {{ item.size }}</span><span *ngIf="item.color">Color: {{ item.color }}</span></p>
           <div class="mh-cart-preview__line">
-            <div class="mh-cart-preview__qty" aria-label="Quantity controls">
-              <button type="button" (click)="changeQuantity(item, -1)" [disabled]="item.quantity <= 1 || isUpdating(item)" aria-label="Decrease quantity">&minus;</button>
+            <div class="mh-cart-preview__qty" [class.mh-cart-preview__qty--remove]="item.quantity === 1" aria-label="Quantity controls">
+              <button type="button" (click)="decreaseOrRemove(item)" [disabled]="isUpdating(item)"
+                [attr.aria-label]="item.quantity === 1 ? 'Remove ' + item.productName : 'Decrease quantity'">
+                <ng-container *ngIf="item.quantity === 1; else decreaseSymbol">Remove</ng-container>
+                <ng-template #decreaseSymbol>&minus;</ng-template>
+              </button>
               <span>{{ item.quantity }}</span>
               <button type="button" (click)="changeQuantity(item, 1)" [disabled]="isUpdating(item) || (item.stock !== null && item.quantity >= item.stock)" aria-label="Increase quantity">+</button>
             </div>

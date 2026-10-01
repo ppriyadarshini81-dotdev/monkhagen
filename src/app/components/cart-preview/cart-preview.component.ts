@@ -41,6 +41,14 @@ export class CartPreviewComponent {
     this.runUpdate(item.id, this.cart.updateQuantity(item.id, quantity));
   }
 
+  decreaseOrRemove(item: CartItem): void {
+    if (item.quantity === 1) {
+      this.remove(item);
+      return;
+    }
+    this.changeQuantity(item, -1);
+  }
+
   remove(item: CartItem): void {
     if (this.updatingIds.has(item.id)) return;
     this.runUpdate(item.id, this.cart.remove(item.id));

@@ -48,8 +48,10 @@
 .mh-cart-preview__line { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .mh-cart-preview__line > strong { font-size: 15px; }
 .mh-cart-preview__qty { display: grid; grid-template-columns: 32px 36px 32px; overflow: hidden; border: 1px solid #ccc; border-radius: 7px; }
+.mh-cart-preview__qty--remove { grid-template-columns: 62px 36px 32px; }
 .mh-cart-preview__qty button, .mh-cart-preview__qty span { display: grid; place-items: center; height: 31px; }
 .mh-cart-preview__qty button { border: 0; background: #f7f7f7; color: #111; font-size: 18px; cursor: pointer; }
+.mh-cart-preview__qty--remove button:first-child { color: #b5261e; font-size: 10px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
 .mh-cart-preview__qty button:hover:not(:disabled) { background: #e8edff; color: #2848ed; }
 .mh-cart-preview__qty button:disabled { color: #bbb; cursor: default; }
 .mh-cart-preview__qty span { border-inline: 1px solid #ddd; font-size: 13px; font-weight: 700; }

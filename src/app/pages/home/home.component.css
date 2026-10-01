@@ -127,17 +127,6 @@
   object-fit: cover;
 }
 
-.mh-hero__scrim {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to top,
-    rgba(11, 11, 12, 0.95) 0%,
-    rgba(11, 11, 12, 0.35) 45%,
-    rgba(11, 11, 12, 0.55) 100%
-  );
-}
-
 .mh-hero__content {
   position: relative;
   padding-bottom: 72px;
