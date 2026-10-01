@@ -17,6 +17,7 @@ Set these backend environment variables locally. Variable names only are listed 
 | `SHIPROCKET_PACKAGE_LENGTH_CM` | Packed-order length in centimetres |
 | `SHIPROCKET_PACKAGE_BREADTH_CM` | Packed-order breadth in centimetres |
 | `SHIPROCKET_PACKAGE_HEIGHT_CM` | Packed-order height in centimetres |
+| `SHIPROCKET_WEBHOOK_SECRET` | Strong private value configured as Shiprocket's tracking webhook `x-api-key` |
 
 Existing `DB_*`, `JWT_*`, `RAZORPAY_*`, and `SMTP_*` configuration is reused. No new npm packages are required: the integration uses Node's native `fetch`, `AbortController`, and test runner, plus the existing `pg`, Express, and rate limiter.
 
@@ -34,6 +35,8 @@ The table stores:
 - Pending operation, attempt count, retry time, sanitized error code, tracking cache/events, and timestamps.
 
 `order_id` uses `ON DELETE RESTRICT` so a shipped order cannot accidentally lose its mapping. No existing rows are deleted, reset, or backfilled into shipments. Do not run the existing destructive seed script as part of shipping setup.
+
+`server/migrations/009_returns_workflow.sql` extends the existing return tables with item-level idempotency, reverse-shipment identifiers, pickup state, refund state, and webhook deduplication. `server/migrations/010_return_item_comments.sql` safely repairs the return-item comments column for databases that recorded an earlier revision of migration 009. Apply pending migrations through `npm run db:migrate` before deploying the API changes. Production API startup intentionally does not apply migrations.
 
 Existing `orders.awb_number`, `courier_name`, and `tracking_url` fields are synchronized when available. Tracking refreshes also record provider pickup/delivery dates; confirmed delivery can advance an order to `delivered` without overwriting cancelled/returned states. Pickup scheduling alone does not mark the order shipped. The existing account endpoints continue to read these fields.
 
@@ -62,6 +65,27 @@ All requests use `Authorization: Bearer <Monk Hagen JWT>` (never a Shiprocket to
 | POST | `/api/shipping/:orderId/generate-label` | Admin / super admin |
 | GET | `/api/shipping/:orderId/tracking` | Order owner or admin / super admin |
 | POST | `/api/shipping/:orderId/reconcile` | Admin / super admin; recovery only |
+
+### Returns and reverse pickup
+
+Customers request a return from an eligible delivered order in **My Orders**. Eligibility is calculated from the persisted `delivered_at` timestamp and closes exactly seven days later. Refund amounts use the original order-item snapshots and allocate the original order discount in integer paise; delivery and COD charges are excluded.
+
+| Method | Path | Access |
+| --- | --- | --- |
+| GET | `/api/account/orders/:orderId/return-eligibility` | Order owner |
+| POST | `/api/account/returns` | Order owner; requires an idempotency key |
+| GET | `/api/account/returns` | Customer's returns |
+| GET | `/api/account/returns/:returnId` | Return owner |
+| GET | `/api/admin/returns` | Admin / super admin |
+| POST | `/api/admin/returns/:returnId/retry-creation` | Admin / super admin; only after a definitive provider failure |
+| POST | `/api/admin/returns/:returnId/approve` | Admin / super admin; only after warehouse receipt |
+| POST | `/api/admin/returns/:returnId/reject` | Admin / super admin; stage-aware reject or cancellation |
+| POST | `/api/admin/returns/:returnId/refund` | Admin / super admin |
+| POST | `/api/webhooks/tracking-updates` | Shiprocket, authenticated by `x-api-key` |
+
+The backend creates a return order with Shiprocket's `/orders/create/return` API only. It does not assign a courier, generate an AWB, or schedule pickup; a Monk Hagen administrator performs those actions from Shiprocket's **New** returns tab. Shiprocket's **Pending Requests** tab is reserved for requests submitted through Shiprocket's own tracking page and has no documented external request-creation API. The customer's immutable order-address snapshot is the pickup address. Before creating the return order, the backend reads Shiprocket's saved pickup locations and requires one exact match for `SHIPROCKET_PICKUP_LOCATION`; that saved location's name, address, city, state, country, pincode, email, and phone become the return destination. The application never creates or updates a Shiprocket location. Before pickup, the admin reject action cancels a known Shiprocket return through `/orders/cancel` before marking it cancelled locally. An uncertain cancellation remains pending reconciliation, and a return that may have been created without a saved provider ID requires explicit confirmation that no matching Shiprocket return exists. Cancellation is unavailable after pickup. After warehouse receipt, rejection is a local inspection decision and does not restore inventory or issue a refund. Inventory is restored once, only when an administrator approves a return whose tracking state is `received`. Prepaid refunds are submitted to Razorpay and become complete only after the signed Razorpay refund webhook is processed. COD refunds are marked for manual handling and are never sent to Razorpay.
+
+Configure Shiprocket's tracking webhook URL as `https://<api-host>/api/webhooks/tracking-updates` and set its token/header value to exactly `SHIPROCKET_WEBHOOK_SECRET`. Use a long random secret, keep it backend-only, and rotate it if disclosed. A timeout or malformed response during reverse-shipment creation is treated as an uncertain result: review the return in Shiprocket before any manual intervention so a duplicate pickup is not booked.
 
 `orderId` is the internal PostgreSQL UUID. Provider IDs are returned on admin shipment responses, commonly as strings because PostgreSQL stores them as BIGINT. Successful repeated admin operations return the saved result with HTTP 200.
 
@@ -125,7 +149,7 @@ Use a courier ID returned for the actual route, weight and COD flag. Shiprocket 
 
 **Tracking** — `GET {{baseUrl}}/api/shipping/{{orderId}}/tracking`
 
-Returns shipment status, AWB, courier, tracking URL, estimated delivery, pickup status, normalized events, and last-check time. Shiprocket tracking is fetched at most once per minute per order when requested. No provider auth data, customer addresses or label links are included. An unassigned shipment returns its local state without a remote call. Other customers receive 404. There is no new Angular UI or Shiprocket tracking webhook in this change; call this endpoint to refresh provider tracking.
+Returns shipment status, AWB, courier, tracking URL, estimated delivery, pickup status, normalized events, and last-check time. Shiprocket tracking is fetched at most once per minute per order when requested. No provider auth data, customer addresses or label links are included. An unassigned shipment returns its local state without a remote call. Other customers receive 404. Forward-shipment tracking remains user-triggered through this endpoint; the tracking webhook described above advances reverse-return state only.
 
 ## Duplicate prevention and recovery
 
@@ -171,8 +195,6 @@ No live provider credentials were used during implementation. Live serviceabilit
 
 ## Files
 
-Created: `server/config/shiprocket.js`, `server/migrations/001_shipments.sql`, `server/models/Shipment.js`, `server/services/shippingMapping.js`, `server/services/shippingService.js`, `server/services/shippingWorker.js`, `server/controllers/shippingController.js`, `server/routes/shipping.js`, five `server/tests/*.test.js` files, this guide, and the Postman collection.
-
-Modified: `server/config/db.js`, `server/index.js`, `server/services/paymentService.js`, `server/models/Order.js`, `server/controllers/orderController.js`, and `package.json`. Backend configuration lives only in the private root `.env`; missing variable placeholders were added without changing existing values. Angular files and installed dependencies are unchanged.
+The fulfillment integration is centered on `server/config/shiprocket.js`, `server/models/Shipment.js`, `server/services/shippingService.js`, and `server/services/shippingWorker.js`. Reverse logistics is implemented in `server/services/returnService.js`, the account/admin return controllers and routes, and `server/migrations/009_returns_workflow.sql`. Backend configuration lives only in private environment settings; do not commit provider credentials or webhook secrets.
 
 References: [Shiprocket official API documentation](https://apidocs.shiprocket.in/), [official Postman collection](https://www.postman.com/shiprocketdev/shiprocket-dev-s-public-workspace/documentation/qu05zax/shiprocket-api), [official authentication/API helpsheet](https://shiprocket.freshdesk.com/support/solutions/articles/43000337456-api-document-helpsheet).

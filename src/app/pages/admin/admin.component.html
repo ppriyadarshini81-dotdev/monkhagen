@@ -40,6 +40,9 @@
     <button [class.active]="tab === 'orders'" (click)="tab = 'orders'">
       Orders ({{ orders.length }})
     </button>
+    <button [class.active]="tab === 'returns'" (click)="tab = 'returns'">
+      Returns ({{ returns.length }})
+    </button>
     <button [class.active]="tab === 'content'" (click)="tab = 'content'">Product page content</button>
   </div>
 
@@ -378,6 +381,32 @@
           <strong>View order <span aria-hidden="true">&#8594;</span></strong>
         </span>
       </button>
+    </div>
+  </div>
+
+  <div class="mh-orders mh-admin-returns" *ngIf="tab === 'returns'">
+    <div class="mh-orders__toolbar">
+      <div><span class="mh-eyebrow">Reverse logistics</span><h2>Customer returns</h2><p>Approve stock only after receipt, then initiate or record the appropriate refund.</p></div>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="loadReturns()" [disabled]="returnsLoading">{{ returnsLoading ? 'Refreshing...' : 'Refresh returns' }}</button>
+    </div>
+    <p class="mh-empty" *ngIf="!returnsLoading && returns.length === 0">No return requests yet.</p>
+    <div class="mh-admin-return-card" *ngFor="let r of returns">
+      <header><div><small>Return ID</small><strong>#{{ r.returnNumber }}</strong><span>Order #{{ r.orderNumber || r.orderId }}</span></div><span class="mh-status" [ngClass]="statusClass(r.status)">{{ r.cancellationPending ? 'Cancellation pending' : statusLabel(r.status) }}</span></header>
+      <div class="mh-admin-return-grid">
+        <div><small>Customer</small><strong>{{ r.customer?.name || 'User' }}</strong><span>{{ r.customer?.email || r.customer?.phone || 'Contact unavailable' }}</span></div>
+        <div><small>Requested</small><strong>{{ r.requestedAt | date:'medium' }}</strong><span>{{ r.paymentMethod === 'cod' ? 'COD · manual refund' : 'Prepaid · Razorpay' }}</span></div>
+        <div><small>Shiprocket return</small><strong>{{ r.shiprocketReturnOrderId || 'Creating' }}</strong><span>{{ r.status === 'return_created' && !r.returnAwb ? 'Schedule pickup in Shiprocket' : ('AWB ' + (r.returnAwb || 'not assigned') + ' · ' + (r.pickupStatus || 'pending')) }}</span></div>
+        <div><small>Refund</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><span>{{ statusLabel(r.refundStatus) }}</span></div>
+      </div>
+      <div class="mh-admin-return-items"><div *ngFor="let item of r.items"><strong>{{ item.productName }}</strong><span>{{ item.sku || 'No SKU' }} · Qty {{ item.quantity }} · {{ statusLabel(item.reason) }}</span><small *ngIf="item.comments">{{ item.comments }}</small></div></div>
+      <p class="mh-order-alert" *ngIf="r.pickupDelayed"><strong>Return creation needs attention</strong><span>The local request is safe. Confirm that no matching return exists in Shiprocket before retrying creation.</span></p>
+      <p class="mh-order-alert" *ngIf="r.cancellationPending"><strong>Cancellation needs reconciliation</strong><span>Check this return in Shiprocket before taking another action.</span></p>
+      <footer>
+        <button class="mh-btn mh-btn--ghost" type="button" *ngIf="r.status === 'shiprocket_failed'" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'retry')">Retry return creation</button>
+        <button class="mh-btn mh-btn--ghost" type="button" *ngIf="returnRejectLabel(r) as rejectLabel" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'reject')">{{ rejectLabel }}</button>
+        <button class="mh-btn mh-btn--gold" type="button" *ngIf="canApproveReturn(r)" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'approve')">Receive & approve</button>
+        <button class="mh-btn mh-btn--gold" type="button" *ngIf="canRefundReturn(r)" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'refund')">{{ r.paymentMethod === 'cod' ? 'Mark manual refund required' : 'Initiate refund' }}</button>
+      </footer>
     </div>
   </div>
 </section>

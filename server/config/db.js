@@ -777,6 +777,14 @@ async function applyAnalyticsMigration(database = pool) {
   await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '008_analytics.sql'), 'utf8'));
 }
 
+async function applyReturnsWorkflowMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '009_returns_workflow.sql'), 'utf8'));
+}
+
+async function applyReturnItemCommentsMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '010_return_item_comments.sql'), 'utf8'));
+}
+
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
   try {
@@ -829,9 +837,11 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const sessionsApplied = await runMigration('007_session_revocation', database =>
       database.query(readFileSync(path.join(__dirname, '..', 'migrations', '007_session_revocation.sql'), 'utf8')));
     const analyticsApplied = await runMigration('008_analytics', applyAnalyticsMigration);
+    const returnsApplied = await runMigration('009_returns_workflow', applyReturnsWorkflowMigration);
+    const returnItemCommentsApplied = await runMigration('010_return_item_comments', applyReturnItemCommentsMigration);
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
@@ -855,5 +865,7 @@ module.exports = {
   applyGoogleAdminMigration,
   applySecurityIntegrityMigration,
   applyAnalyticsMigration,
+  applyReturnsWorkflowMigration,
+  applyReturnItemCommentsMigration,
   runMigration
 };

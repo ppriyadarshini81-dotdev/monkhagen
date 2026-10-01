@@ -269,7 +269,8 @@ exports.getOrders = asyncHandler(async (req, res) => {
        (s.shiprocket_order_id IS NOT NULL) AS invoice_available
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      WHERE o.user_id = $1
-       AND (o.payment_status = 'paid' OR (o.payment_method = 'cod' AND o.payment_status = 'pending'))
+       AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
+         OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))
      ORDER BY o.created_at DESC LIMIT $2 OFFSET $3`,
     [req.user.id, limit, offset]
   );
@@ -290,7 +291,8 @@ exports.getOrder = asyncHandler(async (req, res) => {
        (s.shiprocket_order_id IS NOT NULL) AS invoice_available
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      WHERE o.id = $1 AND o.user_id = $2
-       AND (o.payment_status = 'paid' OR (o.payment_method = 'cod' AND o.payment_status = 'pending'))`,
+       AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
+         OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))`,
     [req.params.orderId, req.user.id]
   );
   if (!rows[0]) return res.status(404).json({ message: 'Order not found.' });
@@ -312,44 +314,23 @@ exports.getTracking = asyncHandler(async (req, res) => {
 
 // ── Returns ───────────────────────────────────────────────────────────────────
 
-function fmtReturn(rr) {
-  return {
-    id: rr.id,
-    orderId: rr.order_id,
-    returnNumber: rr.return_number,
-    reason: rr.reason,
-    comments: rr.comments || null,
-    status: rr.status,
-    refundAmount: Number(rr.refund_amount),
-    refundStatus: rr.refund_status,
-    items: rr.items || [],
-    requestedAt: rr.requested_at,
-    approvedAt: rr.approved_at || null,
-    completedAt: rr.completed_at || null,
-    createdAt: rr.created_at
-  };
-}
-
 exports.getReturns = asyncHandler(async (req, res) => {
   const { limit, offset } = require('../middleware/validation').pagination(req.query);
-  const { rows } = await pool.query(
-    `SELECT rr.*,
-            COALESCE(json_agg(json_build_object(
-              'id', ri.id, 'orderItemId', ri.order_item_id,
-              'quantity', ri.quantity, 'reason', ri.reason
-            )) FILTER (WHERE ri.id IS NOT NULL), '[]') AS items
-     FROM return_requests rr
-     LEFT JOIN return_items ri ON ri.return_request_id = rr.id
-     WHERE rr.user_id = $1
-     GROUP BY rr.id
-     ORDER BY rr.created_at DESC LIMIT $2 OFFSET $3`,
-    [req.user.id, limit, offset]
-  );
-  res.json(rows.map(fmtReturn));
+  res.json(await returns.listCustomerReturns(req.user.id, pool, { limit, offset }));
 });
 
 exports.createReturn = asyncHandler(async (req, res) => {
-  res.status(201).json(fmtReturn(await returns.createReturn(req.user.id, req.body)));
+  res.status(201).json(await returns.createReturn(req.user.id, req.body));
+});
+
+exports.getReturnEligibility = asyncHandler(async (req, res) => {
+  res.json(await returns.getEligibility(req.user.id, req.params.orderId));
+});
+
+exports.getReturn = asyncHandler(async (req, res) => {
+  const row = await returns.findReturn(pool, req.params.returnId, req.user.id);
+  if (!row) return res.status(404).json({ message: 'Return request not found.' });
+  res.json(returns.formatReturn(row));
 });
 
 // ── Credits ───────────────────────────────────────────────────────────────────

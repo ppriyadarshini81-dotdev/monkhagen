@@ -84,6 +84,18 @@ test('malformed successful mutations remain uncertain', async () => {
     error.code === 'SHIPROCKET_INVALID_RESPONSE' && error.uncertain && !error.message.includes('HTML'));
 });
 
+test('explicit cancellation requests accept Shiprocket 204 responses without weakening other mutations', async () => {
+  const client = createShiprocketClient({ config: settings, fetchImpl: async url => {
+    if (url.pathname.endsWith('/auth/login')) return json({ token: 'private-token' });
+    return { ok: true, status: 204, json: async () => { throw new Error('no response body'); } };
+  } });
+  assert.deepEqual(await client.request('/orders/cancel', {
+    method: 'POST', body: { ids: [123] }, acceptEmptyResponse: true
+  }), {});
+  await assert.rejects(client.request('/orders/create/adhoc', { method: 'POST', body: {} }),
+    error => error.code === 'SHIPROCKET_INVALID_RESPONSE' && error.uncertain);
+});
+
 test('timeouts cover response body consumption', async () => {
   const client = createShiprocketClient({ config: settings, fetchImpl: async (url, options) => {
     if (url.pathname.endsWith('/auth/login')) return json({ token: 'private-token' });

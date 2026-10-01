@@ -9,7 +9,7 @@ import { ProductService, ProductWrite } from '../../services/product.service';
 import { CategoryService } from '../../services/category.service';
 import { BadgeService } from '../../services/badge.service';
 import { VariantOptionService } from '../../services/variant-option.service';
-import { OrderService, Order } from '../../services/order.service';
+import { AdminReturn, OrderService, Order } from '../../services/order.service';
 import { UploadService } from '../../services/upload.service';
 import { AuthService } from '../../services/auth.service';
 import { ShippingService } from '../../services/shipping.service';
@@ -53,13 +53,16 @@ type OptionType = 'sizes' | 'colors';
 })
 export class AdminComponent implements OnInit {
   @ViewChild('orderDialog') orderDialog?: ElementRef<HTMLDialogElement>;
-  tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' | 'content' = 'products';
+  tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' | 'returns' | 'content' = 'products';
   products: Product[] = [];
   categories: Category[] = [];
   badges: Badge[] = [];
   sizes: VariantOption[] = [];
   colors: VariantOption[] = [];
   orders: Order[] = [];
+  returns: AdminReturn[] = [];
+  returnsLoading = false;
+  returnBusyId = '';
   ordersLoading = false;
   ordersError = '';
   shippingBusyOrderId = '';
@@ -108,6 +111,7 @@ export class AdminComponent implements OnInit {
     this.loadOptions('sizes');
     this.loadOptions('colors');
     this.loadOrders();
+    this.loadReturns();
   }
 
   emptyForm(): ProductForm {
@@ -161,6 +165,47 @@ export class AdminComponent implements OnInit {
         this.ordersLoading = false;
       }
     });
+  }
+
+  loadReturns(): void {
+    if (this.returnsLoading) return;
+    this.returnsLoading = true;
+    this.orderService.adminReturns().subscribe({
+      next: returns => { this.returns = returns; this.returnsLoading = false; },
+      error: () => { this.error = 'Could not load returns.'; this.returnsLoading = false; }
+    });
+  }
+
+  actOnReturn(item: AdminReturn, action: 'approve' | 'reject' | 'refund' | 'retry'): void {
+    if (this.returnBusyId) return;
+    if (action === 'reject') {
+      const prompt = item.status === 'received'
+        ? 'Reject this return after inspection? The customer will not be refunded and inventory will not be restored.'
+        : item.shiprocketReturnOrderId
+          ? 'Cancel this return in Shiprocket? Monk Hagen will close it only after Shiprocket accepts the cancellation.'
+          : 'Reject this local request? Confirm first that no matching return exists in Shiprocket.';
+      if (!window.confirm(prompt)) return;
+    }
+    this.returnBusyId = item.id;
+    this.error = '';
+    const request = action === 'approve' ? this.orderService.approveReturn(item.id)
+      : action === 'reject' ? this.orderService.rejectReturn(item.id, !item.shiprocketReturnOrderId)
+      : action === 'refund' ? this.orderService.refundReturn(item.id)
+      : this.orderService.retryReturnCreation(item.id);
+    request.subscribe({
+      next: () => { this.returnBusyId = ''; this.message = `Return ${action} completed.`; this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.error = error?.error?.message || `Could not ${action} this return.`; this.loadReturns(); }
+    });
+  }
+
+  canApproveReturn(item: AdminReturn): boolean { return item.status === 'received'; }
+  canRefundReturn(item: AdminReturn): boolean { return item.status === 'approved' && ['pending','manual_required'].includes(item.refundStatus); }
+  returnRejectLabel(item: AdminReturn): string | null {
+    if (item.cancellationPending) return null;
+    if (['requested','shiprocket_failed'].includes(item.status)) return 'Reject request';
+    if (['return_created','pickup_scheduled','pickup_failed'].includes(item.status)) return 'Cancel return';
+    if (item.status === 'received') return 'Reject after inspection';
+    return null;
   }
 
   get visibleOrders(): Order[] {

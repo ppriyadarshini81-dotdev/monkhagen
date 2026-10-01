@@ -30,10 +30,14 @@ test('catalog bodies strictly validate prices, quantities, IDs, booleans and med
 });
 test('UUID route parameters are rejected without invoking application handlers', async () => {
   const app = express(), router = express.Router(); validation.params(router);
-  let calls = 0; router.get('/:id', (_req, res) => { calls++; res.json({ ok: true }); }); app.use(router);
+  let calls = 0;
+  router.get('/records/:id', (_req, res) => { calls++; res.json({ ok: true }); });
+  router.get('/returns/:returnId', (_req, res) => { calls++; res.json({ ok: true }); });
+  app.use(router);
   await serve(app, async base => {
-    assert.equal((await fetch(`${base}/not-a-uuid`)).status, 400); assert.equal(calls, 0);
-    assert.equal((await fetch(`${base}/10000000-0000-4000-8000-000000000001`)).status, 200);
+    assert.equal((await fetch(`${base}/records/not-a-uuid`)).status, 400); assert.equal(calls, 0);
+    assert.equal((await fetch(`${base}/returns/not-a-uuid`)).status, 400); assert.equal(calls, 0);
+    assert.equal((await fetch(`${base}/records/10000000-0000-4000-8000-000000000001`)).status, 200);
   });
 });
 test('production headers enforce CSP without unsafe script directives while allowing Firebase and Razorpay', async () => {

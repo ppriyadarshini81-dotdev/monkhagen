@@ -23,7 +23,7 @@ function requestShape(req, res, next) {
 }
 
 function params(router) {
-  for (const key of ['id','itemId','orderId']) router.param(key, (req, res, next, value) => UUID.test(value) ? next() : reject(res));
+  for (const key of ['id','itemId','orderId','returnId']) router.param(key, (req, res, next, value) => UUID.test(value) ? next() : reject(res));
   router.param('idOrSlug', (req, res, next, value) => text(value, 255, 1) && /^[a-zA-Z0-9-]+$/.test(value) ? next() : reject(res));
 }
 

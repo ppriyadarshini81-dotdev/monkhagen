@@ -45,7 +45,7 @@ function createShiprocketClient({ fetchImpl = (...args) => fetch(...args), now =
   let expiresAt = 0;
   let loginPromise;
 
-  async function send(path, { method = 'GET', body, query, authToken } = {}) {
+  async function send(path, { method = 'GET', body, query, authToken, acceptEmptyResponse = false } = {}) {
     const settings = config();
     const url = new URL(`/v1/external${path}`, settings.baseUrl);
     for (const [key, value] of Object.entries(query || {})) url.searchParams.set(key, String(value));
@@ -59,6 +59,11 @@ function createShiprocketClient({ fetchImpl = (...args) => fetch(...args), now =
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {})
       });
+      // Shiprocket documents 204 No Content for cancellation. Only callers
+      // which explicitly opt in may treat an empty successful response as valid.
+      if (acceptEmptyResponse && response.ok && response.status === 204) {
+        return { status: response.status, data: {} };
+      }
       // Consume the body inside the timeout as well. Never expose the provider's error text.
       let data;
       try { data = await response.json(); }

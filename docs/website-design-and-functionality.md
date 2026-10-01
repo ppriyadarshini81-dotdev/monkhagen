@@ -41,7 +41,7 @@ Monk Hagen is a premium streetwear e-commerce website. Visitors discover product
 | Payments | Server-calculated totals, capture verification, signed webhooks and refund-event ledger |
 | Fulfillment | Shiprocket creation queue, tracking and guarded AWB/pickup/label/reconciliation APIs |
 | Customer orders | Paid-order list with thumbnails, progress summary, details and tracking dialogs |
-| Returns | Owned-order return-request API and customer return-history screen; not a complete refund-management UI |
+| Returns | Seven-day item-level requests, Shiprocket reverse pickup, customer progress, admin receipt/approval and Razorpay refund initiation |
 | Credits | Customer balance and transaction-history display; no implemented checkout redemption flow |
 | Email | Contact submissions and retried paid-order confirmations, with store-inbox BCC |
 | Deployment | Local Node runtime and Vercel entry point/configuration; live readiness requires the checklist below |
@@ -236,7 +236,7 @@ The backend verifies Razorpay webhook HMAC signatures using the webhook secret b
 
 Capture events finalize validated payments; failure events release eligible pending inventory once. `refund.processed` events maintain a refund ledger keyed by provider refund identity and validate positive amounts, currency, payment/order linkage and cumulative refund bounds.
 
-Refund events can set partial/full financial status and a fulfillment hold. **The application does not currently provide a complete automatic refund-issuance or Shiprocket cancellation workflow.** Receipt of a webhook is not the same as initiating a refund.
+Refund events can set partial/full financial status and a fulfillment hold. Approved prepaid returns can initiate a bounded Razorpay refund; the signed `refund.processed` webhook is still the source of truth for completion. COD refunds remain manual. Before physical pickup, cancelling a known Shiprocket return is attempted remotely before the local return becomes cancelled; uncertain outcomes stay pending reconciliation. Cancellation is unavailable after pickup, while rejection after warehouse receipt is a local inspection outcome.
 
 ### 3.7 Separate state dimensions
 
@@ -403,7 +403,7 @@ The current browser checkout is prepaid Razorpay. A guarded COD order path exist
 - Requests are customer-owned; identifiers alone do not grant access.
 - Tracking is user-triggered, not continuous per-second polling.
 
-The paid-only filter also excludes orders whose current payment status becomes partially refunded/refunded; see known limitations. Thumbnails come from current product images, while financial/item/address snapshots are saved at order creation.
+Confirmed Razorpay orders remain visible after partial or full refunds, and COD orders remain visible through their supported financial states. Thumbnails come from current product images, while financial/item/address snapshots are saved at order creation.
 
 ### 4.9 Returns and store credits
 
@@ -414,12 +414,12 @@ Return submission API rules:
 
 - Order must belong to the caller and be delivered.
 - Request must be within the current seven-day window.
-- Only one active return request per order is allowed.
-- Items must belong to that order; quantities cannot exceed purchased quantities.
+- Multiple partial requests are allowed, but active returned quantities cannot cumulatively exceed purchased quantities.
+- Items must belong to that order; quantities cannot exceed the remaining returnable quantities.
 - Duplicate submitted item IDs, excessive items and invalid reason/comment lengths are rejected.
-- The request and selected items are saved atomically; order moves to `return_requested`.
+- The request and selected item-level refund allocation are saved atomically under an idempotency key.
 
-The current returns screen displays history/status. The API and client service support creation, but a complete customer request form and administrator approval/refund workflow are not implemented as a full end-to-end UI.
+The order-details dialog provides the customer request form. The backend creates a Shiprocket return order from the immutable customer address to the exact saved location named by `SHIPROCKET_PICKUP_LOCATION`, but does not assign a courier or schedule pickup. A Monk Hagen administrator schedules it from Shiprocket's New returns tab; signed tracking callbacks then advance pickup/transit/receipt state. The administrator returns tab can retry definitive return-creation failures, reject local requests, cancel known pre-pickup Shiprocket returns, record post-receipt inspection rejection, restore stock once after receipt, and initiate prepaid refunds. COD payout completion and uncertain provider reconciliation remain operator procedures.
 
 Credits show the customer's balance and bounded transaction history. No browser-accessible arbitrary balance setter or implemented coupon/credit checkout-redemption engine exists.
 
@@ -448,7 +448,7 @@ Deleting referenced records can legitimately return a conflict. R2 cleanup must 
 - Refresh orders and retry eligible shipment creation.
 - Backend exposes guarded status update, serviceability, AWB assignment, pickup, label generation and reconciliation operations.
 
-The existence of these operations does not mean every one has a completed button/workflow in the admin screen. In particular, do not assume fully automated courier selection, pickup scheduling, refund approval or returns administration.
+Courier selection and forward-shipment actions remain deliberate operator controls. The returns tab covers guarded pre-pickup cancellation, receipt, inspection rejection, approval and prepaid refund initiation, but COD payout completion and uncertain provider reconciliation remain manual procedures.
 
 ### 4.12 Contact, policies and notifications
 
@@ -526,6 +526,9 @@ Current schema setup lives in [db.js](../server/config/db.js) and [migrations](.
 | `005_google_only_admin` | Remove legacy privileged passwords and disable non-designated privileged identities |
 | `006_security_integrity` | Financial/inventory integrity, refund ledger, limits and shared leases |
 | `007_session_revocation` | Database-backed application session version |
+| `008_analytics` | Privacy-bounded analytics events and reporting indexes |
+| `009_returns_workflow` | Item-level idempotent returns, reverse-shipment state, refund lifecycle and webhook deduplication |
+| `010_return_item_comments` | Repairs the optional return-item comments column for databases that applied an earlier revision of migration 009 |
 
 Runtime production account must not own application objects or have migration/administrative capabilities. Applying schema changes is a separate trusted operation, not a normal web request.
 
@@ -546,10 +549,12 @@ All paths below are relative to `/api`. This is a route index, not a complete Op
 | Payment creation | `POST /payments/create-order` | Owned cart/address, authoritative totals and stock |
 | Payment verification | `POST /payments/verify` | Owned order, signature plus gateway capture verification |
 | Payment webhook | `POST /webhooks/razorpay` | Raw-body signature; not customer JWT authentication |
-| Customer account orders | `GET /account/orders`, `GET /account/orders/:orderId`, `GET /account/orders/:orderId/tracking` | Owned orders; list currently paid-only |
+| Customer account orders | `GET /account/orders`, `GET /account/orders/:orderId`, `GET /account/orders/:orderId/tracking` | Owned confirmed-payment/COD history |
 | Other order APIs | `POST /orders`, `GET /orders/mine` | Authenticated legacy/direct order path and own broader history |
 | Admin orders | `GET /orders`, `PUT /orders/:id/status` | Server-admin role and lifecycle/payment/shipment policy |
-| Returns | `GET/POST /account/returns` | Owned history and delivered-order eligibility |
+| Returns | `GET/POST /account/returns`, `GET /account/orders/:orderId/return-eligibility`, `GET /account/returns/:returnId` | Owned item-level history and seven-day delivery eligibility |
+| Admin returns | `GET /admin/returns`, `POST /admin/returns/:returnId/{approve,reject,refund,retry-creation}` | Administrator reverse logistics and guarded lifecycle actions |
+| Shiprocket tracking webhook | `POST /webhooks/tracking-updates` | Private `x-api-key`; idempotent normalized return updates |
 | Credits | `GET /account/credits`, `GET /account/credits/transactions` | Owned read-only API surface |
 | Shipping discovery | `POST /shipping/serviceability` | Authenticated, validated parcel/location and limits |
 | Shipping tracking | `GET /shipping/:orderId/tracking` | Owned customer order or authorized administrator |
@@ -721,6 +726,7 @@ Set local secrets privately in the root `.env`, which is ignored by Git. Do not 
 | Razorpay | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Match test/live environment and webhook configuration |
 | Shiprocket login | `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_BASE_URL`, `SHIPROCKET_TIMEOUT_MS` | Server-only; restricted HTTPS API base |
 | Shiprocket parcel | `SHIPROCKET_PICKUP_LOCATION`, `SHIPROCKET_PACKAGE_WEIGHT_KG`, `SHIPROCKET_PACKAGE_LENGTH_CM`, `SHIPROCKET_PACKAGE_BREADTH_CM`, `SHIPROCKET_PACKAGE_HEIGHT_CM` | Real pickup name and package defaults in kg/cm |
+| Shiprocket returns | `SHIPROCKET_WEBHOOK_SECRET`; reuses `SHIPROCKET_PICKUP_LOCATION` | Reverse-tracking authentication; the exact saved Shiprocket pickup location supplies the return destination/contact |
 | R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | Private storage access plus public asset base |
 | SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `CONTACT_EMAIL` | Official inbox for submissions/order BCC |
 | Maintenance | `CRON_SECRET` | Strong secret of at least 32 characters; exact bearer authorization |
@@ -910,8 +916,8 @@ For full provenance, inspect `git log`; commit presence does not certify deploym
 ## 14. Known limitations and future work
 
 1. **Production configuration still needs independent verification.** Runtime database privileges, SMTP, domain/provider settings and scheduled maintenance are outside a successful local build.
-2. **Returns/refunds are not a complete operator workflow.** Add customer return submission UI, admin decisions, refund initiation, remote shipment cancellation and explicit stock-restoration policy if required.
-3. **Paid-only customer order visibility hides refund states.** Consider a confirmed-payment-history rule that preserves partially/full-refunded orders rather than exact current `paid` status.
+2. **Returns still require operator handling for exceptions.** COD payout completion, reverse-pickup cancellation and uncertain Shiprocket outcomes must be reconciled manually before retrying external mutations.
+3. **Reverse logistics needs live acceptance testing.** Confirm account-specific return permissions, webhook delivery, warehouse details and real pickup behavior in a controlled provider environment.
 4. **Progress display is simplified.** Current status-text heuristics should not be treated as the canonical provider state machine; distinguish “out for delivery” from actually delivered.
 5. **Catalog requests are not persistently cached.** Consider bounded service caching/invalidation after measuring route repeat loads; do not cache inventory/payment decisions as authority.
 6. **Media optimization is manual.** Add responsive image sizes/transcoding or an image delivery service if bandwidth/decode remains a problem.

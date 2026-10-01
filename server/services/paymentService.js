@@ -380,6 +380,29 @@ async function recordProcessedRefund(client, refund, payment) {
   await client.query(`UPDATE orders SET refunded_amount = $1,
     payment_status = $2, fulfillment_hold_reason = 'ORDER_REFUND_REVIEW_REQUIRED', updated_at = NOW() WHERE id = $3`,
     [fromPaise(refunded), refunded === total ? 'refunded' : 'partially_refunded', order.id]);
+
+  // A signed Razorpay processed event is the source of truth for return
+  // completion. Notes cover the narrow race where the webhook arrives before
+  // the refund-create response has been persisted locally.
+  const notedReturnId = refund.notes?.return_request_id;
+  const validReturnId = typeof notedReturnId === 'string' && UUID_RE.test(notedReturnId) ? notedReturnId : null;
+  const linkedReturn = await client.query(
+    `SELECT * FROM return_requests WHERE razorpay_refund_id = $1
+       OR ($2::uuid IS NOT NULL AND id = $2) FOR UPDATE`, [refund.id, validReturnId]
+  );
+  const returnRequest = linkedReturn.rows[0];
+  if (returnRequest) {
+    if (returnRequest.order_id !== order.id || toPaise(returnRequest.refund_amount) !== refund.amount ||
+        (returnRequest.razorpay_refund_id && returnRequest.razorpay_refund_id !== refund.id)) {
+      throw httpError(409, 'Refund does not match the linked return request.');
+    }
+    await client.query(
+      `UPDATE return_requests SET razorpay_refund_id = $1, status = 'refunded', refund_status = 'refunded',
+       refunded_at = COALESCE(refunded_at, NOW()), completed_at = COALESCE(completed_at, NOW()),
+       pending_operation = NULL, operation_started_at = NULL, last_error_code = NULL, updated_at = NOW()
+       WHERE id = $2`, [refund.id, returnRequest.id]
+    );
+  }
 }
 
 module.exports = {

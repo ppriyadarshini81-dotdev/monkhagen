@@ -25,9 +25,26 @@ export class AccountReturnsComponent implements OnInit {
 
   statusClass(s: string): string {
     const m: Record<string, string> = {
-      requested: 'orange', approved: 'blue', rejected: 'red',
-      pickup_scheduled: 'orange', received: 'blue', completed: 'green', cancelled: 'red'
+      requested: 'orange', return_created: 'orange', shiprocket_failed: 'orange',
+      pickup_scheduled: 'orange', picked_up: 'blue', in_transit: 'blue', received: 'blue',
+      approved: 'blue', refund_initiated: 'orange', refunded: 'green',
+      pickup_failed: 'red', rejected: 'red', cancelled: 'red'
     };
     return m[s] || 'grey';
+  }
+
+  statusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      requested: 'Return requested', return_created: 'Awaiting pickup scheduling', shiprocket_failed: 'Return creation delayed',
+      pickup_scheduled: 'Pickup scheduled', picked_up: 'Picked up', in_transit: 'In transit',
+      received: 'Received', approved: 'Approved', refund_initiated: 'Refund processing', refunded: 'Refund completed',
+      pickup_failed: 'Pickup needs attention', manual_required: 'Manual refund required'
+    };
+    return labels[status] || status.replace(/_/g, ' ');
+  }
+
+  progress(status: string): number {
+    const order = ['requested','return_created','pickup_scheduled','picked_up','in_transit','received','approved','refund_initiated','refunded'];
+    return Math.max(0, order.indexOf(status));
   }
 }

@@ -28,10 +28,12 @@ router.patch('/addresses/:id/default', ctrl.setDefaultAddress);
 router.get('/orders',                    ctrl.getOrders);
 router.get('/orders/:orderId',           ctrl.getOrder);
 router.get('/orders/:orderId/tracking',  ctrl.getTracking);
+router.get('/orders/:orderId/return-eligibility', ctrl.getReturnEligibility);
 router.get('/orders/:orderId/invoice', invoiceLimiter, ctrl.getInvoice);
 
 // Returns
 router.get('/returns',   ctrl.getReturns);
+router.get('/returns/:returnId', ctrl.getReturn);
 router.post('/returns', returnLimiter, ctrl.createReturn);
 
 // Credits

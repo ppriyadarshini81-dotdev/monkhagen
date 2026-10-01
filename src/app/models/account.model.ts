@@ -106,8 +106,14 @@ export interface IndiaLocations {
 export interface ReturnItem {
   id: string;
   orderItemId: string;
+  productName: string;
+  sku: string | null;
+  size: string | null;
+  color: string | null;
   quantity: number;
   reason: string | null;
+  comments: string | null;
+  refundAmount: number;
 }
 
 export interface ReturnRequest {
@@ -119,18 +125,44 @@ export interface ReturnRequest {
   status: string;
   refundAmount: number;
   refundStatus: string;
+  returnAwb: string | null;
+  pickupStatus: string | null;
+  pickupDelayed: boolean;
+  cancellationPending: boolean;
   items: ReturnItem[];
   requestedAt: string;
+  receivedAt: string | null;
   approvedAt: string | null;
-  completedAt: string | null;
+  rejectedAt: string | null;
+  refundedAt: string | null;
   createdAt: string;
 }
 
 export interface ReturnPayload {
   orderId: string;
-  reason: string;
+  idempotencyKey: string;
   comments?: string;
-  items: { orderItemId: string; quantity: number; reason?: string }[];
+  items: { orderItemId: string; quantity: number; reason: string; comments?: string }[];
+}
+
+export interface ReturnEligibility {
+  orderId: string;
+  eligible: boolean;
+  reason: string | null;
+  message: string | null;
+  deliveredAt?: string;
+  returnUntil: string | null;
+  reasons: Array<{ code: string; label: string }>;
+  items: Array<{
+    orderItemId: string;
+    productName: string;
+    sku: string | null;
+    size: string | null;
+    color: string | null;
+    purchasedQuantity: number;
+    returnedQuantity: number;
+    remainingQuantity: number;
+  }>;
 }
 
 export interface CreditTransaction {

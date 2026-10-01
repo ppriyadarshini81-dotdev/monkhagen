@@ -1031,3 +1031,13 @@
     grid-template-columns: 1fr;
   }
 }
+.mh-admin-returns { display: grid; gap: 18px; }
+.mh-admin-return-card { border: 1px solid #e3e0da; border-radius: 14px; padding: 20px; background: #fff; }
+.mh-admin-return-card header, .mh-admin-return-card footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.mh-admin-return-card header div, .mh-admin-return-grid > div, .mh-admin-return-items div { display: grid; gap: 4px; }
+.mh-admin-return-card small { color: #777; text-transform: uppercase; letter-spacing: .08em; }
+.mh-admin-return-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; padding: 18px 0; margin: 18px 0; border-block: 1px solid #eee; }
+.mh-admin-return-grid span, .mh-admin-return-items span { color: #6f6f69; font-size: 12px; }
+.mh-admin-return-items { display: grid; gap: 12px; margin-bottom: 18px; }
+.mh-admin-return-card footer { justify-content: flex-end; }
+@media (max-width: 900px) { .mh-admin-return-grid { grid-template-columns: 1fr 1fr; } }
