@@ -43,6 +43,10 @@
     <div class="mh-pd__info">
       <span class="mh-eyebrow">{{ product.category }}</span>
       <h1>{{ product.name }}</h1>
+      <button class="mh-pd__rating-link" type="button" *ngIf="reviewSummary.total" (click)="scrollToReviews()">
+        <strong>{{ reviewSummary.average | number:'1.1-1' }} <span aria-hidden="true">&#9733;</span></strong>
+        <span>{{ reviewSummary.total }} {{ reviewSummary.total === 1 ? 'Review' : 'Reviews' }}</span>
+      </button>
       <div class="mh-pd__meta">
         <div class="mh-pd__mrp">
           <span><b>MRP:</b> <strong>&#8377;{{ product.price | number: '1.2-2' }}</strong></span>
@@ -138,6 +142,116 @@
     </div>
   </div>
 </section>
+
+<section class="mh-reviews mh-container" id="customer-reviews" *ngIf="product && !loading" aria-labelledby="reviews-title">
+  <header class="mh-reviews__head">
+    <div><span class="mh-eyebrow">Community feedback</span><h2 id="reviews-title">Ratings &amp; Customer Reviews</h2></div>
+    <button class="mh-btn mh-btn--ghost" type="button" (click)="writeReview()">
+      {{ reviewEligibility?.ownReview ? 'Edit your review' : 'Write a review' }}
+    </button>
+  </header>
+
+  <p class="mh-error" role="alert" *ngIf="reviewsError">{{ reviewsError }}</p>
+
+  <div class="mh-reviews__empty" *ngIf="!reviewsLoading && reviewSummary.total === 0">
+    <h3>No reviews yet</h3>
+    <p>Be the first verified buyer to review this product.</p>
+  </div>
+
+  <div class="mh-reviews__summary" *ngIf="reviewSummary.total">
+    <div class="mh-reviews__score">
+      <strong>{{ reviewSummary.average | number:'1.1-1' }} <span aria-hidden="true">&#9733;</span></strong>
+      <span>{{ reviewSummary.total }} Verified {{ reviewSummary.total === 1 ? 'Buyer' : 'Buyers' }}</span>
+    </div>
+    <div class="mh-reviews__distribution" aria-label="Rating distribution">
+      <div *ngFor="let star of [5,4,3,2,1]">
+        <span>{{ star }} <span aria-hidden="true">&#9733;</span></span>
+        <span class="mh-reviews__bar"><i [style.width.%]="ratingPercent(star)"></i></span>
+        <strong>{{ ratingCount(star) }}</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="mh-reviews__photos" *ngIf="customerPhotos.length">
+    <h3>Customer Photos</h3>
+    <div>
+      <button type="button" *ngFor="let photo of customerPhotos" (click)="openReviewPhoto(photo.url)" aria-label="Open customer review photo">
+        <img [src]="cachedMediaUrl(photo.url)" alt="Customer review photo" loading="lazy" />
+      </button>
+    </div>
+  </div>
+
+  <div class="mh-reviews__toolbar" *ngIf="reviewSummary.total">
+    <label>Sort
+      <select [(ngModel)]="reviewSort" (change)="changeReviewSort()">
+        <option value="recent">Most Recent</option>
+        <option value="highest">Highest Rated</option>
+        <option value="lowest">Lowest Rated</option>
+        <option value="helpful">Most Helpful</option>
+      </select>
+    </label>
+  </div>
+
+  <p class="mh-reviews__loading" *ngIf="reviewsLoading">Loading customer reviews&hellip;</p>
+  <div class="mh-reviews__list" *ngIf="!reviewsLoading">
+    <article class="mh-review" *ngFor="let review of reviews">
+      <div class="mh-review__stars" [attr.aria-label]="review.rating + ' out of 5 stars'">
+        <span *ngFor="let star of starValues" [class.is-filled]="star <= review.rating" aria-hidden="true">&#9733;</span>
+      </div>
+      <p class="mh-review__text" *ngIf="review.text">{{ review.text }}</p>
+      <div class="mh-review__images" *ngIf="review.images.length">
+        <button type="button" *ngFor="let image of review.images" (click)="openReviewPhoto(image.url)" aria-label="Open review photo">
+          <img [src]="cachedMediaUrl(image.url)" alt="Customer review photo" loading="lazy" />
+        </button>
+      </div>
+      <div class="mh-review__meta">
+        <div><strong>{{ review.displayName }}</strong><span class="mh-review__verified" *ngIf="review.verifiedBuyer">Verified Buyer</span><span *ngIf="review.sizePurchased">Size {{ review.sizePurchased }}</span></div>
+        <time [attr.datetime]="review.createdAt">{{ review.createdAt | date:'dd MMM y' }}</time><span *ngIf="review.edited">Edited</span>
+      </div>
+      <button class="mh-review__helpful" type="button" [class.is-active]="review.helpfulByMe" (click)="toggleHelpful(review)"
+        [attr.aria-pressed]="review.helpfulByMe">&#128077; Helpful <span *ngIf="review.helpfulCount">{{ review.helpfulCount }}</span></button>
+    </article>
+  </div>
+
+  <nav class="mh-reviews__pages" *ngIf="reviewSummary.total > reviewLimit" aria-label="Review pages">
+    <button type="button" (click)="changeReviewPage(-1)" [disabled]="reviewPage === 1">Previous</button>
+    <span>Page {{ reviewPage }}</span>
+    <button type="button" (click)="changeReviewPage(1)" [disabled]="reviewPage * reviewLimit >= reviewSummary.total">Next</button>
+  </nav>
+</section>
+
+<dialog #reviewDialog class="mh-review-dialog" aria-labelledby="review-dialog-title">
+  <form method="dialog" class="mh-review-dialog__panel" (submit)="$event.preventDefault(); submitReview()">
+    <header><div><span class="mh-eyebrow">Verified purchase</span><h2 id="review-dialog-title">{{ reviewEligibility?.ownReview ? 'Edit your review' : 'Write a review' }}</h2></div>
+      <button type="button" (click)="closeReviewForm()" aria-label="Close review form">&times;</button></header>
+    <fieldset class="mh-review-form__stars">
+      <legend>Your rating</legend>
+      <button *ngFor="let star of starValues" type="button" (click)="reviewRating = star"
+        [class.is-filled]="star <= reviewRating" [attr.aria-pressed]="reviewRating === star"
+        [attr.aria-label]="star + (star === 1 ? ' star' : ' stars')">&#9733;</button>
+    </fieldset>
+    <label class="mh-review-form__text">Review <span>(optional)</span>
+      <textarea [(ngModel)]="reviewText" name="reviewText" maxlength="2000" rows="6" placeholder="Share your thoughts about quality, fit and comfort."></textarea>
+      <small>{{ reviewText.length }}/2000</small>
+    </label>
+    <div class="mh-review-form__photos">
+      <label>Photos <span>(optional, up to 5)</span><input type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif" (change)="selectReviewPhotos($event)" /></label>
+      <p *ngIf="reviewFiles.length">{{ reviewFiles.length }} new {{ reviewFiles.length === 1 ? 'photo' : 'photos' }} selected.</p>
+      <div *ngIf="reviewEligibility?.ownReview?.images?.length && !replaceReviewImages">
+        <img *ngFor="let image of reviewEligibility?.ownReview?.images" [src]="cachedMediaUrl(image.url)" alt="Existing review photo" />
+        <button type="button" (click)="removeReviewPhotos()">Remove existing photos</button>
+      </div>
+    </div>
+    <p class="mh-error" role="alert" *ngIf="reviewFormError">{{ reviewFormError }}</p>
+    <footer><button class="mh-btn mh-btn--ghost" type="button" (click)="closeReviewForm()">Cancel</button>
+      <button class="mh-btn mh-btn--gold" type="submit" [disabled]="reviewSubmitting">{{ reviewSubmitting ? 'Saving&hellip;' : 'Submit review' }}</button></footer>
+  </form>
+</dialog>
+
+<dialog #reviewPhotoDialog class="mh-review-photo-dialog" aria-label="Customer review photo" (click)="$event.target === reviewPhotoDialog && reviewPhotoDialog.close()">
+  <button type="button" (click)="reviewPhotoDialog.close()" aria-label="Close customer photo">&times;</button>
+  <img *ngIf="activeReviewPhoto" [src]="cachedMediaUrl(activeReviewPhoto)" alt="Customer review photo enlarged" />
+</dialog>
 
 <dialog #sizeChartDialog class="mh-pd__chart-dialog" aria-labelledby="size-chart-title" (click)="closeOnBackdrop($event)">
   <div class="mh-pd__chart-panel">

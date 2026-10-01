@@ -86,7 +86,7 @@ function validateUpload(detectedMime, declaredMime, size, folder) {
   if (!Number.isSafeInteger(size) || size < 1 || size > maxSizeFor(detectedMime)) {
     throw Object.assign(new Error('File exceeds the permitted upload size.'), { status: 413 });
   }
-  if (!['products','banners','logos','videos'].includes(folder) || (detectedMime === 'video/mp4') !== (folder === 'videos')) {
+  if (!['products','banners','logos','videos','reviews'].includes(folder) || (detectedMime === 'video/mp4') !== (folder === 'videos')) {
     throw Object.assign(new Error('Select the appropriate image or video upload folder.'), { status: 400 });
   }
 }
@@ -119,7 +119,7 @@ async function deleteFile(keyOrUrl) {
   }
   // Never reinterpret a foreign URL, arbitrary filename or unrelated bucket
   // prefix as an object deletion target. Manual/imported assets are retained.
-  if (!/^(products|banners|logos|videos)\/[0-9a-f-]{36}\.(jpg|png|webp|avif|mp4)$/.test(key)) return;
+  if (!/^(products|banners|logos|videos|reviews)\/[0-9a-f-]{36}\.(jpg|png|webp|avif|mp4)$/.test(key)) return;
   try {
     await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
   } catch (err) {

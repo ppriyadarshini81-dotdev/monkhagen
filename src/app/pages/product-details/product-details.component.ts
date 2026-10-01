@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { ProductService } from '../../services/product.service';
@@ -9,11 +10,14 @@ import { ProductPageContent } from '../../models/product-page-content.model';
 import { ProductPageContentService } from '../../services/product-page-content.service';
 import { AnalyticsService } from '../../services/analytics.service';
 import { cachedMediaUrl } from '../../utils/media-url';
+import { AuthService } from '../../services/auth.service';
+import { ReviewService, ReviewSort } from '../../services/review.service';
+import { ProductReview, ReviewEligibility, ReviewSummary } from '../../models/review.model';
 
 @Component({
   selector: 'app-product-details',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './product-details.component.html',
   styleUrl: './product-details.component.css'
 })
@@ -36,6 +40,25 @@ export class ProductDetailsComponent implements OnInit {
   careItems: string[] = [];
   @ViewChild('sizeChartDialog') sizeChartDialog?: ElementRef<HTMLDialogElement>;
   @ViewChild('productImageDialog') productImageDialog?: ElementRef<HTMLDialogElement>;
+  @ViewChild('reviewDialog') reviewDialog?: ElementRef<HTMLDialogElement>;
+  @ViewChild('reviewPhotoDialog') reviewPhotoDialog?: ElementRef<HTMLDialogElement>;
+  reviewSummary: ReviewSummary = { average: 0, total: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
+  reviews: ProductReview[] = [];
+  reviewEligibility: ReviewEligibility | null = null;
+  reviewsLoading = false;
+  reviewsError = '';
+  reviewSort: ReviewSort = 'recent';
+  reviewPage = 1;
+  readonly reviewLimit = 10;
+  customerPhotos: Array<{ id: string; reviewId: string; url: string }> = [];
+  reviewRating = 0;
+  reviewText = '';
+  reviewFiles: File[] = [];
+  replaceReviewImages = false;
+  reviewSubmitting = false;
+  reviewFormError = '';
+  activeReviewPhoto = '';
+  readonly starValues = [1, 2, 3, 4, 5];
   imageZoom = 1;
   private touchStartX: number | null = null;
   private touchCurrentX: number | null = null;
@@ -150,7 +173,9 @@ export class ProductDetailsComponent implements OnInit {
     public cart: CartService,
     private router: Router,
     private contentService: ProductPageContentService,
-    private analytics: AnalyticsService
+    private analytics: AnalyticsService,
+    public auth: AuthService,
+    private reviewService: ReviewService
   ) {}
 
   ngOnInit(): void {
@@ -174,6 +199,7 @@ export class ProductDetailsComponent implements OnInit {
           this.quantity = 1;
           this.loading = false;
           this.analytics.track('PRODUCT_VIEWED', this.router.url, product.id);
+          this.loadReviewData();
         },
         error: () => {
           this.notFound = true;
@@ -181,6 +207,174 @@ export class ProductDetailsComponent implements OnInit {
         }
       });
     });
+  }
+
+  loadReviewData(): void {
+    if (!this.product) return;
+    this.reviewService.summary(this.product.id).subscribe({
+      next: summary => this.reviewSummary = summary,
+      error: () => this.reviewsError = 'Ratings are temporarily unavailable.'
+    });
+    this.loadReviews();
+    if (this.auth.isLoggedIn) {
+      this.reviewService.eligibility(this.product.id).subscribe({
+        next: eligibility => {
+          this.reviewEligibility = eligibility;
+          if (this.route.snapshot.queryParamMap.get('review') === 'write' && eligibility.eligible) {
+            queueMicrotask(() => this.openReviewForm());
+          }
+        },
+        error: error => {
+          this.reviewEligibility = null;
+          this.reviewsError = error?.error?.message || 'Review eligibility could not be checked.';
+        }
+      });
+    } else {
+      this.reviewEligibility = null;
+    }
+  }
+
+  loadReviews(): void {
+    if (!this.product || this.reviewsLoading) return;
+    this.reviewsLoading = true;
+    this.reviewsError = '';
+    this.reviewService.list(this.product.id, this.reviewPage, this.reviewLimit, this.reviewSort).subscribe({
+      next: page => {
+        this.reviews = page.reviews;
+        this.customerPhotos = page.customerPhotos;
+        this.reviewsLoading = false;
+      },
+      error: () => {
+        this.reviewsError = 'Customer reviews could not be loaded.';
+        this.reviewsLoading = false;
+      }
+    });
+  }
+
+  changeReviewSort(): void {
+    this.reviewPage = 1;
+    this.loadReviews();
+  }
+
+  changeReviewPage(delta: number): void {
+    const next = this.reviewPage + delta;
+    if (next < 1 || (delta > 0 && this.reviewPage * this.reviewLimit >= this.reviewSummary.total)) return;
+    this.reviewPage = next;
+    this.loadReviews();
+    document.getElementById('customer-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  writeReview(): void {
+    if (!this.auth.isLoggedIn) {
+      const slug = this.product?.slug || this.route.snapshot.paramMap.get('slug') || '';
+      this.router.navigate(['/login'], { queryParams: { redirect: `/product/${slug}?review=write` } });
+      return;
+    }
+    if (!this.reviewEligibility) {
+      this.reviewService.eligibility(this.product!.id).subscribe({
+        next: eligibility => { this.reviewEligibility = eligibility; this.openReviewForm(); },
+        error: error => this.reviewsError = error?.error?.message || 'Review eligibility could not be checked.'
+      });
+      return;
+    }
+    this.openReviewForm();
+  }
+
+  openReviewForm(): void {
+    if (!this.reviewEligibility?.eligible) {
+      this.reviewsError = 'Only verified buyers with a delivered order can review this product.';
+      return;
+    }
+    const own = this.reviewEligibility.ownReview;
+    this.reviewRating = own?.rating || 0;
+    this.reviewText = own?.text || '';
+    this.reviewFiles = [];
+    this.replaceReviewImages = false;
+    this.reviewFormError = '';
+    queueMicrotask(() => this.reviewDialog?.nativeElement.showModal());
+  }
+
+  closeReviewForm(): void { this.reviewDialog?.nativeElement.close(); }
+
+  selectReviewPhotos(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files || []);
+    this.reviewFormError = '';
+    if (files.length > 5) {
+      this.reviewFormError = 'Choose no more than 5 photos.';
+      input.value = '';
+      return;
+    }
+    if (files.some(file => !['image/jpeg','image/png','image/webp','image/avif'].includes(file.type) || file.size > 5 * 1024 * 1024)) {
+      this.reviewFormError = 'Photos must be JPG, PNG, WebP or AVIF and no larger than 5 MB each.';
+      input.value = '';
+      return;
+    }
+    this.reviewFiles = files;
+    this.replaceReviewImages = true;
+  }
+
+  removeReviewPhotos(): void {
+    this.reviewFiles = [];
+    this.replaceReviewImages = true;
+  }
+
+  submitReview(): void {
+    if (!this.product || !this.reviewEligibility || this.reviewSubmitting) return;
+    if (!Number.isInteger(this.reviewRating) || this.reviewRating < 1 || this.reviewRating > 5) {
+      this.reviewFormError = 'Choose a rating from 1 to 5 stars.';
+      return;
+    }
+    if (this.reviewText.trim().length > 2000) {
+      this.reviewFormError = 'Review text cannot exceed 2000 characters.';
+      return;
+    }
+    this.reviewSubmitting = true;
+    this.reviewFormError = '';
+    const own = this.reviewEligibility.ownReview;
+    const request = own
+      ? this.reviewService.update(this.product.id, own.id, this.reviewRating, this.reviewText, this.reviewFiles, this.replaceReviewImages)
+      : this.reviewService.create(this.product.id, this.reviewRating, this.reviewText, this.reviewFiles);
+    request.subscribe({
+      next: () => {
+        this.reviewSubmitting = false;
+        this.closeReviewForm();
+        this.reviewPage = 1;
+        this.loadReviewData();
+      },
+      error: error => {
+        this.reviewSubmitting = false;
+        this.reviewFormError = error?.error?.message || 'Your review could not be saved.';
+      }
+    });
+  }
+
+  toggleHelpful(review: ProductReview): void {
+    if (!this.auth.isLoggedIn) {
+      this.router.navigate(['/login'], { queryParams: { redirect: this.router.url } });
+      return;
+    }
+    this.reviewService.helpful(this.product!.id, review.id, !review.helpfulByMe).subscribe({
+      next: result => { review.helpfulByMe = result.helpful; review.helpfulCount = result.helpfulCount; },
+      error: error => this.reviewsError = error?.error?.message || 'Helpful vote could not be updated.'
+    });
+  }
+
+  ratingPercent(star: number): number {
+    return this.reviewSummary.total ? (this.reviewSummary.distribution[star as 1 | 2 | 3 | 4 | 5] / this.reviewSummary.total) * 100 : 0;
+  }
+
+  ratingCount(star: number): number {
+    return this.reviewSummary.distribution[star as 1 | 2 | 3 | 4 | 5] || 0;
+  }
+
+  scrollToReviews(): void {
+    document.getElementById('customer-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  openReviewPhoto(url: string): void {
+    this.activeReviewPhoto = url;
+    queueMicrotask(() => this.reviewPhotoDialog?.nativeElement.showModal());
   }
 
   changeQty(delta: number): void {

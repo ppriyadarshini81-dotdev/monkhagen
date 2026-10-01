@@ -15,6 +15,8 @@ import { AuthService } from '../../services/auth.service';
 import { ShippingService } from '../../services/shipping.service';
 import { saveInvoice } from '../../utils/invoice-download';
 import { ProductPageContentEditorComponent } from '../../components/product-page-content-editor/product-page-content-editor.component';
+import { ReviewService } from '../../services/review.service';
+import { AdminReview } from '../../models/review.model';
 
 interface ProductForm {
   id?: string;
@@ -53,7 +55,7 @@ type OptionType = 'sizes' | 'colors';
 })
 export class AdminComponent implements OnInit {
   @ViewChild('orderDialog') orderDialog?: ElementRef<HTMLDialogElement>;
-  tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' | 'returns' | 'content' = 'products';
+  tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' | 'returns' | 'reviews' | 'content' = 'products';
   products: Product[] = [];
   categories: Category[] = [];
   badges: Badge[] = [];
@@ -63,6 +65,12 @@ export class AdminComponent implements OnInit {
   returns: AdminReturn[] = [];
   returnsLoading = false;
   returnBusyId = '';
+  customerReviews: AdminReview[] = [];
+  reviewsLoading = false;
+  reviewBusyId = '';
+  reviewSearch = '';
+  reviewRatingFilter: number | null = null;
+  reviewStatusFilter = '';
   ordersLoading = false;
   ordersError = '';
   shippingBusyOrderId = '';
@@ -101,6 +109,7 @@ export class AdminComponent implements OnInit {
     private orderService: OrderService,
     private uploadService: UploadService,
     private shippingService: ShippingService,
+    private reviewService: ReviewService,
     public auth: AuthService
   ) {}
 
@@ -112,6 +121,7 @@ export class AdminComponent implements OnInit {
     this.loadOptions('colors');
     this.loadOrders();
     this.loadReturns();
+    this.loadCustomerReviews();
   }
 
   emptyForm(): ProductForm {
@@ -173,6 +183,27 @@ export class AdminComponent implements OnInit {
     this.orderService.adminReturns().subscribe({
       next: returns => { this.returns = returns; this.returnsLoading = false; },
       error: () => { this.error = 'Could not load returns.'; this.returnsLoading = false; }
+    });
+  }
+
+  loadCustomerReviews(): void {
+    if (this.reviewsLoading) return;
+    this.reviewsLoading = true;
+    this.reviewService.adminList({
+      search: this.reviewSearch.trim(), rating: this.reviewRatingFilter, status: this.reviewStatusFilter
+    }).subscribe({
+      next: result => { this.customerReviews = result.reviews; this.reviewsLoading = false; },
+      error: () => { this.error = 'Could not load customer reviews.'; this.reviewsLoading = false; }
+    });
+  }
+
+  moderateReview(review: AdminReview): void {
+    if (this.reviewBusyId) return;
+    const status = review.moderationStatus === 'approved' ? 'hidden' : 'approved';
+    this.reviewBusyId = review.id;
+    this.reviewService.moderate(review.id, status).subscribe({
+      next: () => { this.reviewBusyId = ''; this.message = status === 'hidden' ? 'Review hidden.' : 'Review restored.'; this.loadCustomerReviews(); },
+      error: error => { this.reviewBusyId = ''; this.error = error?.error?.message || 'Review moderation failed.'; }
     });
   }
 

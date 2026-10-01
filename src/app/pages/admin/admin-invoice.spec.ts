@@ -13,7 +13,7 @@ describe('AdminComponent invoices', () => {
   beforeEach(() => {
     shipping = jasmine.createSpyObj<ShippingService>('ShippingService', ['createShipment', 'getInvoice']);
     component = new AdminComponent({} as never, {} as never, {} as never, {} as never, {} as never,
-      {} as never, shipping, {} as never);
+      {} as never, shipping, {} as never, {} as never);
     spyOn(URL, 'createObjectURL').and.returnValue('blob:invoice');
     spyOn(URL, 'revokeObjectURL');
     anchorClick = spyOn(HTMLAnchorElement.prototype, 'click');

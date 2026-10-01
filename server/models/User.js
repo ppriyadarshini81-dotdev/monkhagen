@@ -176,6 +176,21 @@ const User = {
         await client.query('UPDATE customer_addresses SET user_id = $1 WHERE user_id = $2', [target.id, source.id]);
         await client.query('UPDATE orders SET user_id = $1 WHERE user_id = $2', [target.id, source.id]);
         await client.query('UPDATE return_requests SET user_id = $1 WHERE user_id = $2', [target.id, source.id]);
+        const duplicateReview = await client.query(
+          `SELECT 1 FROM product_reviews source
+           JOIN product_reviews target ON target.product_id = source.product_id AND target.user_id = $1
+           WHERE source.user_id = $2 LIMIT 1`, [target.id, source.id]
+        );
+        if (duplicateReview.rows[0]) {
+          throw Object.assign(new Error('Both accounts reviewed the same product. Contact support to merge them safely.'), { status: 409 });
+        }
+        await client.query(
+          `INSERT INTO product_review_helpful (review_id, user_id, created_at)
+           SELECT review_id, $1, created_at FROM product_review_helpful WHERE user_id = $2
+           ON CONFLICT (review_id, user_id) DO NOTHING`, [target.id, source.id]
+        );
+        await client.query('DELETE FROM product_review_helpful WHERE user_id = $1', [source.id]);
+        await client.query('UPDATE product_reviews SET user_id = $1, updated_at = NOW() WHERE user_id = $2', [target.id, source.id]);
         await client.query(
           `INSERT INTO credit_accounts (user_id, balance)
            SELECT $1, balance FROM credit_accounts WHERE user_id = $2

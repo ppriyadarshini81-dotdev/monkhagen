@@ -20,6 +20,8 @@ function createApp() {
   app.use('/api', requestShape);
   app.use('/api/admin/analytics', require('./routes/adminAnalytics'));
   app.use('/api/admin/returns', require('./routes/adminReturns'));
+  app.use('/api/admin/reviews', require('./routes/adminReviews'));
+  app.use('/api/products', require('./routes/productReviews'));
   const routes = { products: 'products', 'product-page-content': 'productPageContent', categories: 'categories',
     badges: 'badges', sizes: 'sizes', colors: 'colors', auth: 'auth', orders: 'orders', cart: 'cart',
     upload: 'upload', account: 'account', contact: 'contact', media: 'media', payments: 'payments',

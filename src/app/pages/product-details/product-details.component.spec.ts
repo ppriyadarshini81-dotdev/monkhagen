@@ -8,11 +8,15 @@ import { ProductPageContentService } from '../../services/product-page-content.s
 import { CartService } from '../../services/cart.service';
 import { AnalyticsService } from '../../services/analytics.service';
 import { ProductDetailsComponent } from './product-details.component';
+import { ReviewService } from '../../services/review.service';
+import { AuthService } from '../../services/auth.service';
 
 describe('Product details shared content', () => {
   let fixture: ComponentFixture<ProductDetailsComponent>;
   let productService: jasmine.SpyObj<ProductService>;
   let contentService: jasmine.SpyObj<ProductPageContentService>;
+  let reviewService: jasmine.SpyObj<ReviewService>;
+  let auth: { isLoggedIn: boolean; currentUser: null };
   const pixel = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
   const product = {
     id: 'product-test', name: 'Test Shirt', slug: 'test-shirt', category: 'Shirts',
@@ -27,17 +31,25 @@ describe('Product details shared content', () => {
   beforeEach(async () => {
     productService = jasmine.createSpyObj('ProductService', ['getProduct']);
     contentService = jasmine.createSpyObj('ProductPageContentService', ['getContent']);
+    reviewService = jasmine.createSpyObj('ReviewService', ['summary', 'list', 'eligibility', 'create', 'update', 'helpful']);
     productService.getProduct.and.returnValue(of({ ...product }));
     contentService.getContent.and.returnValue(of({ ...content }));
+    reviewService.summary.and.returnValue(of({ average: 0, total: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }));
+    reviewService.list.and.returnValue(of({ reviews: [], total: 0, limit: 10, offset: 0, customerPhotos: [] }));
+    auth = { isLoggedIn: false, currentUser: null };
     await TestBed.configureTestingModule({ imports: [ProductDetailsComponent], providers: [
       provideRouter([]),
-      { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ slug: 'test-shirt' })) } },
+      { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ slug: 'test-shirt' })), snapshot: {
+        paramMap: convertToParamMap({ slug: 'test-shirt' }), queryParamMap: convertToParamMap({})
+      } } },
       { provide: ProductService, useValue: productService },
       { provide: ProductPageContentService, useValue: contentService },
       { provide: CartService, useValue: {
         prepaidOffer: { code: 'MONKHAGEN10', discountPercent: 10, eligible: false, eligibilityVerified: true, discountAmount: 0, totalAmount: 0 }
       } },
-      { provide: AnalyticsService, useValue: { track: () => undefined } }
+      { provide: AnalyticsService, useValue: { track: () => undefined } },
+      { provide: ReviewService, useValue: reviewService },
+      { provide: AuthService, useValue: auth }
     ] }).compileComponents();
     fixture = TestBed.createComponent(ProductDetailsComponent);
   });
@@ -53,12 +65,29 @@ describe('Product details shared content', () => {
     expect(root.querySelector('.mh-pd__rating')).toBeNull();
     expect(root.querySelector('.mh-pd__size-chart')).toBeNull();
     expect(contentService.getContent).toHaveBeenCalledTimes(1);
+    expect(root.querySelector('.mh-reviews__empty')?.textContent).toContain('No reviews yet');
+  });
+
+  it('renders real review summary data without fake zero-star labels', () => {
+    reviewService.summary.and.returnValue(of({ average: 4.3, total: 3, distribution: { 1: 0, 2: 0, 3: 0, 4: 2, 5: 1 } }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.mh-pd__rating-link')?.textContent).toContain('4.3');
+    expect(fixture.nativeElement.querySelector('.mh-reviews__score')?.textContent).toContain('3 Verified Buyers');
+  });
+
+  it('keeps the write-review action visible for a logged-in customer while eligibility is unavailable', () => {
+    auth.isLoggedIn = true;
+    reviewService.eligibility.and.returnValue(throwError(() => ({ error: { message: 'Review eligibility could not be checked.' } })));
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelector<HTMLButtonElement>('.mh-reviews__head button')?.textContent).toContain('Write a review');
+    expect(root.textContent).toContain('Review eligibility could not be checked.');
   });
 
   it('opens the configured size chart in a modal and closes with the cross or backdrop', () => {
     fixture.detectChanges();
     const root: HTMLElement = fixture.nativeElement;
-    const dialog = root.querySelector('dialog')!;
+    const dialog = root.querySelector<HTMLDialogElement>('.mh-pd__chart-dialog')!;
     const link = root.querySelector<HTMLButtonElement>('.mh-pd__size-link')!;
     link.click();
     fixture.detectChanges();

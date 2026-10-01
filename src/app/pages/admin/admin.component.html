@@ -43,6 +43,9 @@
     <button [class.active]="tab === 'returns'" (click)="tab = 'returns'">
       Returns ({{ returns.length }})
     </button>
+    <button [class.active]="tab === 'reviews'" (click)="tab = 'reviews'">
+      Reviews ({{ customerReviews.length }})
+    </button>
     <button [class.active]="tab === 'content'" (click)="tab = 'content'">Product page content</button>
   </div>
 
@@ -408,6 +411,32 @@
         <button class="mh-btn mh-btn--gold" type="button" *ngIf="canRefundReturn(r)" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'refund')">{{ r.paymentMethod === 'cod' ? 'Mark manual refund required' : 'Initiate refund' }}</button>
       </footer>
     </div>
+  </div>
+
+  <div class="mh-orders mh-admin-reviews" *ngIf="tab === 'reviews'">
+    <div class="mh-orders__toolbar">
+      <div><span class="mh-eyebrow">Customer feedback</span><h2>Customer reviews</h2><p>Hide inappropriate content without changing what the customer wrote.</p></div>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="loadCustomerReviews()" [disabled]="reviewsLoading">{{ reviewsLoading ? 'Refreshing...' : 'Refresh reviews' }}</button>
+    </div>
+    <div class="mh-admin-reviews__filters">
+      <input type="search" [(ngModel)]="reviewSearch" placeholder="Search product" aria-label="Search reviews by product" />
+      <select [(ngModel)]="reviewRatingFilter" aria-label="Filter reviews by rating">
+        <option [ngValue]="null">All ratings</option><option *ngFor="let star of [5,4,3,2,1]" [ngValue]="star">{{ star }} stars</option>
+      </select>
+      <select [(ngModel)]="reviewStatusFilter" aria-label="Filter reviews by moderation status">
+        <option value="">All statuses</option><option value="approved">Visible</option><option value="hidden">Hidden</option>
+      </select>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="loadCustomerReviews()">Apply</button>
+    </div>
+    <p class="mh-empty" *ngIf="!reviewsLoading && customerReviews.length === 0">No customer reviews match these filters.</p>
+    <article class="mh-admin-review-card" *ngFor="let review of customerReviews">
+      <header><div><strong>{{ review.productName }}</strong><span>{{ review.rating }} / 5 stars &middot; {{ review.customerName }} &middot; Verified Buyer</span></div>
+        <span class="mh-status" [class.is-danger]="review.moderationStatus === 'hidden'" [class.is-success]="review.moderationStatus === 'approved'">{{ review.moderationStatus === 'approved' ? 'Visible' : 'Hidden' }}</span></header>
+      <p *ngIf="review.text">{{ review.text }}</p>
+      <div class="mh-admin-review-card__photos" *ngIf="review.images.length"><a *ngFor="let image of review.images" [href]="image.url" target="_blank" rel="noopener"><img [src]="image.url" alt="Customer review photo" /></a></div>
+      <footer><span>{{ review.createdAt | date:'mediumDate' }}<ng-container *ngIf="review.edited"> &middot; Edited</ng-container> &middot; Helpful {{ review.helpfulCount }}</span>
+        <button class="mh-btn mh-btn--ghost" type="button" (click)="moderateReview(review)" [disabled]="!!reviewBusyId">{{ review.moderationStatus === 'approved' ? 'Hide review' : 'Restore review' }}</button></footer>
+    </article>
   </div>
 </section>
 

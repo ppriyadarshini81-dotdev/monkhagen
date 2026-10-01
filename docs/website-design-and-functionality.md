@@ -329,6 +329,11 @@ Home currently requests featured products and a separate general product list, t
 - Expandable **Product details** uses each product's description.
 - Expandable **CARE / KEEP IT FRESH** uses shared instructions rendered as bullets, with spacing aligned to product details.
 - Shared estimated delivery and explanatory note are displayed from database content.
+- Public ratings use approved review data only, including a one-decimal average, star distribution, paginated sorting and approved customer photos.
+- Guests can read reviews. Review creation, editing and helpful voting require login; review creation additionally requires a delivered order-item owned by that customer.
+- One review per customer/product is linked to a deterministic delivered order item. A later return or refund preserves the historical verified-buyer status because delivery remains recorded.
+- Review photos use the existing private R2 client with inspected JPG, PNG, WebP or AVIF content, five-photo and 5 MB-per-photo transport limits, and generated `reviews/` object keys.
+- Administrators can hide or restore reviews but cannot rewrite customer ratings or comments.
 
 Content ownership is explicit:
 
@@ -475,6 +480,9 @@ Courier selection and forward-shipment actions remain deliberate operator contro
 | `products` | Category, base price, description, badge and active state |
 | `product_size_details`, `product_color_details` | Product-to-managed-option associations |
 | `product_images` | Product image ordering and primary-image designation |
+| `product_reviews` | One delivered-purchase review per customer/product, with immutable purchase linkage and moderation state |
+| `product_review_images` | Generated R2 keys and public URLs for up to five review photos |
+| `product_review_helpful` | Unique customer/review helpful votes |
 | `product_variants` | Product/size/color/SKU combination, price, stock and availability |
 | `product_page_content` | Singleton shared size chart, care and delivery text |
 | `carts`, `cart_items` | User-owned active/converted/abandoned cart and variant quantities |
@@ -529,6 +537,7 @@ Current schema setup lives in [db.js](../server/config/db.js) and [migrations](.
 | `008_analytics` | Privacy-bounded analytics events and reporting indexes |
 | `009_returns_workflow` | Item-level idempotent returns, reverse-shipment state, refund lifecycle and webhook deduplication |
 | `010_return_item_comments` | Repairs the optional return-item comments column for databases that applied an earlier revision of migration 009 |
+| `011_product_reviews` | Verified-purchase ratings, review photos, moderation and unique helpful votes |
 
 Runtime production account must not own application objects or have migration/administrative capabilities. Applying schema changes is a separate trusted operation, not a normal web request.
 
@@ -540,6 +549,8 @@ All paths below are relative to `/api`. This is a route index, not a complete Op
 | --- | --- | --- |
 | Health | `GET /health` | Public; basic application status |
 | Catalog | `/products`, `/categories`, `/badges`, `/sizes`, `/colors` | Active public reads; protected administrator mutations |
+| Product reviews | `GET /products/:productId/reviews[/summary]`, authenticated eligibility/create/edit/helpful routes | Approved reads are public; writes require an owned delivered purchase |
+| Admin reviews | `GET /admin/reviews`, `PATCH /admin/reviews/:reviewId/moderation` | Administrator view/filter and hide/restore only |
 | Shared content | `GET /product-page-content`, `PUT /product-page-content` | Public read; admin write |
 | Identity | `POST /auth/firebase`, alias `POST /auth/google` | Validated Firebase exchange; authentication rate limit |
 | Session | `GET /auth/me`, `POST /auth/logout` | Authenticated; logout invalidates application sessions |
