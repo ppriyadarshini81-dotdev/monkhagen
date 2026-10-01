@@ -3,6 +3,7 @@ const { pool } = require('../config/db');
 const { shiprocket, shippingError } = require('../config/shiprocket');
 const { getRazorpay } = require('../config/razorpay');
 const emails = require('./transactionalEmailService');
+const ledger = require('./financialLedgerService');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RETURN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -544,6 +545,10 @@ async function initiateRefund(returnId, { database = pool, gateway = getRazorpay
       `UPDATE return_requests SET status = 'refund_initiated', refund_status = 'processing', pending_operation = 'refund',
        operation_started_at = NOW(), refund_initiated_at = NOW(), updated_at = NOW() WHERE id = $1`, [returnId]
     );
+    await ledger.refund(client, {
+      orderId: row.order_id, returnId, amount: row.refund_amount, status: 'PENDING',
+      eventType: 'REFUND_INITIATED', occurredAt: new Date()
+    });
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
   finally { client.release(); }
@@ -554,13 +559,38 @@ async function initiateRefund(returnId, { database = pool, gateway = getRazorpay
       notes: { return_request_id: returnId, return_number: row.return_number }, receipt: row.return_number
     });
     if (!refund?.id || !/^rfnd_[a-zA-Z0-9]+$/.test(refund.id)) throw fault(502, 'REFUND_INVALID_RESPONSE', 'The payment provider did not confirm the refund request.');
-    await database.query(
-      `UPDATE return_requests SET razorpay_refund_id = $1, pending_operation = NULL, operation_started_at = NULL,
-       last_error_code = NULL, updated_at = NOW() WHERE id = $2 AND pending_operation = 'refund'`, [refund.id, returnId]
-    );
+    const updateClient = await database.connect();
+    try {
+      await updateClient.query('BEGIN');
+      await updateClient.query(
+        `UPDATE return_requests SET razorpay_refund_id = $1, pending_operation = NULL, operation_started_at = NULL,
+         last_error_code = NULL, updated_at = NOW() WHERE id = $2 AND pending_operation = 'refund'`, [refund.id, returnId]
+      );
+      await ledger.refund(updateClient, {
+        orderId: row.order_id, returnId, refundId: refund.id, amount: row.refund_amount,
+        status: 'PENDING', eventType: 'REFUND_ACCEPTED', occurredAt: new Date()
+      });
+      await updateClient.query('COMMIT');
+    } catch (updateError) {
+      await updateClient.query('ROLLBACK').catch(() => {});
+      throw updateError;
+    } finally { updateClient.release(); }
     await notifySafely(() => notifier.refundInitiated(returnId, refund.id));
   } catch (error) {
-    await database.query("UPDATE return_requests SET last_error_code = 'REFUND_RECONCILIATION_REQUIRED', updated_at = NOW() WHERE id = $1", [returnId]).catch(() => {});
+    const definitiveFailure = Number(error.statusCode) >= 400 && Number(error.statusCode) < 500;
+    const failureClient = await database.connect();
+    try {
+      await failureClient.query('BEGIN');
+      await failureClient.query("UPDATE return_requests SET last_error_code = 'REFUND_RECONCILIATION_REQUIRED', updated_at = NOW() WHERE id = $1", [returnId]);
+      await ledger.refund(failureClient, {
+        orderId: row.order_id, returnId, amount: row.refund_amount,
+        status: definitiveFailure ? 'FAILED' : 'PENDING',
+        eventType: definitiveFailure ? 'REFUND_REJECTED' : 'REFUND_RECONCILIATION_REQUIRED',
+        description: definitiveFailure ? 'Razorpay refund initiation failed' : 'Razorpay refund requires reconciliation'
+      });
+      await failureClient.query('COMMIT');
+    } catch { await failureClient.query('ROLLBACK').catch(() => {}); }
+    finally { failureClient.release(); }
     await notifySafely(() => notifier.refundFailure(returnId, error.code || 'REFUND_RECONCILIATION_REQUIRED'));
     throw fault(409, 'REFUND_RECONCILIATION_REQUIRED', 'Check Razorpay before retrying this refund.');
   }

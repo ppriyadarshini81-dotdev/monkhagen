@@ -2,6 +2,7 @@ const { pool } = require('../config/db');
 const Shipment = require('./Shipment');
 const inventory = require('../services/inventoryService');
 const { validateTransition } = require('../services/orderStatusPolicy');
+const ledger = require('../services/financialLedgerService');
 
 const COD_FEE_PAISE = 10000;
 
@@ -106,6 +107,7 @@ const Order = {
       await inventory.snapshotItems(client, order.id, snapshot.items);
       await client.query("UPDATE carts SET status = 'converted', updated_at = NOW() WHERE id = $1 AND user_id = $2 AND status = 'active'", [snapshot.cart.id, userId]);
       await Shipment.enqueue(client, order.id);
+      await ledger.codExpected(client, order);
       }
       await client.query('COMMIT');
     } catch (err) {
@@ -164,6 +166,7 @@ const Order = {
           delivered_at = CASE WHEN $1 = 'delivered' THEN COALESCE(delivered_at, NOW()) ELSE delivered_at END,
           updated_at = NOW() WHERE id = $2 RETURNING *`, [status, id]);
         updated = result.rows[0];
+        if (status === 'cancelled' && updated.payment_method === 'cod') await ledger.codCancelled(client, updated);
       }
       await client.query('COMMIT');
     } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }

@@ -801,6 +801,10 @@ async function applyTransactionalSmsMigration(database = pool) {
   await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '014_transactional_sms_events.sql'), 'utf8'));
 }
 
+async function applyFinancialLedgerMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '015_financial_ledger.sql'), 'utf8'));
+}
+
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
   try {
@@ -859,9 +863,10 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const transactionalEmailApplied = await runMigration('012_transactional_email_events', applyTransactionalEmailMigration);
     const productZoomImagesApplied = await runMigration('013_product_zoom_images', applyProductZoomImagesMigration);
     const transactionalSmsApplied = await runMigration('014_transactional_sms_events', applyTransactionalSmsMigration);
+    const financialLedgerApplied = await runMigration('015_financial_ledger', applyFinancialLedgerMigration);
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied || financialLedgerApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );

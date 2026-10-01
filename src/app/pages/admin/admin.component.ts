@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, DoCheck, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
+import { Component, DoCheck, ElementRef, HostListener, OnInit, Optional, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { Category } from '../../models/category.model';
 import { Badge } from '../../models/badge.model';
@@ -92,6 +93,7 @@ export class AdminComponent implements OnInit, DoCheck {
   imagePairs: ProductImagePair[] = [];
   private lastDisplayImageUrls = '';
   private lastZoomImageUrls = '';
+  private requestedOrderId = '';
   form: ProductForm = this.emptyForm();
 
   showCatForm = false;
@@ -117,10 +119,12 @@ export class AdminComponent implements OnInit, DoCheck {
     private uploadService: UploadService,
     private shippingService: ShippingService,
     private reviewService: ReviewService,
-    public auth: AuthService
+    public auth: AuthService,
+    @Optional() private route?: ActivatedRoute
   ) {}
 
   ngOnInit(): void {
+    this.requestedOrderId = this.route?.snapshot.queryParamMap.get('order') || '';
     this.loadProducts();
     this.loadCategories();
     this.loadBadges();
@@ -182,6 +186,14 @@ export class AdminComponent implements OnInit, DoCheck {
         this.orders = o;
         if (this.selectedOrder) {
           this.selectedOrder = o.find((order) => order.id === this.selectedOrder?.id) || null;
+        }
+        if (this.requestedOrderId) {
+          const requested = o.find(order => order.id === this.requestedOrderId);
+          if (requested) {
+            this.tab = 'orders';
+            this.openOrder(requested);
+            this.requestedOrderId = '';
+          }
         }
         this.ordersLoading = false;
       },

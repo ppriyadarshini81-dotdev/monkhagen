@@ -9,6 +9,7 @@ const analytics = require('./analyticsService');
 const offers = require('./offerService');
 const emails = require('./transactionalEmailService');
 const sms = require('./transactionalSmsService');
+const ledger = require('./financialLedgerService');
 
 const CURRENCY = 'INR';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -148,6 +149,7 @@ async function finalizePaidOrder(client, { razorpayOrderId, paymentId, signature
       throw httpError(409, 'This order is already linked to another payment.');
     }
     if (order.payment_status === 'paid' && !order.fulfillment_hold_reason) await Shipment.enqueue(client, order.id);
+    await ledger.payment(client, order, paymentId);
     return { order, newlyFinalized: false };
   }
   let holdReason = order.fulfillment_hold_reason || null;
@@ -194,6 +196,7 @@ async function finalizePaidOrder(client, { razorpayOrderId, paymentId, signature
     );
   }
   if (!holdReason) await Shipment.enqueue(client, order.id);
+  await ledger.payment(client, updated.rows[0], paymentId);
   return { order: updated.rows[0], newlyFinalized: true };
 }
 
@@ -323,7 +326,7 @@ async function processWebhook(rawBody, headers) {
         analyticsOrder = failed.rows[0] || analyticsOrder;
       }
     } else if (eventType === 'refund.processed') {
-      completedRefund = await recordProcessedRefund(client, payload.payload?.refund?.entity, payment);
+      completedRefund = await recordProcessedRefund(client, payload.payload?.refund?.entity, payment, String(eventId));
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -353,7 +356,7 @@ async function processWebhook(rawBody, headers) {
   return { duplicate: false };
 }
 
-async function recordProcessedRefund(client, refund, payment) {
+async function recordProcessedRefund(client, refund, payment, eventId = null) {
   const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_]{1,255}$/.test(value);
   if (!refund || !validId(refund.id) || !validId(refund.payment_id) || refund.status !== 'processed' ||
       refund.currency !== CURRENCY || !Number.isSafeInteger(refund.amount) || refund.amount <= 0) {
@@ -414,6 +417,12 @@ async function recordProcessedRefund(client, refund, payment) {
        WHERE id = $2`, [refund.id, returnRequest.id]
     );
   }
+  await ledger.refund(client, {
+    orderId: order.id, returnId: returnRequest?.id || null, refundId: refund.id,
+    amount: fromPaise(refund.amount), status: 'SUCCESS', eventId,
+    eventType: 'REFUND_PROCESSED',
+    occurredAt: Number.isSafeInteger(refund.created_at) ? new Date(refund.created_at * 1000) : new Date()
+  });
   return { returnId: returnRequest?.id || null, refundId: refund.id, orderId: order.id };
 }
 

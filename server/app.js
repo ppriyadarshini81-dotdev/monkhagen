@@ -19,6 +19,7 @@ function createApp() {
   app.use('/api/webhooks/tracking-updates', require('./routes/shiprocketWebhook'));
   app.use('/api', requestShape);
   app.use('/api/admin/analytics', require('./routes/adminAnalytics'));
+  app.use('/api/admin/ledger', require('./routes/adminLedger'));
   app.use('/api/admin/returns', require('./routes/adminReturns'));
   app.use('/api/admin/reviews', require('./routes/adminReviews'));
   app.use('/api/products', require('./routes/productReviews'));
