@@ -789,6 +789,10 @@ async function applyProductReviewsMigration(database = pool) {
   await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '011_product_reviews.sql'), 'utf8'));
 }
 
+async function applyTransactionalEmailMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '012_transactional_email_events.sql'), 'utf8'));
+}
+
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
   try {
@@ -844,9 +848,10 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const returnsApplied = await runMigration('009_returns_workflow', applyReturnsWorkflowMigration);
     const returnItemCommentsApplied = await runMigration('010_return_item_comments', applyReturnItemCommentsMigration);
     const productReviewsApplied = await runMigration('011_product_reviews', applyProductReviewsMigration);
+    const transactionalEmailApplied = await runMigration('012_transactional_email_events', applyTransactionalEmailMigration);
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );

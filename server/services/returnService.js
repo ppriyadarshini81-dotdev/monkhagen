@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const { pool } = require('../config/db');
 const { shiprocket, shippingError } = require('../config/shiprocket');
 const { getRazorpay } = require('../config/razorpay');
+const emails = require('./transactionalEmailService');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RETURN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -18,6 +19,16 @@ const RETURN_REASONS = Object.freeze([
   { code: 'other', label: 'Other' }
 ]);
 const REASON_CODES = new Set(RETURN_REASONS.map(reason => reason.code));
+const NO_EMAILS = {
+  returnRequested: async () => {}, returnFailure: async () => {}, returnApproved: async () => {},
+  codRefundRequired: async () => {}, refundInitiated: async () => {}, refundFailure: async () => {},
+  returnPickupScheduled: async () => {}, returnPickedUp: async () => {}, returnReceived: async () => {}
+};
+function notificationsFor(database, override) { return override || (database === pool ? emails : NO_EMAILS); }
+async function notifySafely(action) {
+  try { await action(); }
+  catch (error) { console.error('Return notification could not be queued.', { code: /^[A-Z0-9_]{1,100}$/.test(error.code || '') ? error.code : 'EMAIL_QUEUE_FAILED' }); }
+}
 
 function fault(status, code, message) { return Object.assign(new Error(message), { status, code }); }
 function moneyPaise(value) {
@@ -337,7 +348,8 @@ function providerIdentifiers(result) {
   return { orderId, shipmentId, awb: data.awb_code || data.awb || null, pickupStatus: data.pickup_status || data.pickup?.status || null };
 }
 
-async function provisionReturn(returnId, { database = pool, api = shiprocket, env = process.env } = {}) {
+async function provisionReturn(returnId, { database = pool, api = shiprocket, env = process.env, notifications = null } = {}) {
+  const notifier = notificationsFor(database, notifications);
   returnId = validId(returnId, 'return ID');
   const claim = await database.query(
     `UPDATE return_requests SET pending_operation = 'create', operation_started_at = NOW(), attempt_count = attempt_count + 1,
@@ -365,14 +377,18 @@ async function provisionReturn(returnId, { database = pool, api = shiprocket, en
          operation_started_at = CASE WHEN $3 THEN operation_started_at ELSE NULL END, updated_at = NOW() WHERE id = $4`,
       [uncertain ? 'requested' : 'shiprocket_failed', code, uncertain, returnId]
     ).catch(() => {});
+    await notifySafely(() => notifier.returnFailure(returnId, code));
   }
   return findReturn(database, returnId, null, true);
 }
 
 async function createReturn(userId, body = {}, database = pool, dependencies = {}) {
+  const notifier = notificationsFor(database, dependencies.notifications);
   const input = validateRequest(body);
   const local = await createLocalReturn(userId, input, database, dependencies.now || Date.now);
-  if (local.created) await provisionReturn(local.row.id, { database, api: dependencies.api || shiprocket, env: dependencies.env || process.env });
+  if (local.created) await provisionReturn(local.row.id, { database, api: dependencies.api || shiprocket,
+    env: dependencies.env || process.env, notifications: notifier });
+  await notifySafely(() => notifier.returnRequested(local.row.id));
   return formatReturn(await findReturn(database, local.row.id, userId));
 }
 async function listCustomerReturns(userId, database = pool, { limit = 100, offset = 0 } = {}) {
@@ -465,7 +481,8 @@ async function rejectReturn(returnId, { database = pool, api = shiprocket, confi
   return formatReturn(await findReturn(database, returnId, null, true));
 }
 
-async function approveReturn(returnId, database = pool) {
+async function approveReturn(returnId, database = pool, notifications = null) {
+  const notifier = notificationsFor(database, notifications);
   returnId = validId(returnId, 'return ID');
   const client = await database.connect();
   try {
@@ -497,10 +514,12 @@ async function approveReturn(returnId, database = pool) {
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
   finally { client.release(); }
+  await notifySafely(() => notifier.returnApproved(returnId));
   return formatReturn(await findReturn(database, returnId, null, true));
 }
 
-async function initiateRefund(returnId, { database = pool, gateway = getRazorpay } = {}) {
+async function initiateRefund(returnId, { database = pool, gateway = getRazorpay, notifications = null } = {}) {
+  const notifier = notificationsFor(database, notifications);
   returnId = validId(returnId, 'return ID');
   const client = await database.connect();
   let row;
@@ -515,6 +534,7 @@ async function initiateRefund(returnId, { database = pool, gateway = getRazorpay
     if (row.payment_method === 'cod') {
       await client.query("UPDATE return_requests SET refund_status = 'manual_required', updated_at = NOW() WHERE id = $1", [returnId]);
       await client.query('COMMIT');
+      await notifySafely(() => notifier.codRefundRequired(returnId));
       return formatReturn(await findReturn(database, returnId, null, true));
     }
     if (row.status === 'refunded' || row.refund_status === 'refunded') { await client.query('COMMIT'); return formatReturn(await findReturn(database, returnId, null, true)); }
@@ -538,8 +558,10 @@ async function initiateRefund(returnId, { database = pool, gateway = getRazorpay
       `UPDATE return_requests SET razorpay_refund_id = $1, pending_operation = NULL, operation_started_at = NULL,
        last_error_code = NULL, updated_at = NOW() WHERE id = $2 AND pending_operation = 'refund'`, [refund.id, returnId]
     );
-  } catch {
+    await notifySafely(() => notifier.refundInitiated(returnId, refund.id));
+  } catch (error) {
     await database.query("UPDATE return_requests SET last_error_code = 'REFUND_RECONCILIATION_REQUIRED', updated_at = NOW() WHERE id = $1", [returnId]).catch(() => {});
+    await notifySafely(() => notifier.refundFailure(returnId, error.code || 'REFUND_RECONCILIATION_REQUIRED'));
     throw fault(409, 'REFUND_RECONCILIATION_REQUIRED', 'Check Razorpay before retrying this refund.');
   }
   return formatReturn(await findReturn(database, returnId, null, true));
@@ -615,7 +637,8 @@ function secureEqual(expected, received) {
   const a = Buffer.from(expected); const b = Buffer.from(received);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
-async function processShiprocketWebhook(payload, headers, database = pool, env = process.env) {
+async function processShiprocketWebhook(payload, headers, database = pool, env = process.env, notifications = null) {
+  const notifier = notificationsFor(database, notifications);
   if (!secureEqual(env.SHIPROCKET_WEBHOOK_SECRET, headers['x-api-key'])) throw fault(401, 'WEBHOOK_UNAUTHORIZED', 'Invalid webhook token.');
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw fault(400, 'WEBHOOK_INVALID', 'Invalid webhook body.');
   const awb = payload.awb ? String(payload.awb).slice(0, 100) : null;
@@ -653,6 +676,12 @@ async function processShiprocketWebhook(payload, headers, database = pool, env =
     }
     await client.query('UPDATE return_webhook_events SET return_request_id = $1 WHERE event_id = $2', [row.id, eventId]);
     await client.query('COMMIT');
+    if (!terminal && canAdvance && next !== row.status) {
+      if (next === 'pickup_scheduled') await notifySafely(() => notifier.returnPickupScheduled(row.id));
+      if (next === 'picked_up') await notifySafely(() => notifier.returnPickedUp(row.id));
+      if (next === 'received') await notifySafely(() => notifier.returnReceived(row.id));
+      if (next === 'pickup_failed') await notifySafely(() => notifier.returnFailure(row.id, 'RETURN_PICKUP_FAILED'));
+    }
     return { ignored: false, duplicate: false };
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
   finally { client.release(); }

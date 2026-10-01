@@ -17,7 +17,7 @@ See the [website design and functionality document](docs/website-design-and-func
 - Razorpay payments and signed webhooks
 - Shiprocket fulfillment and tracking
 - Cloudflare R2 media storage
-- Nodemailer for contact and order-confirmation email
+- Nodemailer with the existing Zoho SMTP mailbox for transactional and contact email
 
 ## Features
 
@@ -25,7 +25,7 @@ See the [website design and functionality document](docs/website-design-and-func
 - Product variants by managed size and color, stock, categories, badges, and images
 - Authenticated PostgreSQL cart and saved customer addresses
 - Razorpay checkout with server-side capture verification and idempotency
-- Retried customer confirmations with blind-copy notifications to the store inbox
+- Idempotent customer and operational emails for orders, delivery, returns, and refunds
 - Customer profile, orders, tracking, returns, and store credits
 - Admin management for catalog data, inventory, orders, and media
 - Durable Shiprocket shipment queue with explicit AWB, pickup, label, and reconciliation operations
@@ -99,7 +99,7 @@ SMTP_FROM=
 CONTACT_EMAIL=official@monkhagen.in
 ```
 
-The `CONTACT_EMAIL` address receives contact-form submissions and a blind copy of each paid-order confirmation. For Zoho-hosted `@monkhagen.in` mailboxes, use `smtp.zoho.in`, port `465`, `SMTP_SECURE=true`, and a Zoho application-specific password when two-factor authentication is enabled.
+The existing `CONTACT_EMAIL` address receives contact-form submissions and all administrator operational notifications. Customer transactional messages are separate idempotent events and are sent only to the email linked to the applicable customer/order. For Zoho-hosted `@monkhagen.in` mailboxes, use `smtp.zoho.in`, port `465`, `SMTP_SECURE=true`, and a Zoho application-specific password when two-factor authentication is enabled.
 
 Shiprocket variables and operational setup are documented in [docs/shiprocket.md](docs/shiprocket.md).
 

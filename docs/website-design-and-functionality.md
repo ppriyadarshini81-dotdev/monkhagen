@@ -271,9 +271,11 @@ Before a remote create/AWB/pickup/label mutation, the backend records `pending_o
 
 ### 3.9 Email delivery semantics
 
-Paid confirmations are selected from unsent paid orders and protected by a transaction-scoped order lock. Successful SMTP delivery is followed by `confirmation_email_sent_at` persistence. Customer email is the recipient; the configured store inbox is BCC.
+Transactional mail reuses the existing TLS-verified Zoho/Nodemailer transport. Backend order, Shiprocket, return, approval and signed Razorpay refund transitions create rows in `transactional_email_events`; Angular page actions never send mail. Customer and administrator notifications are separate events and the unique `event_key` prevents normal API/webhook retries from sending the same notification twice.
 
-Retries cover ordinary delivery failures. SMTP acceptance followed by database failure can still produce a duplicate email on retry; the timestamp is not an external-provider exactly-once receipt.
+The worker claims pending events with `FOR UPDATE SKIP LOCKED`, records attempts and provider message IDs, and retries failures with bounded exponential delay. SMTP failures are notification-side effects and cannot roll back a successful order, shipment status, return, inventory restoration or refund. As with any SMTP system, a process crash after provider acceptance but before the local `sent` update cannot provide mathematical exactly-once delivery, but stale claims are safely recovered and ordinary webhook retries remain idempotent.
+
+One escaped, responsive MONK HAGEN HTML layout and plain-text fallback cover order confirmation, shipped, out-for-delivery, delivered, return requested/pickup/receipt/approval, refund initiated/completed and administrator operational/failure events. Customer templates exclude internal database, Razorpay and Shiprocket identifiers. `CONTACT_EMAIL` is reused as the administrator notification mailbox.
 
 ## 4. Module-wise functionality
 
@@ -739,7 +741,7 @@ Set local secrets privately in the root `.env`, which is ignored by Git. Do not 
 | Shiprocket parcel | `SHIPROCKET_PICKUP_LOCATION`, `SHIPROCKET_PACKAGE_WEIGHT_KG`, `SHIPROCKET_PACKAGE_LENGTH_CM`, `SHIPROCKET_PACKAGE_BREADTH_CM`, `SHIPROCKET_PACKAGE_HEIGHT_CM` | Real pickup name and package defaults in kg/cm |
 | Shiprocket returns | `SHIPROCKET_WEBHOOK_SECRET`; reuses `SHIPROCKET_PICKUP_LOCATION` | Reverse-tracking authentication; the exact saved Shiprocket pickup location supplies the return destination/contact |
 | R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | Private storage access plus public asset base |
-| SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `CONTACT_EMAIL` | Official inbox for submissions/order BCC |
+| SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `CONTACT_EMAIL` | Existing Zoho transport; `CONTACT_EMAIL` receives contact and administrator operational mail |
 | Maintenance | `CRON_SECRET` | Strong secret of at least 32 characters; exact bearer authorization |
 | Vercel parsing | `NODEJS_HELPERS` | Set to `0`; application fails closed if required raw-body safeguard is absent on Vercel |
 

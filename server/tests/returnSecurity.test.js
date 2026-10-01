@@ -363,6 +363,21 @@ test('prepaid refund calls Razorpay once while COD remains manual and never call
   assert.equal(cod.state.refund_status, 'manual_required');
 });
 
+test('notification failure does not fail return approval or undo a successfully created refund', async () => {
+  const throwingNotifications = {
+    returnApproved: async () => { throw new Error('mock email failure'); },
+    refundInitiated: async () => { throw new Error('mock email failure'); },
+    refundFailure: async () => { throw new Error('mock email failure'); }
+  };
+  const received = adminDatabase('razorpay');
+  const approved = await approveReturn(RETURN, received, throwingNotifications);
+  assert.equal(approved.status, 'approved');
+  const result = await initiateRefund(RETURN, { database: received, notifications: throwingNotifications,
+    gateway: () => ({ razorpay: { payments: { refund: async () => ({ id: 'rfnd_mocksafe', status: 'pending' }) } } }) });
+  assert.equal(result.status, 'refund_initiated');
+  assert.equal(received.state.gatewayUpdates, 1);
+});
+
 test('signed Shiprocket webhook advances a return once and duplicate delivery is harmless', async () => {
   const events = new Set(); let updates = 0;
   const client = { async query(sql, params) {

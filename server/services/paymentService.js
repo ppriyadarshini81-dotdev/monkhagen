@@ -7,9 +7,15 @@ const shipping = require('./shippingService');
 const inventory = require('./inventoryService');
 const analytics = require('./analyticsService');
 const offers = require('./offerService');
+const emails = require('./transactionalEmailService');
 
 const CURRENCY = 'INR';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function notifySafely(action) {
+  try { await action(); }
+  catch (error) { console.error('Payment notification could not be queued.', { code: /^[A-Z0-9_]{1,100}$/.test(error.code || '') ? error.code : 'EMAIL_QUEUE_FAILED' }); }
+}
 
 function httpError(status, message) {
   const error = new Error(message);
@@ -240,8 +246,8 @@ async function verifyPayment(userId, { localOrderId, razorpayPaymentId, razorpay
   // The queue row is committed. Shipping failures cannot roll back or fail a captured payment.
   if (!process.env.VERCEL) {
     if (finalization.order.payment_status === 'paid' && !finalization.order.fulfillment_hold_reason) void shipping.processPendingOrder(order.id);
-    if (finalization.order.payment_status === 'paid') void sendOrderConfirmation(order.id).catch(() => console.warn('Order confirmation email will be retried.'));
   }
+  if (finalization.order.payment_status === 'paid') await notifySafely(() => sendOrderConfirmation(order.id));
   return {
     localOrderId: order.id,
     orderNumber: finalization.order.order_number,
@@ -271,6 +277,7 @@ async function processWebhook(rawBody, headers) {
   let analyticsOrder = null;
   let paymentAttempt = null;
   let paymentAttemptStatus = null;
+  let completedRefund = null;
   try {
     await client.query('BEGIN');
     const claim = await client.query(
@@ -314,7 +321,7 @@ async function processWebhook(rawBody, headers) {
         analyticsOrder = failed.rows[0] || analyticsOrder;
       }
     } else if (eventType === 'refund.processed') {
-      await recordProcessedRefund(client, payload.payload?.refund?.entity, payment);
+      completedRefund = await recordProcessedRefund(client, payload.payload?.refund?.entity, payment);
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -337,8 +344,9 @@ async function processWebhook(rawBody, headers) {
   if (finalizedOrderId && !process.env.VERCEL) {
     // The worker rechecks payment/hold state under its own durable lease.
     if (dispatchAllowed) void shipping.processPendingOrder(finalizedOrderId);
-    void sendOrderConfirmation(finalizedOrderId).catch(() => console.warn('Order confirmation email will be retried.'));
   }
+  if (finalizedOrderId) await notifySafely(() => sendOrderConfirmation(finalizedOrderId));
+  if (completedRefund?.returnId) await notifySafely(() => emails.refundCompleted(completedRefund.returnId, completedRefund.refundId));
   return { duplicate: false };
 }
 
@@ -403,6 +411,7 @@ async function recordProcessedRefund(client, refund, payment) {
        WHERE id = $2`, [refund.id, returnRequest.id]
     );
   }
+  return { returnId: returnRequest?.id || null, refundId: refund.id, orderId: order.id };
 }
 
 module.exports = {

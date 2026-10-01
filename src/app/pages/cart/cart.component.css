@@ -330,6 +330,7 @@
 
 .mh-cart__success-cta {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: center;
 }

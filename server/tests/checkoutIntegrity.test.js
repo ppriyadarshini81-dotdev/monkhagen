@@ -6,6 +6,7 @@ const gateway = require('../config/razorpay');
 const mail = require('../services/orderConfirmationEmail');
 const shipping = require('../services/shippingService');
 const inventory = require('../services/inventoryService');
+const transactionalEmail = require('../services/transactionalEmailService');
 process.env.RAZORPAY_KEY_SECRET = crypto.randomBytes(32).toString('hex');
 process.env.RAZORPAY_WEBHOOK_SECRET = crypto.randomBytes(32).toString('hex');
 let remoteCreates, providerPayment;
@@ -16,8 +17,10 @@ gateway.getRazorpay = () => ({ keyId: 'test-key', razorpay: {
 mail.sendOrderConfirmation = async () => false;
 const payments = require('../services/paymentService');
 const Order = require('../models/Order');
-const originals = { query: pool.query, connect: pool.connect, process: shipping.processPendingOrder };
-afterEach(() => { pool.query = originals.query; pool.connect = originals.connect; shipping.processPendingOrder = originals.process; });
+const originals = { query: pool.query, connect: pool.connect, process: shipping.processPendingOrder,
+  refundCompleted: transactionalEmail.refundCompleted };
+afterEach(() => { pool.query = originals.query; pool.connect = originals.connect; shipping.processPendingOrder = originals.process;
+  transactionalEmail.refundCompleted = originals.refundCompleted; });
 const USER = '20000000-0000-4000-8000-000000000001';
 const ADDRESS = '30000000-0000-4000-8000-000000000001';
 const VARIANT = '40000000-0000-4000-8000-000000000001';
@@ -26,9 +29,9 @@ const attempt = () => ({ addressId: ADDRESS, checkoutToken: crypto.randomUUID() 
 
 // Transaction/row-lock double with rollback/savepoint snapshots. All gateway,
 // shipping, mail and SQL I/O is replaced; no production business data is written.
-function setup({ stock = 3, quantity = 1, priorOrders = [] } = {}) {
+function setup({ stock = 3, quantity = 1, priorOrders = [], returnRequest = null } = {}) {
   let state = { stock, quantity, orders: structuredClone(priorOrders), items: [], refunds: new Map(), events: new Set(),
-    converted: new Set(), shipments: new Set() };
+    converted: new Set(), shipments: new Set(), returnRequest: returnRequest ? structuredClone(returnRequest) : null };
   const statements = [], kicks = [];
   remoteCreates = 0;
   let queue = Promise.resolve();
@@ -122,6 +125,10 @@ function setup({ stock = 3, quantity = 1, priorOrders = [] } = {}) {
         state.refunds.has(params[0]) ? [state.refunds.get(params[0])] : [] };
       if (sql.startsWith('SELECT COALESCE(SUM(amount)')) return { rows: [{ amount:
         [...state.refunds.values()].filter(row => row.order_id === params[0]).reduce((sum, row) => sum + row.amount, 0) }] };
+      if (sql.startsWith('SELECT * FROM return_requests')) return { rows: state.returnRequest ? [{ ...state.returnRequest }] : [] };
+      if (sql.startsWith('UPDATE return_requests SET razorpay_refund_id')) {
+        Object.assign(state.returnRequest, { razorpay_refund_id: params[0], status: 'refunded', refund_status: 'refunded' });
+      }
       return { rows: [] };
     } };
   };
@@ -267,6 +274,25 @@ test('processed partial/full refunds deduplicate refund IDs and capture replay c
   assert.equal((await payments.verifyPayment(USER, verify)).paymentStatus, 'refunded');
   assert.equal(fixture.kicks.length, kicks);
   assert.equal(fixture.state.stock, 0);
+});
+
+test('signed refund.processed completes the linked return and queues the completed-refund notification once', async () => {
+  const fixture = setup({ stock: 1 });
+  await payments.createPaymentOrder(USER, attempt());
+  const order = fixture.state.orders[0];
+  await payments.verifyPayment(USER, captured(order));
+  const linkedReturn = { id: crypto.randomUUID(), order_id: order.id, refund_amount: order.total_amount,
+    razorpay_refund_id: 'rfnd_linked', status: 'refund_initiated', refund_status: 'processing' };
+  fixture.state.returnRequest = linkedReturn;
+  const notifications = [];
+  transactionalEmail.refundCompleted = async (returnId, refundId) => notifications.push({ returnId, refundId });
+  const refund = { id: 'rfnd_linked', payment_id: 'pay_mock', amount: Math.round(Number(order.total_amount) * 100),
+    currency: 'INR', status: 'processed', notes: { return_request_id: linkedReturn.id } };
+  const webhookId = crypto.randomUUID();
+  await payments.processWebhook(...event('refund.processed', { refund: { entity: refund } }, webhookId));
+  await payments.processWebhook(...event('refund.processed', { refund: { entity: refund } }, webhookId));
+  assert.equal(fixture.state.returnRequest.status, 'refunded');
+  assert.deepEqual(notifications, [{ returnId: linkedReturn.id, refundId: refund.id }]);
 });
 test('signed invalid or excessive refunds roll back without changing paid financial state', async () => {
   const fixture = setup();
