@@ -14,13 +14,13 @@ exports.list = asyncHandler(async (req, res) => {
 // Protected catalog reads retain unpublished records for administration.
 exports.adminList = asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json(await Product.findAll({ activeOnly: false, ...require('../middleware/validation').pagination(req.query) }));
+  res.json(await Product.findAll({ activeOnly: false, exposeInventory: true, ...require('../middleware/validation').pagination(req.query) }));
 });
 
 exports.adminGetOne = asyncHandler(async (req, res) => {
   const product = Product.isValidId(req.params.idOrSlug)
-    ? await Product.findById(req.params.idOrSlug)
-    : await Product.findBySlug(req.params.idOrSlug);
+    ? await Product.findById(req.params.idOrSlug, { exposeInventory: true })
+    : await Product.findBySlug(req.params.idOrSlug, { exposeInventory: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
   res.set('Cache-Control', 'no-store');
   res.json(product);
@@ -46,16 +46,16 @@ exports.getOne = asyncHandler(async (req, res) => {
 
 // POST /api/products — admin
 exports.create = asyncHandler(async (req, res) => {
-  const product = await Product.create(sanitize(req.body));
+  const product = await Product.create({ ...sanitize(req.body), createdBy: req.user.id });
   res.status(201).json(product);
 });
 
 // PUT /api/products/:id — admin
 exports.update = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id, { full: true });
+  const product = await Product.findById(req.params.id, { full: true, exposeInventory: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
 
-  const payload = sanitize(req.body);
+  const payload = { ...sanitize(req.body), createdBy: req.user.id };
   const removed = [];
   if (Array.isArray(payload.images)) {
     // Older admin/API clients send only display images. Preserve any existing
@@ -90,7 +90,8 @@ exports.remove = asyncHandler(async (req, res) => {
 function sanitize(body) {
   const allowed = [
     'name', 'description', 'basePrice', 'categoryId', 'featured', 'badgeId',
-    'isActive', 'images', 'zoomImages', 'variants', 'sizeIds', 'colorIds'
+    'isActive', 'images', 'zoomImages', 'variants', 'sizeIds', 'colorIds',
+    'sizeInventory', 'inventoryReason'
   ];
   const out = {};
   for (const key of allowed) {

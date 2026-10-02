@@ -10,6 +10,9 @@ const sms = require('../services/transactionalSmsService');
 const ORDER_ID = '10000000-0000-4000-8000-000000000001';
 const USER_ID = '20000000-0000-4000-8000-000000000001';
 const VARIANT_ID = '30000000-0000-4000-8000-000000000001';
+const INVENTORY_ID = '40000000-0000-4000-8000-000000000001';
+const PRODUCT_ID = '50000000-0000-4000-8000-000000000001';
+const SIZE_ID = '60000000-0000-4000-8000-000000000001';
 process.env.RAZORPAY_KEY_SECRET = 'test-only-secret';
 process.env.RAZORPAY_WEBHOOK_SECRET = 'test-only-webhook';
 let payment;
@@ -43,8 +46,10 @@ function setup({ duplicateEvent = false } = {}) {
       if (sql === 'COMMIT') committed = true;
       if (sql.includes('INSERT INTO payment_webhook_events')) return { rows: duplicateEvent ? [] : [{ event_id: 'event-test' }] };
       if (sql.includes('SELECT * FROM orders')) return { rows: [order] };
-      if (sql.includes('FROM order_items')) return { rows: [{ variant_id: VARIANT_ID, quantity: 1 }] };
-      if (sql.includes('UPDATE product_variants')) return { rows: [{ id: VARIANT_ID }] };
+      if (sql.includes('FROM order_items')) return { rows: [{ inventory_id: INVENTORY_ID, size: 'M', quantity: 1 }] };
+      if (sql.includes('UPDATE product_size_details')) return { rows: [{ id: INVENTORY_ID,
+        product_id: PRODUCT_ID, size_id: SIZE_ID, quantity_before: 1, quantity_after: 0 }] };
+      if (sql.includes('INSERT INTO inventory_movements')) return { rows: [{ id: '70000000-0000-4000-8000-000000000001' }] };
       if (sql.includes("payment_status = 'paid'")) return { rows: [{ ...order, payment_status: 'paid', order_status: 'confirmed' }] };
       if (sql.includes('INSERT INTO shipments')) queueInserted = true;
       return { rows: [] };

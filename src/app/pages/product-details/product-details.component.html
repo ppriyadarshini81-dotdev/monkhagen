@@ -90,10 +90,14 @@
           <button
             *ngFor="let s of product.sizes"
             [class.active]="selectedSize === s"
+            [class.is-unavailable]="!sizeAvailable(s)"
+            [disabled]="!sizeAvailable(s)"
+            [attr.aria-label]="s + (sizeAvailable(s) ? (sizeLowStock(s) ? ' — Only a few left' : '') : ' — Out of stock')"
             (click)="selectedSize = s; addError = ''"
           >
             {{ s }}
           </button>
+          <small class="mh-pd__low-stock" *ngIf="selectedSize && sizeLowStock(selectedSize)">Only a few left</small>
         </div>
       </div>
 
@@ -105,7 +109,7 @@
         </div>
         <button
           class="mh-btn mh-btn--gold mh-pd__add"
-          [disabled]="product.stock === 0 || adding"
+          [disabled]="product.stock === 0 || adding || (product.sizes.length > 0 && (!selectedSize || !sizeAvailable(selectedSize)))"
           (click)="addToCart()"
         >
           {{ added ? 'Added to Cart ✓' : 'Add to Cart' }}

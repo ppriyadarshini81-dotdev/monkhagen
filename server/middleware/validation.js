@@ -23,7 +23,7 @@ function requestShape(req, res, next) {
 }
 
 function params(router) {
-  for (const key of ['id','itemId','orderId','returnId','productId','reviewId']) router.param(key, (req, res, next, value) => UUID.test(value) ? next() : reject(res));
+  for (const key of ['id','itemId','orderId','returnId','productId','reviewId','inventoryId']) router.param(key, (req, res, next, value) => UUID.test(value) ? next() : reject(res));
   router.param('idOrSlug', (req, res, next, value) => text(value, 255, 1) && /^[a-zA-Z0-9-]+$/.test(value) ? next() : reject(res));
 }
 
@@ -55,6 +55,14 @@ function body(kind) {
         (variant.price == null || price(variant.price)) && (variant.sku == null || text(variant.sku, 100)) &&
         (variant.sizeId == null || uuid(variant.sizeId)) && (variant.colorId == null || uuid(variant.colorId)) &&
         (variant.isActive === undefined || typeof variant.isActive === 'boolean')));
+      optional('sizeInventory', value => Array.isArray(value) && value.length <= 50 && value.every(item => object(item) &&
+        uuid(item.sizeId) && integer(item.stockQuantity, 1000000) &&
+        (item.lowStockThresholdQuantity == null || integer(item.lowStockThresholdQuantity, 1000000))) &&
+        new Set(value.map(item => item.sizeId.toLowerCase())).size === value.length);
+      optional('inventoryReason', value => value == null || text(value, 500));
+    } else if (kind === 'stockAdjustment') {
+      if (!integer(Math.abs(data.adjustment), 1000000, 1) || !text(data.reason, 500, 2)) valid = false;
+      if (Object.keys(data).some(key => !['adjustment','reason'].includes(key))) valid = false;
     } else if (kind === 'category' || kind === 'named') {
       if (req.method === 'POST' && !text(data.name, kind === 'category' ? 255 : 100, 1)) valid = false;
       optional('name', value => text(value, kind === 'category' ? 255 : 100, 1));

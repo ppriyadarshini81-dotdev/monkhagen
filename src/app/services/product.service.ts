@@ -22,6 +22,12 @@ export interface ProductWrite {
     price?: number | null;
     stock: number;
   }>;
+  sizeInventory: Array<{
+    sizeId: string;
+    stockQuantity: number;
+    lowStockThresholdQuantity: number;
+  }>;
+  inventoryReason?: string | null;
   featured: boolean;
 }
 

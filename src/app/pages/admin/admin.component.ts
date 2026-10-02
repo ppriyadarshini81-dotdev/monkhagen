@@ -19,6 +19,9 @@ import { ProductPageContentEditorComponent } from '../../components/product-page
 import { ReviewService } from '../../services/review.service';
 import { AdminReview } from '../../models/review.model';
 import { fieldsFromImagePairs, imagePairsFromFields, moveImagePair, ProductImagePair, removeImagePair } from '../../utils/product-image-pairs';
+import { sortSizes } from '../../utils/size-order';
+
+interface SizeStockForm { stock: number | null; threshold: number | null; configured: boolean; }
 
 interface ProductForm {
   id?: string;
@@ -30,7 +33,8 @@ interface ProductForm {
   colorIds: string[];
   images: string;
   zoomImages: string;
-  stock: number | null;
+  sizeInventory: Record<string, SizeStockForm>;
+  inventoryReason: string;
   badgeId: string;
   featured: boolean;
 }
@@ -152,7 +156,8 @@ export class AdminComponent implements OnInit, DoCheck {
       colorIds: [],
       images: '',
       zoomImages: '',
-      stock: null,
+      sizeInventory: {},
+      inventoryReason: '',
       badgeId: '',
       featured: false
     };
@@ -172,7 +177,10 @@ export class AdminComponent implements OnInit, DoCheck {
 
   loadOptions(type: OptionType): void {
     this.variantOptionService.getAdminOptions(type).subscribe((options) => {
-      if (type === 'sizes') this.sizes = options;
+      if (type === 'sizes') {
+        const order = sortSizes(options.map(option => option.name));
+        this.sizes = [...options].sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+      }
       else this.colors = options;
     });
   }
@@ -426,7 +434,10 @@ export class AdminComponent implements OnInit, DoCheck {
           ).filter(Boolean))],
           images: product.images.join(', '),
           zoomImages: (product.zoomImages || []).map(url => url || '').join(', '),
-          stock: product.stock,
+          sizeInventory: Object.fromEntries((product.sizeInventory || []).map(item => [item.sizeId, {
+            stock: item.stockQuantity, threshold: item.lowStockThresholdQuantity, configured: item.configured
+          }])),
+          inventoryReason: '',
           badgeId: product.badgeId || '',
           featured: product.featured
         };
@@ -551,9 +562,6 @@ export class AdminComponent implements OnInit, DoCheck {
         colorId: color.id
       }))
     );
-    const totalStock = Math.max(0, Math.floor(Number(this.form.stock) || 0));
-    const stockPerVariant = variantSelections.length ? Math.floor(totalStock / variantSelections.length) : 0;
-    const stockRemainder = variantSelections.length ? totalStock % variantSelections.length : 0;
     return {
       name: this.form.name,
       basePrice: Number(this.form.price),
@@ -564,10 +572,16 @@ export class AdminComponent implements OnInit, DoCheck {
       zoomImages: pairs.map(pair => pair.zoomImageUrl),
       sizeIds: [...this.form.sizeIds],
       colorIds: [...this.form.colorIds],
-      variants: variantSelections.map((variant, index) => ({
+      variants: variantSelections.map((variant) => ({
         ...variant,
-        stock: stockPerVariant + (index < stockRemainder ? 1 : 0)
+        stock: 0
       })),
+      sizeInventory: selectedSizes.map(size => ({
+        sizeId: size.id,
+        stockQuantity: Number(this.form.sizeInventory[size.id]?.stock),
+        lowStockThresholdQuantity: Number(this.form.sizeInventory[size.id]?.threshold ?? 0)
+      })),
+      inventoryReason: this.form.inventoryReason.trim() || null,
       featured: this.form.featured
     };
   }
@@ -577,6 +591,15 @@ export class AdminComponent implements OnInit, DoCheck {
     if (!this.form.name || this.form.price == null || !this.form.categoryId ||
         !this.form.sizeIds.length || !this.form.colorIds.length) {
       this.error = 'Name, price, category, at least one size and at least one color are required.';
+      return;
+    }
+    const invalidSize = this.form.sizeIds.find(id => {
+      const item = this.form.sizeInventory[id];
+      return !item || !Number.isSafeInteger(Number(item.stock)) || Number(item.stock) < 0 ||
+        !Number.isSafeInteger(Number(item.threshold)) || Number(item.threshold) < 0;
+    });
+    if (invalidSize) {
+      this.error = 'Enter a whole non-negative stock and low-stock threshold for every selected size.';
       return;
     }
     const payload = this.toPayload();
@@ -817,10 +840,37 @@ export class AdminComponent implements OnInit, DoCheck {
 
   toggleProductOption(type: OptionType, id: string, checked: boolean): void {
     const selected = type === 'sizes' ? this.form.sizeIds : this.form.colorIds;
-    if (checked && !selected.includes(id)) selected.push(id);
+    if (checked && !selected.includes(id)) {
+      selected.push(id);
+      if (type === 'sizes' && !this.form.sizeInventory[id]) {
+        this.form.sizeInventory[id] = { stock: 0, threshold: 0, configured: false };
+      }
+    }
     if (!checked) {
       const index = selected.indexOf(id);
       if (index >= 0) selected.splice(index, 1);
+    }
+  }
+
+  get totalSizeStock(): number {
+    return this.form.sizeIds.reduce((total, id) => total + (Number(this.form.sizeInventory[id]?.stock) || 0), 0);
+  }
+
+  sizeStock(id: string): SizeStockForm {
+    return this.form.sizeInventory[id] ||= { stock: 0, threshold: 0, configured: false };
+  }
+
+  sizeStockStatus(id: string): string {
+    if (!this.form.sizeIds.includes(id)) return 'Not offered';
+    const item = this.sizeStock(id); const stock = Number(item.stock || 0); const threshold = Number(item.threshold || 0);
+    if (stock === 0) return 'Out of stock';
+    return stock <= threshold ? 'Low stock' : 'In stock';
+  }
+
+  updateOpeningStock(id: string): void {
+    const item = this.sizeStock(id);
+    if (!item.configured && Number(item.threshold || 0) === 0) {
+      item.threshold = Math.ceil((Number(item.stock) || 0) * 0.1);
     }
   }
 

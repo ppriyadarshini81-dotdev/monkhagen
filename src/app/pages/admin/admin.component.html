@@ -79,25 +79,39 @@
         </div>
         <div>
           <label class="mh-label">Total stock</label>
-          <input class="mh-input" type="number" min="0" step="1" [(ngModel)]="form.stock" />
+          <output class="mh-input mh-admin__stock-total">{{ totalSizeStock }}</output>
+          <small class="mh-admin__field-help">Calculated automatically from active size inventory.</small>
         </div>
         <div class="mh-admin__full">
           <label class="mh-label">Product details</label>
           <textarea class="mh-textarea" rows="3" [(ngModel)]="form.description"></textarea>
         </div>
-        <div>
-          <label class="mh-label">Sizes * (select one or more)</label>
-          <details class="mh-checkdrop">
-            <summary>{{ selectedOptionLabel('sizes') }}</summary>
-            <div class="mh-checkdrop__menu">
-              <label *ngFor="let size of sizes">
-                <input type="checkbox" [checked]="optionSelected('sizes', size.id)"
-                  (change)="toggleProductOption('sizes', size.id, $any($event.target).checked)" />
-                <span>{{ size.name }}</span>
-              </label>
-              <span class="mh-checkdrop__empty" *ngIf="sizes.length === 0">Add sizes in the Sizes tab first.</span>
+        <div class="mh-admin__full">
+          <label class="mh-label">Size inventory *</label>
+          <p class="mh-admin__inventory-warning" *ngIf="editing && form.id && totalSizeStock === 0">
+            Size-level stock may need to be configured before customers can purchase this product.
+          </p>
+          <div class="mh-size-stock-editor">
+            <div class="mh-size-stock-editor__head"><span>Size</span><span>Available</span><span>Stock</span><span>Low-stock threshold</span><span>Status</span></div>
+            <div class="mh-size-stock-editor__row" *ngFor="let size of sizes" [class.is-disabled]="!optionSelected('sizes', size.id)">
+              <strong>{{ size.name }}</strong>
+              <input type="checkbox" [checked]="optionSelected('sizes', size.id)"
+                (change)="toggleProductOption('sizes', size.id, $any($event.target).checked)"
+                [attr.aria-label]="'Offer size ' + size.name" />
+              <input class="mh-input" type="number" min="0" step="1" [disabled]="!optionSelected('sizes', size.id)"
+                [(ngModel)]="sizeStock(size.id).stock" (ngModelChange)="updateOpeningStock(size.id)"
+                [attr.aria-label]="size.name + ' stock'" />
+              <input class="mh-input" type="number" min="0" step="1" [disabled]="!optionSelected('sizes', size.id)"
+                [(ngModel)]="sizeStock(size.id).threshold" [attr.aria-label]="size.name + ' low-stock threshold'" />
+              <span class="mh-size-stock-editor__status" [class.is-low]="sizeStockStatus(size.id) === 'Low stock'"
+                [class.is-out]="sizeStockStatus(size.id) === 'Out of stock'">{{ sizeStockStatus(size.id) }}</span>
             </div>
-          </details>
+            <p *ngIf="!sizes.length" class="mh-checkdrop__empty">Add sizes in the Sizes tab first.</p>
+            <div class="mh-size-stock-editor__total"><strong>Total</strong><b>{{ totalSizeStock }}</b></div>
+          </div>
+          <label class="mh-label mh-admin__stock-reason-label">Stock change reason</label>
+          <input class="mh-input" [(ngModel)]="form.inventoryReason" maxlength="500"
+            placeholder="Optional, for example: New stock received" />
         </div>
         <div>
           <label class="mh-label">Colors * (select one or more)</label>

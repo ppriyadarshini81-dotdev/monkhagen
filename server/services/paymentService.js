@@ -111,7 +111,6 @@ async function createPaymentOrder(userId, { addressId, checkoutToken }) {
     const prepaidOffer = await offers.firstPrepaidOffer(client, userId, amount);
     const discount = prepaidOffer.discountPaise;
     const payable = prepaidOffer.totalPaise;
-    await inventory.deduct(client, items);
     const localOrderNumber = orderNumber();
     const result = await client.query(`INSERT INTO orders
       (user_id, cart_id, checkout_token, order_number, subtotal, discount_amount, shipping_amount, total_amount,
@@ -119,6 +118,7 @@ async function createPaymentOrder(userId, { addressId, checkoutToken }) {
       VALUES ($1,$2,$3,$4,$5,$6,0,$7,'razorpay','pending','placed',NOW(),NOW() + INTERVAL '15 minutes') RETURNING id`,
       [userId, cart.id, checkoutToken, localOrderNumber, fromPaise(amount), fromPaise(discount), fromPaise(payable)]);
     const localOrderId = result.rows[0].id;
+    await inventory.deduct(client, items, { orderId: localOrderId, movementType: 'ORDER_RESERVED' });
     await inventory.snapshotAddress(client, localOrderId, address);
     await inventory.snapshotItems(client, localOrderId, items);
     const remote = await razorpay.orders.create({ amount: payable, currency: CURRENCY, receipt: localOrderNumber,
@@ -160,14 +160,17 @@ async function finalizePaidOrder(client, { razorpayOrderId, paymentId, signature
     allocated = false;
   } else if (!allocated) {
     const itemResult = await client.query(
-    `SELECT variant_id, SUM(quantity)::int AS quantity
-     FROM order_items WHERE order_id = $1 GROUP BY variant_id ORDER BY variant_id`,
+    `SELECT psd.id AS inventory_id, oi.size, SUM(oi.quantity)::int AS quantity
+     FROM order_items oi
+     JOIN product_variants pv ON pv.id = oi.variant_id
+     JOIN product_size_details psd ON psd.product_id = oi.product_id AND psd.size_id = pv.size_id
+     WHERE oi.order_id = $1 GROUP BY psd.id, oi.size ORDER BY psd.id`,
     [order.id]
   );
     await client.query('SAVEPOINT captured_inventory');
     try {
       if (!itemResult.rows.length) throw httpError(409, 'Order inventory needs review.');
-      await inventory.deduct(client, itemResult.rows);
+      await inventory.deduct(client, itemResult.rows, { orderId: order.id, movementType: 'ORDER_SOLD' });
       allocated = true;
       await client.query('RELEASE SAVEPOINT captured_inventory');
     } catch (error) {

@@ -21,7 +21,11 @@ describe('Product details shared content', () => {
   const product = {
     id: 'product-test', name: 'Test Shirt', slug: 'test-shirt', category: 'Shirts',
     description: 'Details unique to this product.', price: 1499, rating: 0, stock: 78,
-    images: [pixel], sizes: ['M', 'S'], colors: ['White']
+    images: [pixel], sizes: ['M', 'S'], colors: ['White'],
+    sizeAvailability: [
+      { size: 'S', sizeId: 'size-s', available: false, lowStock: false },
+      { size: 'M', sizeId: 'size-m', available: true, lowStock: true }
+    ]
   } as Product;
   const content: ProductPageContent = {
     sizeChartImageUrl: pixel, careInstructions: 'Wash cold.\nDry flat.',
@@ -116,6 +120,22 @@ describe('Product details shared content', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.mh-pd__stock').textContent).toBe('Sold out');
     expect(fixture.nativeElement.querySelector('.mh-pd__add').disabled).toBeTrue();
+  });
+
+  it('disables an out-of-stock size, exposes its accessible label and prevents adding it', () => {
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const buttons = Array.from(root.querySelectorAll<HTMLButtonElement>('.mh-pd__choices button'));
+    const soldOut = buttons.find(button => button.textContent?.trim() === 'S')!;
+    const lowStock = buttons.find(button => button.textContent?.trim() === 'M')!;
+    expect(soldOut.disabled).toBeTrue();
+    expect(soldOut.classList).toContain('is-unavailable');
+    expect(soldOut.getAttribute('aria-label')).toContain('Out of stock');
+    expect(lowStock.disabled).toBeFalse();
+    fixture.componentInstance.selectedSize = 'S';
+    fixture.componentInstance.addToCart();
+    expect(fixture.componentInstance.addError).toContain('out of stock');
+    expect(fixture.componentInstance.adding).toBeFalse();
   });
 
   it('hides optional guides until configured instead of inventing defaults', () => {

@@ -4,6 +4,7 @@ const { shiprocket, shippingError } = require('../config/shiprocket');
 const { getRazorpay } = require('../config/razorpay');
 const emails = require('./transactionalEmailService');
 const ledger = require('./financialLedgerService');
+const inventory = require('./inventoryService');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const RETURN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -497,14 +498,25 @@ async function approveReturn(returnId, database = pool, notifications = null) {
     if (!['received','approved','refund_initiated','refunded'].includes(row.status)) throw fault(409, 'RETURN_TRANSITION_INVALID', 'The return must be received before it can be approved.');
     if (!row.inventory_restored_at) {
       const items = await client.query(
-        `SELECT oi.variant_id, SUM(ri.quantity)::integer AS quantity FROM return_items ri
-         JOIN order_items oi ON oi.id = ri.order_item_id WHERE ri.return_request_id = $1
-         GROUP BY oi.variant_id ORDER BY oi.variant_id`, [returnId]
+        `SELECT psd.id AS inventory_id, psd.product_id, psd.size_id,
+           SUM(ri.quantity)::integer AS quantity FROM return_items ri
+         JOIN order_items oi ON oi.id = ri.order_item_id
+         JOIN product_variants pv ON pv.id = oi.variant_id
+         JOIN product_size_details psd ON psd.product_id = oi.product_id AND psd.size_id = pv.size_id
+         WHERE ri.return_request_id = $1
+         GROUP BY psd.id, psd.product_id, psd.size_id ORDER BY psd.id`, [returnId]
       );
-      if (!items.rows.length || items.rows.some(item => !item.variant_id)) throw fault(409, 'RETURN_INVENTORY_REVIEW', 'Returned inventory needs manual review.');
+      if (!items.rows.length || items.rows.some(item => !item.inventory_id)) throw fault(409, 'RETURN_INVENTORY_REVIEW', 'Returned inventory needs manual review.');
       for (const item of items.rows) {
-        const restored = await client.query('UPDATE product_variants SET stock = stock + $1, updated_at = NOW() WHERE id = $2 RETURNING id', [item.quantity, item.variant_id]);
+        const restored = await client.query(`UPDATE product_size_details
+          SET stock_quantity = stock_quantity + $1, updated_at = NOW() WHERE id = $2
+          RETURNING stock_quantity - $1 AS quantity_before, stock_quantity AS quantity_after`, [item.quantity, item.inventory_id]);
         if (!restored.rows.length) throw fault(409, 'RETURN_INVENTORY_REVIEW', 'Returned inventory needs manual review.');
+        await inventory.recordMovement(client, { inventoryId: item.inventory_id, productId: item.product_id,
+          sizeId: item.size_id, movementType: 'RETURN_RESTOCKED', quantityChange: item.quantity,
+          quantityBefore: restored.rows[0].quantity_before, quantityAfter: restored.rows[0].quantity_after,
+          returnId, reason: 'Return received and approved for resale',
+          idempotencyKey: `RETURN_RESTOCKED:${returnId}:${item.inventory_id}` });
       }
       await client.query(
         `UPDATE return_requests SET inventory_restored_at = NOW(), status = 'approved', approved_at = COALESCE(approved_at, NOW()),

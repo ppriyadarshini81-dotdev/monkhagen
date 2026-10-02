@@ -809,6 +809,10 @@ async function applyAnalyticsDashboardMigration(database = pool) {
   await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '016_analytics_dashboard.sql'), 'utf8'));
 }
 
+async function applySizeInventoryMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '017_size_inventory.sql'), 'utf8'));
+}
+
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
   try {
@@ -869,9 +873,10 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const transactionalSmsApplied = await runMigration('014_transactional_sms_events', applyTransactionalSmsMigration);
     const financialLedgerApplied = await runMigration('015_financial_ledger', applyFinancialLedgerMigration);
     const analyticsDashboardApplied = await runMigration('016_analytics_dashboard', applyAnalyticsDashboardMigration);
+    const sizeInventoryApplied = await runMigration('017_size_inventory', applySizeInventoryMigration);
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied || financialLedgerApplied || analyticsDashboardApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied || financialLedgerApplied || analyticsDashboardApplied || sizeInventoryApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
@@ -898,5 +903,6 @@ module.exports = {
   applyReturnsWorkflowMigration,
   applyReturnItemCommentsMigration,
   applyTransactionalSmsMigration,
+  applySizeInventoryMigration,
   runMigration
 };

@@ -266,6 +266,11 @@
   background: var(--mh-bg-elev-2);
 }
 
+.mh-pd__choices button.is-unavailable { position: relative; overflow: hidden; border-color: #ddd; background: #f6f6f4; color: #aaa; cursor: not-allowed; }
+.mh-pd__choices button.is-unavailable::after { content: ''; position: absolute; top: 50%; left: 7%; width: 86%; height: 1px; background: #b9b9b5; transform: rotate(-35deg); transform-origin: center; }
+.mh-pd__choices button.is-unavailable:hover { transform: none; }
+.mh-pd__low-stock { align-self: center; color: #a22e25; font-size: 11px; }
+
 .mh-pd__buy {
   display: flex;
   gap: 14px;

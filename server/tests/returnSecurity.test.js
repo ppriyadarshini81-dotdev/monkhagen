@@ -12,6 +12,9 @@ const ITEM = '20000000-0000-4000-8000-000000000001';
 const OTHER = '20000000-0000-4000-8000-000000000002';
 const IDEM = '30000000-0000-4000-8000-000000000001';
 const RETURN = '40000000-0000-4000-8000-000000000001';
+const INVENTORY = '50000000-0000-4000-8000-000000000001';
+const PRODUCT = '60000000-0000-4000-8000-000000000001';
+const SIZE = '70000000-0000-4000-8000-000000000001';
 const NOW = Date.parse('2026-10-17T09:30:00.000Z');
 const order = (age, changes = {}) => ({ id: ORDER, order_status: 'delivered', delivered_at: new Date(NOW - age), subtotal: '200.00', discount_amount: '20.00', ...changes });
 const items = (returned = 0) => [{ id: ITEM, product_name: 'Original tee', sku: 'TEE-M-BLUE', size: 'M', color: 'Blue', quantity: 2, unit_price: '100.00', returned_quantity: returned }];
@@ -328,8 +331,11 @@ function adminDatabase(paymentMethod = 'razorpay') {
   const query = async (sql, params) => {
     sql = String(sql);
     if (sql.startsWith('SELECT rr.*, o.payment_method')) return { rows: [row()] };
-    if (sql.startsWith('SELECT oi.variant_id')) return { rows: [{ variant_id: OTHER, quantity: 1 }] };
-    if (sql.startsWith('UPDATE product_variants')) { state.stockAdds += Number(params[0]); return { rows: [{ id: OTHER }] }; }
+    if (sql.startsWith('SELECT psd.id AS inventory_id')) return { rows: [{ inventory_id: INVENTORY,
+      product_id: PRODUCT, size_id: SIZE, quantity: 1 }] };
+    if (sql.startsWith('UPDATE product_size_details')) { state.stockAdds += Number(params[0]);
+      return { rows: [{ quantity_before: 0, quantity_after: state.stockAdds }] }; }
+    if (sql.startsWith('INSERT INTO inventory_movements')) return { rows: [{ id: '80000000-0000-4000-8000-000000000001' }] };
     if (sql.includes("inventory_restored_at = NOW()")) { state.inventory_restored_at = new Date(); state.status = 'approved'; state.refund_status = paymentMethod === 'cod' ? 'manual_required' : 'pending'; return { rows: [] }; }
     if (sql.startsWith('SELECT rr.*, o.order_number')) return { rows: [row()] };
     if (sql.includes("refund_status = 'manual_required'")) { state.refund_status = 'manual_required'; return { rows: [] }; }

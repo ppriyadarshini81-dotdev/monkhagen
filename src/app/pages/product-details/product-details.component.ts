@@ -445,6 +445,15 @@ export class ProductDetailsComponent implements OnInit {
     this.quantity = Math.max(1, this.quantity + delta);
   }
 
+  sizeAvailable(size: string): boolean {
+    return this.product?.sizeAvailability?.find(item => item.size === size)?.available ??
+      Boolean(this.product?.variants?.some(variant => variant.isActive && variant.size === size && (variant.available ?? variant.stock > 0)));
+  }
+
+  sizeLowStock(size: string): boolean {
+    return Boolean(this.product?.sizeAvailability?.find(item => item.size === size)?.lowStock);
+  }
+
   loadPageContent(): void {
     if (this.contentLoading) return;
     this.contentLoading = true;
@@ -480,6 +489,10 @@ export class ProductDetailsComponent implements OnInit {
 
     if (this.product.sizes.length > 0 && !this.selectedSize) {
       this.addError = 'Please select a size.';
+      return;
+    }
+    if (this.selectedSize && !this.sizeAvailable(this.selectedSize)) {
+      this.addError = `${this.selectedSize} is currently out of stock.`;
       return;
     }
 

@@ -25,6 +25,8 @@ const USER = '20000000-0000-4000-8000-000000000001';
 const ADDRESS = '30000000-0000-4000-8000-000000000001';
 const VARIANT = '40000000-0000-4000-8000-000000000001';
 const PRODUCT = '50000000-0000-4000-8000-000000000001';
+const INVENTORY = '60000000-0000-4000-8000-000000000001';
+const SIZE = '70000000-0000-4000-8000-000000000001';
 const attempt = () => ({ addressId: ADDRESS, checkoutToken: crypto.randomUUID() });
 
 // Transaction/row-lock double with rollback/savepoint snapshots. All gateway,
@@ -56,7 +58,8 @@ function setup({ stock = 3, quantity = 1, priorOrders = [], returnRequest = null
         address_line1: '10 Test Road', city: 'Pune', state: 'Maharashtra', postal_code: '411001', country: 'India' }] };
       if (sql.startsWith('SELECT ci.product_id')) return { rows: [{ product_id: PRODUCT, variant_id: VARIANT,
         product_name: 'Test product', quantity: state.quantity, product_active: true, variant_active: true,
-        category_active: true, stock: state.stock, unit_price: '100.00', size: 'M', color: 'Black' }] };
+        category_active: true, inventory_id: INVENTORY, inventory_configured: true, size_active: true,
+        stock: state.stock, unit_price: '100.00', size: 'M', color: 'Black' }] };
       if (sql.startsWith('SELECT EXISTS')) return { rows: [{ has_order: state.orders.some(row =>
         row.user_id === params[0] && (row.payment_method === 'cod' ||
           ['paid','refunded','partially_refunded'].includes(row.payment_status))) }] };
@@ -73,13 +76,16 @@ function setup({ stock = 3, quantity = 1, priorOrders = [], returnRequest = null
       }
       if (sql.startsWith('SELECT id FROM orders WHERE cart_id')) return { rows: state.orders.filter(row =>
         row.cart_id === params[0] && row.payment_status === 'pending' && row.inventory_reserved_at && !row.inventory_released_at) };
-      if (sql.startsWith('UPDATE product_variants')) {
-        if (sql.includes('stock = stock -')) {
+      if (sql.startsWith('UPDATE product_size_details')) {
+        const before = state.stock;
+        if (sql.includes('stock_quantity = stock_quantity -')) {
           if (state.stock < params[0]) return { rows: [] };
           state.stock -= params[0];
         } else state.stock += params[0];
-        return { rows: [{ id: VARIANT }] };
+        return { rows: [{ id: INVENTORY, product_id: PRODUCT, size_id: SIZE,
+          quantity_before: before, quantity_after: state.stock }] };
       }
+      if (sql.startsWith('INSERT INTO inventory_movements')) return { rows: [{ id: crypto.randomUUID() }] };
       if (sql.startsWith('INSERT INTO orders')) {
         const prepaid = sql.includes("'razorpay'");
         const row = { id: crypto.randomUUID(), user_id: params[0], cart_id: params[1], checkout_token: params[2],
@@ -94,6 +100,10 @@ function setup({ stock = 3, quantity = 1, priorOrders = [], returnRequest = null
         state.items.push({ order_id: params[0], product_id: params[1], variant_id: params[2], product_name: params[3],
           quantity: params[7], unit_price: params[8], total_price: params[9] });
       }
+      if (sql.startsWith('SELECT psd.id AS inventory_id')) return { rows: state.items.some(row => row.order_id === params[0])
+        ? [{ inventory_id: INVENTORY, product_id: PRODUCT, size_id: SIZE, size: 'M',
+          quantity: state.items.filter(row => row.order_id === params[0]).reduce((sum, row) => sum + row.quantity, 0) }]
+        : [] };
       if (sql.startsWith('SELECT variant_id')) return { rows: state.items.filter(row => row.order_id === params[0]) };
       if (sql.startsWith('SELECT * FROM order_items')) return { rows: state.items.filter(row => row.order_id === params[0]) };
       if (sql.startsWith('SELECT * FROM order_addresses')) return { rows: [] };

@@ -93,7 +93,6 @@ const Order = {
       const pending = await client.query(`SELECT id FROM orders WHERE cart_id = $1 AND inventory_reserved_at IS NOT NULL
         AND inventory_released_at IS NULL AND payment_status = 'pending' FOR UPDATE`, [snapshot.cart.id]);
       if (pending.rows.length) throw inventory.error(409, 'A prepaid checkout for this cart is pending. Retry it or wait for it to expire.');
-      await inventory.deduct(client, snapshot.items);
       const subtotal = (snapshot.amount / 100).toFixed(2);
       const codFee = (COD_FEE_PAISE / 100).toFixed(2);
       const total = ((snapshot.amount + COD_FEE_PAISE) / 100).toFixed(2);
@@ -103,6 +102,7 @@ const Order = {
         VALUES ($1,$2,$3,$4,$5,0,$6,$7,'cod','pending','confirmed',NOW()) RETURNING *`,
         [userId, snapshot.cart.id, checkoutToken || null, genOrderNumber(), subtotal, codFee, total]);
       order = result.rows[0];
+      await inventory.deduct(client, snapshot.items, { orderId: order.id, movementType: 'ORDER_SOLD' });
       await inventory.snapshotAddress(client, order.id, snapshot.address);
       await inventory.snapshotItems(client, order.id, snapshot.items);
       await client.query("UPDATE carts SET status = 'converted', updated_at = NOW() WHERE id = $1 AND user_id = $2 AND status = 'active'", [snapshot.cart.id, userId]);
