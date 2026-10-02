@@ -3,7 +3,9 @@ import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import {
   AnalyticsOverview, CartAnalyticsReport, FunnelReport, PaymentAnalyticsReport,
-  ProductAnalyticsReport, RevenueReport, VisitorAnalyticsReport
+  ProductAnalyticsReport, RevenueReport, VisitorAnalyticsReport, TrendReport,
+  LoginAnalyticsReport, ReturnAnalyticsReport, ErrorAnalyticsReport
+  , AnalyticsDrilldown
 } from '../models/analytics.model';
 
 export interface AnalyticsFilter { range: string; start?: string; end?: string; }
@@ -35,6 +37,23 @@ export class AdminAnalyticsService {
   }
   visitors(filter: AnalyticsFilter): Observable<VisitorAnalyticsReport> {
     return this.http.get<VisitorAnalyticsReport>(`${this.api}/visitors`, { params: this.params(filter) });
+  }
+  trend(filter: AnalyticsFilter): Observable<TrendReport> {
+    return this.http.get<TrendReport>(`${this.api}/trend`, { params: this.params(filter) });
+  }
+  logins(filter: AnalyticsFilter): Observable<LoginAnalyticsReport> {
+    return this.http.get<LoginAnalyticsReport>(`${this.api}/logins`, { params: this.params(filter) });
+  }
+  returns(filter: AnalyticsFilter): Observable<ReturnAnalyticsReport> {
+    return this.http.get<ReturnAnalyticsReport>(`${this.api}/returns`, { params: this.params(filter) });
+  }
+  errors(filter: AnalyticsFilter): Observable<ErrorAnalyticsReport> {
+    return this.http.get<ErrorAnalyticsReport>(`${this.api}/errors`, { params: this.params(filter) });
+  }
+  drilldown(metric: string, date: string): Observable<AnalyticsDrilldown> {
+    return this.http.get<AnalyticsDrilldown>(`${this.api}/drilldown`, {
+      params: new HttpParams().set('metric', metric).set('date', date.slice(0, 10))
+    });
   }
 
   private params(filter: AnalyticsFilter): HttpParams {

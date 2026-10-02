@@ -10,6 +10,9 @@ const authLimiter = createLimiter('authentication', { windowMs: 15 * 60000, limi
 
 router.get('/me', authenticate, ctrl.me);
 router.post('/logout', authenticate, authLimiter, require('../middleware/asyncHandler')(async (req, res) => {
+  await require('../services/analyticsService').recordServerEvent(req, 'LOGOUT', {
+    dedupeKey: `logout:${req.user.id}:${Date.now()}`
+  });
   await require('../models/User').revokeSessions(req.user.id);
   require('../services/firebaseSession').invalidate(req.user.firebaseUid);
   res.set('Cache-Control', 'no-store');

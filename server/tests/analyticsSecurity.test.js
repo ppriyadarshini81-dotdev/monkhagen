@@ -56,10 +56,13 @@ test('analytics ranges use inclusive business dates and reject unsafe custom ran
 test('browser analytics strips query data and cannot claim authoritative commerce outcomes', () => {
   assert.equal(analyticsEvents.cleanPath('/product/example?email=private@example.test#details'), '/product/example');
   assert.equal(analyticsEvents.cleanPath('https://attacker.example.test/path'), null);
-  for (const event of ['LOGIN', 'SIGNUP', 'ADD_TO_CART', 'PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'ORDER_CREATED']) {
+  for (const event of ['LOGIN', 'SIGNUP', 'PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'ORDER_CREATED']) {
     assert.equal(analyticsEvents.CLIENT_EVENTS.has(event), false, event);
   }
   assert.equal(analyticsEvents.CLIENT_EVENTS.has('PRODUCT_VIEWED'), true);
+  assert.equal(analyticsEvents.CLIENT_EVENTS.has('ADD_TO_CART'), true);
+  assert.equal(analyticsEvents.CLIENT_EVENTS.has('REMOVE_FROM_CART'), true);
+  assert.equal(analyticsEvents.CLIENT_EVENTS.has('FRONTEND_ERROR'), true);
 });
 
 test('analytics reporting is unavailable anonymously and to customers but available to the designated admin', async () => {

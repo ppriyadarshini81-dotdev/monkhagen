@@ -16,7 +16,9 @@ exports.touchSession = asyncHandler(async (req, res) => {
     sessionId: req.body.sessionId,
     visitorId: req.body.visitorId,
     ended: req.body.ended === true,
-    userId: req.user?.id || null
+    userId: req.user?.id || null,
+    activeSeconds: req.body.activeSeconds ?? 0,
+    exitPath: req.body.exitPath ?? null
   });
   res.status(202).json({ accepted: true });
 });
