@@ -203,7 +203,7 @@ function returnStatus(type, record, environment) {
   if (type === 'RETURN_RECEIVED_CUSTOMER') return { subject: `We've Received Your Return – ${record.return_number}`,
     html: layout('We received your return', base + paragraph("We've received your returned item. We'll inspect it and update you once the return is approved and the refund process begins.")) };
   const approvalMessage = record.payment_method === 'cod'
-    ? `Your approved refund of ${money(record.refund_amount)} requires the recorded manual COD refund process. It has not been sent through Razorpay.`
+    ? `Your approved COD refund of ${money(record.refund_amount)} needs a refund destination. Open Returns in your account and provide a UPI ID or bank account.`
     : `Your refund of ${money(record.refund_amount)} will now be initiated to the original payment method.`;
   return { subject: `Your Return Has Been Approved – ${record.return_number}`,
     html: layout('Return approved', base + paragraph(approvalMessage)) };
@@ -212,18 +212,24 @@ function returnStatus(type, record, environment) {
 function refundMessage(type, record) {
   const admin = type.endsWith('_ADMIN');
   const completed = type.startsWith('REFUND_COMPLETED');
-  const manual = type === 'COD_REFUND_REQUIRED_ADMIN';
-  const status = manual ? 'Manual COD refund required' : completed ? 'Completed' : 'Initiated';
+  const cod = record.payment_method === 'cod';
+  const required = type === 'COD_REFUND_REQUIRED_ADMIN';
+  const pending = type.startsWith('COD_REFUND_PENDING');
+  const status = required ? 'COD refund destination required' : completed ? 'Completed' : pending ? 'Pending manual transfer' : 'Initiated';
+  const method = cod ? (record.refund_destination_method === 'UPI' ? 'UPI' : record.refund_destination_method === 'BANK' ? 'Bank Transfer' : 'Customer-provided destination') : 'Original payment method';
   const content = (admin ? paragraph('Refund status update for operations.') : paragraph(`Hi ${firstName(record.customer_name)},`)) +
     returnDetails(record, admin) + heading('Items') + itemCards(record.items) +
-    card(detailRows([['Refund amount', escapeHtml(money(record.refund_amount))], ['Refund method', escapeHtml(manual ? 'Manual COD refund' : 'Original payment method')], ['Refund status', escapeHtml(status)], ['Date/time', escapeHtml(indiaDate(completed ? record.refunded_at : record.refund_initiated_at || record.updated_at, true))]])) +
+    card(detailRows([['Refund amount', escapeHtml(money(record.refund_amount))], ['Refund method', escapeHtml(method)],
+      ['Destination', cod && record.refund_destination_masked ? escapeHtml(record.refund_destination_masked) : null],
+      ['Refund status', escapeHtml(status)], ['Transaction reference', completed && record.refund_transaction_reference ? escapeHtml(record.refund_transaction_reference) : null],
+      ['Date/time', escapeHtml(indiaDate(completed ? record.refunded_at : record.refund_initiated_at || record.updated_at, true))]])) +
     (admin ? '' : paragraph(completed
-      ? 'Your MONK HAGEN refund has been processed. Depending on your bank/payment provider, it may take some time to appear in your account.'
-      : 'The refund has been initiated to your original payment method. The time it takes to appear depends on your bank/payment provider.'));
+      ? (cod ? 'Your COD refund has been processed to the refund destination you provided.' : 'Your MONK HAGEN refund has been processed. Depending on your bank/payment provider, it may take some time to appear in your account.')
+      : (cod ? 'We received your refund destination. Your refund remains pending until our team completes the transfer.' : 'The refund has been initiated to your original payment method. The time it takes to appear depends on your bank/payment provider.')));
   return {
     subject: admin ? `Refund ${status} – ${record.return_number} – ${money(record.refund_amount)}`
-      : `${completed ? 'Refund Completed' : 'Refund Initiated'} – ${money(record.refund_amount)} – ${record.order_number}`,
-    html: layout(manual ? 'Manual COD refund required' : `Refund ${status.toLowerCase()}`, content)
+      : `${completed ? 'Refund Completed' : pending ? 'COD Refund Details Received' : 'Refund Initiated'} – ${money(record.refund_amount)} – ${record.order_number}`,
+    html: layout(required ? 'COD refund destination required' : `Refund ${status.toLowerCase()}`, content)
   };
 }
 
@@ -249,7 +255,8 @@ function buildEmail(eventType, data, environment = process.env) {
   else if (eventType === 'RETURN_REQUESTED_CUSTOMER') message = returnRequested(data, false, environment);
   else if (eventType === 'RETURN_REQUESTED_ADMIN') message = returnRequested(data, true, environment);
   else if (['RETURN_PICKUP_SCHEDULED_CUSTOMER','RETURN_PICKED_UP_CUSTOMER','RETURN_RECEIVED_CUSTOMER','RETURN_APPROVED_CUSTOMER'].includes(eventType)) message = returnStatus(eventType, data, environment);
-  else if (['REFUND_INITIATED_CUSTOMER','REFUND_INITIATED_ADMIN','REFUND_COMPLETED_CUSTOMER','REFUND_COMPLETED_ADMIN','COD_REFUND_REQUIRED_ADMIN'].includes(eventType)) message = refundMessage(eventType, data);
+  else if (['REFUND_INITIATED_CUSTOMER','REFUND_INITIATED_ADMIN','REFUND_COMPLETED_CUSTOMER','REFUND_COMPLETED_ADMIN',
+    'COD_REFUND_REQUIRED_ADMIN','COD_REFUND_PENDING_CUSTOMER','COD_REFUND_PENDING_ADMIN'].includes(eventType)) message = refundMessage(eventType, data);
   else if (['SHIPMENT_CREATION_FAILED_ADMIN','RETURN_CREATION_FAILED_ADMIN','REFUND_FAILED_ADMIN'].includes(eventType)) message = failureMessage(eventType, data, environment);
   else throw Object.assign(new Error('Unsupported transactional email event.'), { code: 'EMAIL_EVENT_UNSUPPORTED' });
   return { ...message, text: plainText(message.html) };

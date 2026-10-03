@@ -4,6 +4,7 @@ const { shiprocket, shippingError } = require('../config/shiprocket');
 const { getRazorpay } = require('../config/razorpay');
 const emails = require('./transactionalEmailService');
 const ledger = require('./financialLedgerService');
+const codRefunds = require('./codRefundService');
 const inventory = require('./inventoryService');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -181,6 +182,13 @@ function formatReturn(row) {
     cancellationPending: row.pending_operation === 'cancel',
     customer: row.customer_name == null ? undefined : { name: row.customer_name, email: row.customer_email, phone: row.customer_phone },
     paymentMethod: row.payment_method || null, items: row.items || [], requestedAt: row.requested_at,
+    refundDestination: codRefunds.summary({
+      payment_method: row.payment_method, return_status: row.status, return_refund_status: row.refund_status,
+      destination_id: row.refund_destination_id, method: row.refund_destination_method,
+      masked_destination: row.refund_destination_masked, destination_status: row.refund_destination_status,
+      transaction_reference: row.refund_transaction_reference,
+      destination_completed_at: row.refund_destination_completed_at
+    }),
     receivedAt: row.received_at || null, approvedAt: row.approved_at || null,
     rejectedAt: row.rejected_at || null, refundedAt: row.refunded_at || null,
     createdAt: row.created_at, updatedAt: row.updated_at
@@ -193,13 +201,17 @@ async function findReturn(database, id, userId = null, admin = false) {
   if (!admin) params.push(userId);
   const result = await database.query(
     `SELECT rr.*, o.order_number, o.payment_method, u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone,
+       d.id AS refund_destination_id, d.method AS refund_destination_method,
+       d.masked_destination AS refund_destination_masked, d.status AS refund_destination_status,
+       d.transaction_reference AS refund_transaction_reference, d.completed_at AS refund_destination_completed_at,
        COALESCE(json_agg(json_build_object('id', ri.id, 'orderItemId', ri.order_item_id,
          'productName', oi.product_name, 'sku', oi.sku, 'size', oi.size, 'color', oi.color,
          'quantity', ri.quantity, 'reason', ri.reason, 'comments', ri.comments,
          'refundAmount', ri.refund_amount) ORDER BY ri.created_at) FILTER (WHERE ri.id IS NOT NULL), '[]') AS items
      FROM return_requests rr JOIN orders o ON o.id = rr.order_id JOIN users u ON u.id = rr.user_id
+     LEFT JOIN cod_refund_destinations d ON d.return_id = rr.id
      LEFT JOIN return_items ri ON ri.return_request_id = rr.id LEFT JOIN order_items oi ON oi.id = ri.order_item_id
-     WHERE rr.id = $1 ${owner} GROUP BY rr.id, o.order_number, o.payment_method, u.name, u.email, u.phone`, params
+     WHERE rr.id = $1 ${owner} GROUP BY rr.id, o.order_number, o.payment_method, u.name, u.email, u.phone, d.id`, params
   );
   return result.rows[0] || null;
 }

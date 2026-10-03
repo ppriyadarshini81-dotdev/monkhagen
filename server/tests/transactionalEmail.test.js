@@ -158,15 +158,29 @@ test('prepaid refund initiated and completed create separate customer and admin 
   assert.equal(f.sent[3].to, 'operations@example.test');
 });
 
-test('COD refund notification is admin-only and never claims Razorpay processing', async () => {
+test('COD approval asks for a destination and pending/completed messages use the manual COD flow', async () => {
   const f = fixture(); f.returned.payment_method = 'cod';
   await f.service.returnApproved(RETURN);
   await f.service.codRefundRequired(RETURN);
   assert.equal(f.sent[0].to, 'buyer@example.test');
-  assert.match(f.sent[0].html, /manual COD refund process/);
-  assert.match(f.sent[0].html, /not been sent through Razorpay/);
+  assert.match(f.sent[0].html, /provide a UPI ID or bank account/i);
   assert.equal(f.sent[1].to, 'operations@example.test');
-  assert.match(f.sent[1].subject, /Manual COD refund required/);
+  assert.match(f.sent[1].subject, /destination required/i);
+
+  f.returned.refund_destination_method = 'UPI';
+  f.returned.refund_destination_masked = 'as***@bank';
+  await f.service.codRefundPending(RETURN);
+  assert.equal(f.sent[2].to, 'buyer@example.test');
+  assert.match(f.sent[2].subject, /COD Refund Details Received/);
+  assert.match(f.sent[2].html, /remains pending/i);
+  assert.match(f.sent[2].html, /as\*\*\*@bank/);
+  assert.doesNotMatch(f.sent[2].html, /Razorpay|original payment method/i);
+
+  f.returned.refund_transaction_reference = 'UTR123456';
+  await f.service.refundCompleted(RETURN, 'UTR123456');
+  assert.match(f.sent[4].subject, /Refund Completed/);
+  assert.match(f.sent[4].html, /UTR123456/);
+  assert.match(f.sent[4].html, /destination you provided/i);
 });
 
 test('SMTP failure is recorded for retry and never escapes into the business caller', async () => {

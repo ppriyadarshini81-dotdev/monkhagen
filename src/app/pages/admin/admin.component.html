@@ -445,6 +445,14 @@
         <div><small>Shiprocket return</small><strong>{{ r.shiprocketReturnOrderId || 'Creating' }}</strong><span>{{ r.status === 'return_created' && !r.returnAwb ? 'Schedule pickup in Shiprocket' : ('AWB ' + (r.returnAwb || 'not assigned') + ' · ' + (r.pickupStatus || 'pending')) }}</span></div>
         <div><small>Refund</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><span>{{ statusLabel(r.refundStatus) }}</span></div>
       </div>
+      <div class="mh-cod-refund-summary" *ngIf="r.paymentMethod === 'cod'">
+        <div><small>COD refund destination</small>
+          <strong *ngIf="r.refundDestination.provided; else destinationNeeded">{{ r.refundDestination.method === 'UPI' ? 'UPI' : 'Bank transfer' }} &middot; {{ r.refundDestination.masked }}</strong>
+          <ng-template #destinationNeeded><strong>Waiting for customer details</strong></ng-template>
+          <span>{{ r.refundDestination.provided ? statusLabel(r.refundDestination.status) : 'The customer can submit details from Returns after approval.' }}</span>
+          <span *ngIf="r.refundDestination.transactionReference">Reference: {{ r.refundDestination.transactionReference }}</span>
+        </div>
+      </div>
       <div class="mh-admin-return-items"><div *ngFor="let item of r.items"><strong>{{ item.productName }}</strong><span>{{ item.sku || 'No SKU' }} · Qty {{ item.quantity }} · {{ statusLabel(item.reason) }}</span><small *ngIf="item.comments">{{ item.comments }}</small></div></div>
       <p class="mh-order-alert" *ngIf="r.pickupDelayed"><strong>Return creation needs attention</strong><span>The local request is safe. Confirm that no matching return exists in Shiprocket before retrying creation.</span></p>
       <p class="mh-order-alert" *ngIf="r.cancellationPending"><strong>Cancellation needs reconciliation</strong><span>Check this return in Shiprocket before taking another action.</span></p>
@@ -452,7 +460,9 @@
         <button class="mh-btn mh-btn--ghost" type="button" *ngIf="r.status === 'shiprocket_failed'" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'retry')">Retry return creation</button>
         <button class="mh-btn mh-btn--ghost" type="button" *ngIf="returnRejectLabel(r) as rejectLabel" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'reject')">{{ rejectLabel }}</button>
         <button class="mh-btn mh-btn--gold" type="button" *ngIf="canApproveReturn(r)" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'approve')">Receive & approve</button>
-        <button class="mh-btn mh-btn--gold" type="button" *ngIf="canRefundReturn(r)" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'refund')">{{ r.paymentMethod === 'cod' ? 'Mark manual refund required' : 'Initiate refund' }}</button>
+        <button class="mh-btn mh-btn--ghost" type="button" *ngIf="canRevealCodRefund(r)" [disabled]="!!returnBusyId" (click)="revealCodRefund(r)">View refund details</button>
+        <button class="mh-btn mh-btn--gold" type="button" *ngIf="canStartCodRefund(r)" [disabled]="!!returnBusyId" (click)="startCodRefund(r)">{{ r.refundDestination.status === 'FAILED' ? 'Retry COD refund' : 'Start COD refund' }}</button>
+        <button class="mh-btn mh-btn--gold" type="button" *ngIf="canRefundReturn(r)" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'refund')">Initiate refund</button>
       </footer>
     </div>
   </div>
@@ -483,6 +493,40 @@
     </article>
   </div>
 </section>
+
+<div class="mh-cod-refund-modal" *ngIf="codRefundReturn as refund" role="dialog" aria-modal="true" aria-labelledby="cod-refund-title" (click)="closeCodRefund()">
+  <section (click)="$event.stopPropagation()">
+    <header>
+      <div><span class="mh-eyebrow">Sensitive refund destination</span><h2 id="cod-refund-title">COD refund &middot; {{ refund.returnNumber }}</h2></div>
+      <button type="button" (click)="closeCodRefund()" aria-label="Close refund details">&times;</button>
+    </header>
+    <p class="mh-order-alert"><strong>Handle securely</strong><span>Use these details only for this refund. Viewing is recorded in the admin audit log.</span></p>
+    <dl class="mh-cod-refund-details" *ngIf="codRefundReveal as detail">
+      <div><dt>Refund amount</dt><dd>&#8377;{{ detail.refundAmount | number:'1.2-2' }}</dd></div>
+      <ng-container *ngIf="detail.method === 'UPI'; else bankDetails">
+        <div><dt>Method</dt><dd>UPI</dd></div><div><dt>UPI ID</dt><dd>{{ detail.upiId }}</dd></div>
+      </ng-container>
+      <ng-template #bankDetails>
+        <div><dt>Method</dt><dd>Bank transfer</dd></div>
+        <div><dt>Account holder</dt><dd>{{ detail.method === 'BANK' ? detail.accountHolderName : '' }}</dd></div>
+        <div><dt>Account number</dt><dd>{{ detail.method === 'BANK' ? detail.accountNumber : '' }}</dd></div>
+        <div><dt>IFSC</dt><dd>{{ detail.method === 'BANK' ? detail.ifsc : '' }}</dd></div>
+        <div *ngIf="detail.method === 'BANK' && detail.bankName"><dt>Bank</dt><dd>{{ detail.bankName }}</dd></div>
+      </ng-template>
+    </dl>
+    <p class="mh-error" role="alert" *ngIf="codRefundError">{{ codRefundError }}</p>
+    <div class="mh-cod-refund-action" *ngIf="refund.refundDestination.status === 'PROCESSING'">
+      <label>Transaction reference / UTR *<input type="text" [(ngModel)]="codRefundReference" maxlength="100" autocomplete="off" /></label>
+      <label>Internal note<textarea [(ngModel)]="codRefundNote" maxlength="500" rows="3" autocomplete="off"></textarea></label>
+      <p>Confirm completion only after the transfer has actually succeeded. The reference is shown to the customer.</p>
+    </div>
+    <footer>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="closeCodRefund()">Close</button>
+      <button class="mh-btn mh-btn--ghost" type="button" *ngIf="refund.refundDestination.status === 'PROCESSING'" [disabled]="!!returnBusyId || codRefundNote.trim().length < 2" (click)="failCodRefund()">Record failed transfer</button>
+      <button class="mh-btn mh-btn--gold" type="button" *ngIf="refund.refundDestination.status === 'PROCESSING'" [disabled]="!!returnBusyId || codRefundReference.trim().length < 3" (click)="completeCodRefund()">Confirm refund completed</button>
+    </footer>
+  </section>
+</div>
 
 <dialog #orderDialog class="mh-order-dialog" (close)="clearSelectedOrder()">
   <ng-container *ngIf="selectedOrder as order">

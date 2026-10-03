@@ -10,7 +10,7 @@ import { ProductService, ProductWrite } from '../../services/product.service';
 import { CategoryService } from '../../services/category.service';
 import { BadgeService } from '../../services/badge.service';
 import { VariantOptionService } from '../../services/variant-option.service';
-import { AdminReturn, OrderService, Order } from '../../services/order.service';
+import { AdminReturn, CodRefundReveal, OrderService, Order } from '../../services/order.service';
 import { UploadService } from '../../services/upload.service';
 import { AuthService } from '../../services/auth.service';
 import { ShippingService } from '../../services/shipping.service';
@@ -72,6 +72,11 @@ export class AdminComponent implements OnInit, DoCheck {
   returns: AdminReturn[] = [];
   returnsLoading = false;
   returnBusyId = '';
+  codRefundReturn?: AdminReturn;
+  codRefundReveal?: CodRefundReveal;
+  codRefundReference = '';
+  codRefundNote = '';
+  codRefundError = '';
   customerReviews: AdminReview[] = [];
   reviewsLoading = false;
   reviewBusyId = '';
@@ -265,7 +270,54 @@ export class AdminComponent implements OnInit, DoCheck {
   }
 
   canApproveReturn(item: AdminReturn): boolean { return item.status === 'received'; }
-  canRefundReturn(item: AdminReturn): boolean { return item.status === 'approved' && ['pending','manual_required'].includes(item.refundStatus); }
+  canRefundReturn(item: AdminReturn): boolean {
+    return item.paymentMethod !== 'cod' && item.status === 'approved' && item.refundStatus === 'pending';
+  }
+  canStartCodRefund(item: AdminReturn): boolean {
+    return item.paymentMethod === 'cod' && item.refundDestination.provided &&
+      ['PROVIDED', 'FAILED'].includes(item.refundDestination.status || '');
+  }
+  canRevealCodRefund(item: AdminReturn): boolean {
+    return item.paymentMethod === 'cod' && item.refundDestination.provided && item.refundDestination.status !== 'REDACTED';
+  }
+  revealCodRefund(item: AdminReturn): void {
+    if (this.returnBusyId) return;
+    this.returnBusyId = item.id; this.codRefundError = '';
+    this.orderService.revealCodRefund(item.id).subscribe({
+      next: detail => { this.returnBusyId = ''; this.codRefundReturn = item; this.codRefundReveal = detail;
+        this.codRefundReference = ''; this.codRefundNote = ''; },
+      error: error => { this.returnBusyId = ''; this.error = error?.error?.message || 'Refund details could not be revealed.'; }
+    });
+  }
+  closeCodRefund(): void {
+    this.codRefundReturn = undefined; this.codRefundReveal = undefined; this.codRefundReference = '';
+    this.codRefundNote = ''; this.codRefundError = '';
+  }
+  startCodRefund(item: AdminReturn): void {
+    if (this.returnBusyId) return;
+    if (!window.confirm(item.refundDestination.status === 'FAILED'
+      ? 'Retry this COD refund transfer? The existing pending ledger entry will be reused.'
+      : 'Start processing this COD refund? The customer will no longer be able to edit the destination.')) return;
+    this.returnBusyId = item.id;
+    this.orderService.startCodRefund(item.id).subscribe({ next: updated => { this.returnBusyId = ''; Object.assign(item, updated); this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.error = error?.error?.message || 'COD refund could not be started.'; } });
+  }
+  completeCodRefund(): void {
+    const item = this.codRefundReturn; if (!item || this.returnBusyId) return;
+    this.codRefundError = ''; this.returnBusyId = item.id;
+    this.orderService.completeCodRefund(item.id, this.codRefundReference.trim(), this.codRefundNote.trim()).subscribe({
+      next: () => { this.returnBusyId = ''; this.closeCodRefund(); this.message = 'COD refund completed.'; this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.codRefundError = error?.error?.message || 'COD refund could not be completed.'; }
+    });
+  }
+  failCodRefund(): void {
+    const item = this.codRefundReturn; if (!item || this.returnBusyId) return;
+    this.codRefundError = ''; this.returnBusyId = item.id;
+    this.orderService.failCodRefund(item.id, this.codRefundNote.trim()).subscribe({
+      next: () => { this.returnBusyId = ''; this.closeCodRefund(); this.message = 'COD refund marked failed and remains retryable.'; this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.codRefundError = error?.error?.message || 'COD refund failure could not be recorded.'; }
+    });
+  }
   returnRejectLabel(item: AdminReturn): string | null {
     if (item.cancellationPending) return null;
     if (['requested','shiprocket_failed'].includes(item.status)) return 'Reject request';

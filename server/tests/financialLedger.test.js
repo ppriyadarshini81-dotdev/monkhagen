@@ -34,7 +34,7 @@ function ledgerDatabase() {
         return { rows: [row] };
       }
       if (text.includes('INSERT INTO financial_transaction_events')) {
-        if (!events.has(params[1])) events.set(params[1], { transactionId: params[0], previousStatus: params[2], newStatus: params[3], eventType: params[4] });
+        if (!events.has(params[1])) events.set(params[1], { transactionId: params[0], previousStatus: params[2], newStatus: params[3], eventType: params[4], createdBy: params[6] });
         return { rows: [] };
       }
       throw new Error(`Unexpected SQL: ${text}`);
@@ -85,6 +85,24 @@ describe('durable financial transaction recording', () => {
     assert.equal(tx.transaction_type, 'COD_PAYMENT'); assert.equal(tx.direction, 'CREDIT'); assert.equal(tx.status, 'PENDING');
     await ledger.codCancelled(db, { id: 'order-cod', total_amount: '1499.00' });
     assert.equal(db.transactions.size, 1); assert.equal(tx.status, 'CANCELLED');
+  });
+
+  test('manual COD refund retries update one debit and preserve the admin audit actor', async () => {
+    const db = ledgerDatabase();
+    const base = { orderId: 'order-cod', returnId: 'return-cod', amount: '725.00' };
+    await ledger.codRefund(db, { ...base, status: 'PENDING', eventType: 'COD_REFUND_DESTINATION_PROVIDED', eventId: '1' });
+    await ledger.codRefund(db, { ...base, status: 'FAILED', eventType: 'COD_REFUND_FAILED', eventId: '1', createdBy: 'admin-1' });
+    await ledger.codRefund(db, { ...base, status: 'PENDING', eventType: 'COD_REFUND_STARTED', eventId: '2', createdBy: 'admin-2' });
+    await ledger.codRefund(db, { ...base, status: 'SUCCESS', reference: 'UTR987654', eventType: 'COD_REFUND_COMPLETED', eventId: 'UTR987654', createdBy: 'admin-2' });
+    assert.equal(db.transactions.size, 1);
+    const transaction = [...db.transactions.values()][0];
+    assert.equal(transaction.direction, 'DEBIT');
+    assert.equal(transaction.status, 'SUCCESS');
+    assert.equal(transaction.payment_method, 'COD');
+    assert.equal(transaction.provider, 'MANUAL');
+    assert.equal(transaction.provider_reference_id, 'UTR987654');
+    assert.equal(db.events.size, 4);
+    assert.equal([...db.events.values()].at(-1).createdBy, 'admin-2');
   });
 });
 

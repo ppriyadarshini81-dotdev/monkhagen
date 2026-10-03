@@ -125,6 +125,8 @@ export interface ReturnRequest {
   status: string;
   refundAmount: number;
   refundStatus: string;
+  paymentMethod: string;
+  refundDestination: CodRefundDestination;
   returnAwb: string | null;
   pickupStatus: string | null;
   pickupDelayed: boolean;
@@ -137,6 +139,21 @@ export interface ReturnRequest {
   refundedAt: string | null;
   createdAt: string;
 }
+
+export interface CodRefundDestination {
+  required: boolean;
+  provided: boolean;
+  method: 'UPI' | 'BANK' | null;
+  masked: string | null;
+  status: 'PROVIDED' | 'PROCESSING' | 'FAILED' | 'COMPLETED' | 'REDACTED' | null;
+  canEdit: boolean;
+  transactionReference: string | null;
+  completedAt: string | null;
+}
+
+export type CodRefundDestinationPayload =
+  | { method: 'UPI'; upiId: string; confirmUpiId: string }
+  | { method: 'BANK'; accountHolderName: string; accountNumber: string; confirmAccountNumber: string; ifsc: string; bankName?: string };
 
 export interface ReturnPayload {
   orderId: string;

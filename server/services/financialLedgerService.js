@@ -32,6 +32,8 @@ async function record(database, transaction, event) {
     if (previous.order_id !== transaction.orderId || previous.transaction_type !== transaction.type ||
         previous.direction !== transaction.direction || money(previous.amount) !== money(transaction.amount) ||
         previous.currency !== 'INR' || (previous.return_id && previous.return_id !== transaction.returnId) ||
+        (previous.payment_method && previous.payment_method !== transaction.paymentMethod) ||
+        (previous.provider && previous.provider !== transaction.provider) ||
         (previous.provider_reference_id && transaction.providerReferenceId && previous.provider_reference_id !== transaction.providerReferenceId)) {
       throw Object.assign(new Error('Ledger idempotency key is linked to different financial details.'), { status: 409 });
     }
@@ -47,10 +49,10 @@ async function record(database, transaction, event) {
   }
   await database.query(
     `INSERT INTO financial_transaction_events
-       (transaction_id, event_key, previous_status, new_status, event_type, provider_event_id)
-     VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (event_key) DO NOTHING`,
+       (transaction_id, event_key, previous_status, new_status, event_type, provider_event_id, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (event_key) DO NOTHING`,
     [row.id, event.key.slice(0, 320), previous?.status || null, row.status,
-      event.type, event.providerEventId || null]
+      event.type, event.providerEventId || null, event.createdBy || null]
   );
   return row;
 }
@@ -81,17 +83,26 @@ function codCancelled(database, order) {
 }
 
 function refund(database, { orderId, returnId = null, refundId = null, amount, status, eventId = null,
-  eventType = 'REFUND_STATUS_CHANGED', occurredAt = null, description = null }) {
+  eventType = 'REFUND_STATUS_CHANGED', occurredAt = null, description = null,
+  paymentMethod = 'RAZORPAY', provider = 'RAZORPAY', createdBy = null }) {
   const key = returnId ? `REFUND:RETURN:${returnId}` : `REFUND:RAZORPAY:${refundId}`;
   return record(database, {
     key, orderId, returnId, type: 'REFUND', direction: 'DEBIT', amount, status,
-    paymentMethod: 'RAZORPAY', provider: 'RAZORPAY', providerReferenceId: refundId,
+    paymentMethod, provider, providerReferenceId: refundId,
     description: description || (status === 'SUCCESS' ? 'Processed Razorpay refund' : 'Razorpay refund awaiting confirmation'),
     occurredAt
   }, {
     key: `${key}:${eventType}:${eventId || refundId || returnId || status}`,
-    type: eventType, providerEventId: eventId
+    type: eventType, providerEventId: eventId, createdBy
   });
 }
 
-module.exports = { record, payment, codExpected, codCancelled, refund };
+function codRefund(database, { orderId, returnId, amount, status, reference = null,
+  eventType, eventId = null, occurredAt = null, description = null, createdBy = null }) {
+  return refund(database, { orderId, returnId, refundId: reference, amount, status, eventId,
+    eventType, occurredAt, description: description || (status === 'SUCCESS'
+      ? 'Completed manual COD refund' : 'Manual COD refund awaiting transfer'),
+    paymentMethod: 'COD', provider: 'MANUAL', createdBy });
+}
+
+module.exports = { record, payment, codExpected, codCancelled, refund, codRefund };

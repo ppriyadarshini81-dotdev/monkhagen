@@ -7,7 +7,8 @@ const MAX_ATTEMPTS = 5;
 const CUSTOMER_EVENTS = new Set([
   'ORDER_CONFIRMED_CUSTOMER', 'ORDER_SHIPPED_CUSTOMER', 'ORDER_OUT_FOR_DELIVERY_CUSTOMER', 'ORDER_DELIVERED_CUSTOMER',
   'RETURN_REQUESTED_CUSTOMER', 'RETURN_PICKUP_SCHEDULED_CUSTOMER', 'RETURN_PICKED_UP_CUSTOMER',
-  'RETURN_RECEIVED_CUSTOMER', 'RETURN_APPROVED_CUSTOMER', 'REFUND_INITIATED_CUSTOMER', 'REFUND_COMPLETED_CUSTOMER'
+  'RETURN_RECEIVED_CUSTOMER', 'RETURN_APPROVED_CUSTOMER', 'REFUND_INITIATED_CUSTOMER', 'REFUND_COMPLETED_CUSTOMER',
+  'COD_REFUND_PENDING_CUSTOMER'
 ]);
 
 function normalizedEmail(value) {
@@ -104,9 +105,12 @@ function createTransactionalEmailService({ database = pool, mailer = getTranspor
   async function loadReturn(returnId) {
     const { rows } = await database.query(
       `SELECT rr.*, o.order_number, o.total_amount AS order_total, o.payment_method,
+        d.method AS refund_destination_method, d.masked_destination AS refund_destination_masked,
+        d.transaction_reference AS refund_transaction_reference,
         u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone,
         oa.full_name, oa.phone, oa.address_line1, oa.address_line2, oa.landmark, oa.city, oa.state, oa.postal_code, oa.country
        FROM return_requests rr JOIN orders o ON o.id = rr.order_id JOIN users u ON u.id = rr.user_id
+       LEFT JOIN cod_refund_destinations d ON d.return_id = rr.id
        LEFT JOIN order_addresses oa ON oa.order_id = o.id WHERE rr.id = $1`, [returnId]
     );
     if (!rows[0]) return null;
@@ -229,6 +233,8 @@ function createTransactionalEmailService({ database = pool, mailer = getTranspor
     refundCompleted: (returnId, reference) => notify(() => queueReturn(returnId,
       ['REFUND_COMPLETED_CUSTOMER','REFUND_COMPLETED_ADMIN'], {}, String(reference || '').slice(0, 100))),
     codRefundRequired: returnId => notify(() => queueReturn(returnId, ['COD_REFUND_REQUIRED_ADMIN'])),
+    codRefundPending: returnId => notify(() => queueReturn(returnId,
+      ['COD_REFUND_PENDING_CUSTOMER','COD_REFUND_PENDING_ADMIN'])),
     shipmentFailure: (orderId, failureCode) => notify(() => queueOrder(orderId, ['SHIPMENT_CREATION_FAILED_ADMIN'], { failure_code: safeCode(failureCode) })),
     returnFailure: (returnId, failureCode) => notify(() => queueReturn(returnId, ['RETURN_CREATION_FAILED_ADMIN'], { failure_code: safeCode(failureCode) })),
     refundFailure: (returnId, failureCode) => notify(() => queueReturn(returnId, ['REFUND_FAILED_ADMIN'], { failure_code: safeCode(failureCode) })),

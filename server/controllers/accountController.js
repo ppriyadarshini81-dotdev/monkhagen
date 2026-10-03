@@ -5,6 +5,7 @@ const addressValidationError = require('../services/addressValidation');
 const { loadIndiaLocations, resolveIndiaLocation } = require('../services/indiaLocations');
 const shipping = require('../services/shippingService');
 const returns = require('../services/returnService');
+const codRefunds = require('../services/codRefundService');
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
@@ -331,6 +332,16 @@ exports.getReturn = asyncHandler(async (req, res) => {
   const row = await returns.findReturn(pool, req.params.returnId, req.user.id);
   if (!row) return res.status(404).json({ message: 'Return request not found.' });
   res.json(returns.formatReturn(row));
+});
+
+exports.getCodRefundDestination = asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await codRefunds.getCustomer(req.user.id, req.params.returnId));
+});
+
+exports.saveCodRefundDestination = asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await codRefunds.submit(req.user.id, req.params.returnId, req.body));
 });
 
 // ── Credits ───────────────────────────────────────────────────────────────────

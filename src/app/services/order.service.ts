@@ -63,6 +63,11 @@ export interface AdminReturn {
   refundAmount: number;
   refundStatus: string;
   paymentMethod: string;
+  refundDestination: {
+    required: boolean; provided: boolean; method: 'UPI' | 'BANK' | null; masked: string | null;
+    status: 'PROVIDED' | 'PROCESSING' | 'FAILED' | 'COMPLETED' | 'REDACTED' | null;
+    canEdit: boolean; transactionReference: string | null; completedAt: string | null;
+  };
   shiprocketReturnOrderId: number | null;
   returnAwb: string | null;
   pickupStatus: string | null;
@@ -73,6 +78,10 @@ export interface AdminReturn {
   customer?: { name: string | null; email: string | null; phone: string | null };
   items: Array<{ productName: string; sku: string | null; size: string | null; color: string | null; quantity: number; reason: string; comments: string | null; refundAmount: number }>;
 }
+
+export type CodRefundReveal = { method: 'UPI'; upiId: string; refundAmount: number; status: string; masked: string }
+  | { method: 'BANK'; accountHolderName: string; accountNumber: string; ifsc: string; bankName: string | null;
+      refundAmount: number; status: string; masked: string };
 
 @Injectable({ providedIn: 'root' })
 export class OrderService {
@@ -106,5 +115,11 @@ export class OrderService {
     return this.http.post<AdminReturn>(`/api/admin/returns/${id}/reject`, { confirmedNoRemote });
   }
   refundReturn(id: string): Observable<AdminReturn> { return this.http.post<AdminReturn>(`/api/admin/returns/${id}/refund`, {}); }
+  revealCodRefund(id: string): Observable<CodRefundReveal> { return this.http.get<CodRefundReveal>(`/api/admin/returns/${id}/refund-destination/reveal`); }
+  startCodRefund(id: string): Observable<AdminReturn> { return this.http.post<AdminReturn>(`/api/admin/returns/${id}/refund/start`, {}); }
+  failCodRefund(id: string, internalNote: string): Observable<AdminReturn> { return this.http.post<AdminReturn>(`/api/admin/returns/${id}/refund/fail`, { internalNote }); }
+  completeCodRefund(id: string, transactionReference: string, internalNote: string): Observable<AdminReturn> {
+    return this.http.post<AdminReturn>(`/api/admin/returns/${id}/refund/complete`, { transactionReference, internalNote });
+  }
   retryReturnCreation(id: string): Observable<AdminReturn> { return this.http.post<AdminReturn>(`/api/admin/returns/${id}/retry-creation`, {}); }
 }

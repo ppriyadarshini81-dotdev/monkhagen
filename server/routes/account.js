@@ -34,6 +34,8 @@ router.get('/orders/:orderId/invoice', invoiceLimiter, ctrl.getInvoice);
 // Returns
 router.get('/returns',   ctrl.getReturns);
 router.get('/returns/:returnId', ctrl.getReturn);
+router.get('/returns/:returnId/refund-destination', ctrl.getCodRefundDestination);
+router.put('/returns/:returnId/refund-destination', returnLimiter, ctrl.saveCodRefundDestination);
 router.post('/returns', returnLimiter, ctrl.createReturn);
 
 // Credits

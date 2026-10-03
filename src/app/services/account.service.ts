@@ -4,7 +4,7 @@ import { Observable, shareReplay } from 'rxjs';
 import { User } from '../models/user.model';
 import {
   Address, AddressPayload, IndiaLocations, Order, TrackingInfo,
-  ReturnRequest, ReturnPayload, ReturnEligibility, CreditTransaction
+  ReturnRequest, ReturnPayload, ReturnEligibility, CreditTransaction, CodRefundDestination, CodRefundDestinationPayload
 } from '../models/account.model';
 
 @Injectable({ providedIn: 'root' })
@@ -85,6 +85,10 @@ export class AccountService {
 
   getReturnEligibility(orderId: string): Observable<ReturnEligibility> {
     return this.http.get<ReturnEligibility>(`${this.api}/orders/${orderId}/return-eligibility`);
+  }
+
+  saveCodRefundDestination(returnId: string, payload: CodRefundDestinationPayload): Observable<CodRefundDestination> {
+    return this.http.put<CodRefundDestination>(`${this.api}/returns/${returnId}/refund-destination`, payload);
   }
 
   // ── Credits ────────────────────────────────────────────────
