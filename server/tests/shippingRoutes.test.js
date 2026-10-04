@@ -17,9 +17,13 @@ test('shipping routes require authentication and admin permission for fulfillmen
   };
   const originalFind = User.findById;
   const originalCreate = shipping.createShipment;
+  const originalInvoice = shipping.invoice;
   let calls = 0;
   User.findById = async id => users[id];
   shipping.createShipment = async () => { calls++; return { shippingStatus: 'created' }; };
+  shipping.invoice = async () => ({
+    document: Buffer.from('%PDF-1.4 test invoice'), filename: 'MH-1_Invoice_101.pdf'
+  });
   const app = express();
   app.use(express.json());
   app.use('/api/shipping', router);
@@ -27,15 +31,27 @@ test('shipping routes require authentication and admin permission for fulfillmen
   const base = `http://127.0.0.1:${server.address().port}/api/shipping`;
   try {
     assert.equal((await fetch(`${base}/serviceability`, { method: 'POST' })).status, 401);
+    assert.equal((await fetch(`${base}/order-id/invoice`)).status, 401);
     for (const route of ['create-shipment', 'order-id/assign-awb', 'order-id/generate-pickup', 'order-id/generate-label', 'order-id/reconcile']) {
       const response = await fetch(`${base}/${route}`, { method: 'POST', headers: { Authorization: `Bearer ${signToken(users.customer)}` } });
       assert.equal(response.status, 403);
     }
     assert.equal(calls, 0);
+    const customerInvoice = await fetch(`${base}/order-id/invoice`, {
+      headers: { Authorization: `Bearer ${signToken(users.customer)}` }
+    });
+    assert.equal(customerInvoice.status, 403);
     for (const role of ['admin', 'super_admin']) {
       const response = await fetch(`${base}/create-shipment`, { method: 'POST',
         headers: { Authorization: `Bearer ${signToken(users[role], { provider: 'google.com' })}`, 'Content-Type': 'application/json' }, body: '{}' });
       assert.equal(response.status, 200);
+      const invoice = await fetch(`${base}/order-id/invoice`, {
+        headers: { Authorization: `Bearer ${signToken(users[role], { provider: 'google.com' })}` }
+      });
+      assert.equal(invoice.status, 200);
+      assert.equal(invoice.headers.get('content-type'), 'application/pdf');
+      assert.equal(invoice.headers.get('content-disposition'), 'attachment; filename="MH-1_Invoice_101.pdf"');
+      assert.equal(Buffer.from(await invoice.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
     }
     assert.equal(calls, 2);
     const invalid = await fetch(`${base}/serviceability`, { method: 'POST',
@@ -45,6 +61,7 @@ test('shipping routes require authentication and admin permission for fulfillmen
   } finally {
     User.findById = originalFind;
     shipping.createShipment = originalCreate;
+    shipping.invoice = originalInvoice;
     await new Promise(resolve => server.close(resolve));
   }
 });

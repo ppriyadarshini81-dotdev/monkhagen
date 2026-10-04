@@ -17,7 +17,7 @@ See the [website design and functionality document](docs/website-design-and-func
 - Razorpay payments and signed webhooks
 - Shiprocket fulfillment and tracking
 - Cloudflare R2 media storage
-- Nodemailer for contact and order-confirmation email
+- Nodemailer with the existing Zoho SMTP mailbox for transactional and contact email
 
 ## Features
 
@@ -25,7 +25,7 @@ See the [website design and functionality document](docs/website-design-and-func
 - Product variants by managed size and color, stock, categories, badges, and images
 - Authenticated PostgreSQL cart and saved customer addresses
 - Razorpay checkout with server-side capture verification and idempotency
-- Retried customer confirmations with blind-copy notifications to the store inbox
+- Idempotent customer and operational emails for orders, delivery, returns, and refunds
 - Customer profile, orders, tracking, returns, and store credits
 - Admin management for catalog data, inventory, orders, and media
 - Durable Shiprocket shipment queue with explicit AWB, pickup, label, and reconciliation operations
@@ -76,6 +76,10 @@ FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
 ADMIN_GOOGLE_EMAIL=
 
+# Backend-only customer OTP configuration
+MSG91_AUTH_KEY=
+MSG91_TEMPLATE_ID=
+
 R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
@@ -95,11 +99,11 @@ SMTP_FROM=
 CONTACT_EMAIL=official@monkhagen.in
 ```
 
-The `CONTACT_EMAIL` address receives contact-form submissions and a blind copy of each paid-order confirmation. For Zoho-hosted `@monkhagen.in` mailboxes, use `smtp.zoho.in`, port `465`, `SMTP_SECURE=true`, and a Zoho application-specific password when two-factor authentication is enabled.
+The existing `CONTACT_EMAIL` address receives contact-form submissions and all administrator operational notifications. Customer transactional messages are separate idempotent events and are sent only to the email linked to the applicable customer/order. For Zoho-hosted `@monkhagen.in` mailboxes, use `smtp.zoho.in`, port `465`, `SMTP_SECURE=true`, and a Zoho application-specific password when two-factor authentication is enabled.
 
 Shiprocket variables and operational setup are documented in [docs/shiprocket.md](docs/shiprocket.md).
 
-Google is the normal customer sign-in path. Deprecated OTP routes are disabled by default. For a temporary legacy integration, set `ENABLE_LEGACY_OTP=true` and configure MSG91. Local development without MSG91 additionally requires an explicit six-digit `DEV_OTP_CODE`; this fallback is unavailable in production.
+Customers can sign in with an MSG91 mobile OTP or Firebase Google Sign-In. MSG91 credentials remain backend-only, and there is no fixed development OTP fallback. The configured administrator identity continues to require verified Google Sign-In.
 
 ## Install and run
 

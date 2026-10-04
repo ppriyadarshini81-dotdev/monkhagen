@@ -1,4 +1,6 @@
-function addressValidationError(address) {
+const { resolveIndiaLocation, sameLocation } = require('./indiaLocations');
+
+async function addressValidationError(address, { validateLocation = false, legacyLocation = null } = {}) {
   if (!address || typeof address !== 'object' || Array.isArray(address)) {
     return 'Enter a full name, complete street address, city and state.';
   }
@@ -15,6 +17,12 @@ function addressValidationError(address) {
   }
   if (address.addressType != null && (typeof address.addressType !== 'string' || !['Home','Work','Office','Other'].includes(address.addressType))) return 'Select a valid address type.';
   if (address.country != null && (typeof address.country !== 'string' || address.country.length > 100)) return 'Select a valid country.';
+  if (validateLocation) {
+    const location = await resolveIndiaLocation(address.state, address.city);
+    if (!location && !sameLocation(address, legacyLocation)) {
+      return 'Select a city that belongs to the selected Indian state.';
+    }
+  }
   return null;
 }
 

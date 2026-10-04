@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, HostListener, OnInit, ViewChild } from '@angular/core';
+import { Component, DoCheck, ElementRef, HostListener, OnInit, Optional, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { Category } from '../../models/category.model';
 import { Badge } from '../../models/badge.model';
@@ -9,11 +10,18 @@ import { ProductService, ProductWrite } from '../../services/product.service';
 import { CategoryService } from '../../services/category.service';
 import { BadgeService } from '../../services/badge.service';
 import { VariantOptionService } from '../../services/variant-option.service';
-import { OrderService, Order } from '../../services/order.service';
+import { AdminReturn, CodRefundReveal, OrderService, Order } from '../../services/order.service';
 import { UploadService } from '../../services/upload.service';
 import { AuthService } from '../../services/auth.service';
 import { ShippingService } from '../../services/shipping.service';
+import { saveInvoice } from '../../utils/invoice-download';
 import { ProductPageContentEditorComponent } from '../../components/product-page-content-editor/product-page-content-editor.component';
+import { ReviewService } from '../../services/review.service';
+import { AdminReview } from '../../models/review.model';
+import { fieldsFromImagePairs, imagePairsFromFields, moveImagePair, ProductImagePair, removeImagePair } from '../../utils/product-image-pairs';
+import { sortSizes } from '../../utils/size-order';
+
+interface SizeStockForm { stock: number | null; threshold: number | null; configured: boolean; }
 
 interface ProductForm {
   id?: string;
@@ -24,7 +32,9 @@ interface ProductForm {
   sizeIds: string[];
   colorIds: string[];
   images: string;
-  stock: number | null;
+  zoomImages: string;
+  sizeInventory: Record<string, SizeStockForm>;
+  inventoryReason: string;
   badgeId: string;
   featured: boolean;
 }
@@ -50,18 +60,34 @@ type OptionType = 'sizes' | 'colors';
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.css'
 })
-export class AdminComponent implements OnInit {
+export class AdminComponent implements OnInit, DoCheck {
   @ViewChild('orderDialog') orderDialog?: ElementRef<HTMLDialogElement>;
-  tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' | 'content' = 'products';
+  tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' | 'returns' | 'reviews' | 'content' = 'products';
   products: Product[] = [];
   categories: Category[] = [];
   badges: Badge[] = [];
   sizes: VariantOption[] = [];
   colors: VariantOption[] = [];
   orders: Order[] = [];
+  returns: AdminReturn[] = [];
+  returnsLoading = false;
+  returnBusyId = '';
+  codRefundReturn?: AdminReturn;
+  codRefundReveal?: CodRefundReveal;
+  codRefundReference = '';
+  codRefundNote = '';
+  codRefundError = '';
+  customerReviews: AdminReview[] = [];
+  reviewsLoading = false;
+  reviewBusyId = '';
+  reviewSearch = '';
+  reviewRatingFilter: number | null = null;
+  reviewStatusFilter = '';
   ordersLoading = false;
   ordersError = '';
   shippingBusyOrderId = '';
+  invoiceBusyOrderId = '';
+  invoiceError = '';
   selectedOrder: Order | null = null;
   orderSearch = '';
   orderFilter = 'all';
@@ -71,6 +97,12 @@ export class AdminComponent implements OnInit {
   showForm = false;
   editing = false;
   uploading = false;
+  uploadingZoomIndex: number | null = null;
+  draggedImageIndex: number | null = null;
+  imagePairs: ProductImagePair[] = [];
+  private lastDisplayImageUrls = '';
+  private lastZoomImageUrls = '';
+  private requestedOrderId = '';
   form: ProductForm = this.emptyForm();
 
   showCatForm = false;
@@ -95,16 +127,28 @@ export class AdminComponent implements OnInit {
     private orderService: OrderService,
     private uploadService: UploadService,
     private shippingService: ShippingService,
-    public auth: AuthService
+    private reviewService: ReviewService,
+    public auth: AuthService,
+    @Optional() private route?: ActivatedRoute
   ) {}
 
   ngOnInit(): void {
+    this.requestedOrderId = this.route?.snapshot.queryParamMap.get('order') || '';
     this.loadProducts();
     this.loadCategories();
     this.loadBadges();
     this.loadOptions('sizes');
     this.loadOptions('colors');
     this.loadOrders();
+    this.loadReturns();
+    this.loadCustomerReviews();
+  }
+
+  ngDoCheck(): void {
+    if (this.form.images === this.lastDisplayImageUrls && this.form.zoomImages === this.lastZoomImageUrls) return;
+    this.imagePairs = imagePairsFromFields(this.form.images, this.form.zoomImages);
+    this.lastDisplayImageUrls = this.form.images;
+    this.lastZoomImageUrls = this.form.zoomImages;
   }
 
   emptyForm(): ProductForm {
@@ -116,7 +160,9 @@ export class AdminComponent implements OnInit {
       sizeIds: [],
       colorIds: [],
       images: '',
-      stock: null,
+      zoomImages: '',
+      sizeInventory: {},
+      inventoryReason: '',
       badgeId: '',
       featured: false
     };
@@ -136,7 +182,10 @@ export class AdminComponent implements OnInit {
 
   loadOptions(type: OptionType): void {
     this.variantOptionService.getAdminOptions(type).subscribe((options) => {
-      if (type === 'sizes') this.sizes = options;
+      if (type === 'sizes') {
+        const order = sortSizes(options.map(option => option.name));
+        this.sizes = [...options].sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+      }
       else this.colors = options;
     });
   }
@@ -151,6 +200,14 @@ export class AdminComponent implements OnInit {
         if (this.selectedOrder) {
           this.selectedOrder = o.find((order) => order.id === this.selectedOrder?.id) || null;
         }
+        if (this.requestedOrderId) {
+          const requested = o.find(order => order.id === this.requestedOrderId);
+          if (requested) {
+            this.tab = 'orders';
+            this.openOrder(requested);
+            this.requestedOrderId = '';
+          }
+        }
         this.ordersLoading = false;
       },
       error: () => {
@@ -158,6 +215,115 @@ export class AdminComponent implements OnInit {
         this.ordersLoading = false;
       }
     });
+  }
+
+  loadReturns(): void {
+    if (this.returnsLoading) return;
+    this.returnsLoading = true;
+    this.orderService.adminReturns().subscribe({
+      next: returns => { this.returns = returns; this.returnsLoading = false; },
+      error: () => { this.error = 'Could not load returns.'; this.returnsLoading = false; }
+    });
+  }
+
+  loadCustomerReviews(): void {
+    if (this.reviewsLoading) return;
+    this.reviewsLoading = true;
+    this.reviewService.adminList({
+      search: this.reviewSearch.trim(), rating: this.reviewRatingFilter, status: this.reviewStatusFilter
+    }).subscribe({
+      next: result => { this.customerReviews = result.reviews; this.reviewsLoading = false; },
+      error: () => { this.error = 'Could not load customer reviews.'; this.reviewsLoading = false; }
+    });
+  }
+
+  moderateReview(review: AdminReview): void {
+    if (this.reviewBusyId) return;
+    const status = review.moderationStatus === 'approved' ? 'hidden' : 'approved';
+    this.reviewBusyId = review.id;
+    this.reviewService.moderate(review.id, status).subscribe({
+      next: () => { this.reviewBusyId = ''; this.message = status === 'hidden' ? 'Review hidden.' : 'Review restored.'; this.loadCustomerReviews(); },
+      error: error => { this.reviewBusyId = ''; this.error = error?.error?.message || 'Review moderation failed.'; }
+    });
+  }
+
+  actOnReturn(item: AdminReturn, action: 'approve' | 'reject' | 'refund' | 'retry'): void {
+    if (this.returnBusyId) return;
+    if (action === 'reject') {
+      const prompt = item.status === 'received'
+        ? 'Reject this return after inspection? The customer will not be refunded and inventory will not be restored.'
+        : item.shiprocketReturnOrderId
+          ? 'Cancel this return in Shiprocket? Monk Hagen will close it only after Shiprocket accepts the cancellation.'
+          : 'Reject this local request? Confirm first that no matching return exists in Shiprocket.';
+      if (!window.confirm(prompt)) return;
+    }
+    this.returnBusyId = item.id;
+    this.error = '';
+    const request = action === 'approve' ? this.orderService.approveReturn(item.id)
+      : action === 'reject' ? this.orderService.rejectReturn(item.id, !item.shiprocketReturnOrderId)
+      : action === 'refund' ? this.orderService.refundReturn(item.id)
+      : this.orderService.retryReturnCreation(item.id);
+    request.subscribe({
+      next: () => { this.returnBusyId = ''; this.message = `Return ${action} completed.`; this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.error = error?.error?.message || `Could not ${action} this return.`; this.loadReturns(); }
+    });
+  }
+
+  canApproveReturn(item: AdminReturn): boolean { return item.status === 'received'; }
+  canRefundReturn(item: AdminReturn): boolean {
+    return item.paymentMethod !== 'cod' && item.status === 'approved' && item.refundStatus === 'pending';
+  }
+  canStartCodRefund(item: AdminReturn): boolean {
+    return item.paymentMethod === 'cod' && item.refundDestination.provided &&
+      ['PROVIDED', 'FAILED'].includes(item.refundDestination.status || '');
+  }
+  canRevealCodRefund(item: AdminReturn): boolean {
+    return item.paymentMethod === 'cod' && item.refundDestination.provided && item.refundDestination.status !== 'REDACTED';
+  }
+  revealCodRefund(item: AdminReturn): void {
+    if (this.returnBusyId) return;
+    this.returnBusyId = item.id; this.codRefundError = '';
+    this.orderService.revealCodRefund(item.id).subscribe({
+      next: detail => { this.returnBusyId = ''; this.codRefundReturn = item; this.codRefundReveal = detail;
+        this.codRefundReference = ''; this.codRefundNote = ''; },
+      error: error => { this.returnBusyId = ''; this.error = error?.error?.message || 'Refund details could not be revealed.'; }
+    });
+  }
+  closeCodRefund(): void {
+    this.codRefundReturn = undefined; this.codRefundReveal = undefined; this.codRefundReference = '';
+    this.codRefundNote = ''; this.codRefundError = '';
+  }
+  startCodRefund(item: AdminReturn): void {
+    if (this.returnBusyId) return;
+    if (!window.confirm(item.refundDestination.status === 'FAILED'
+      ? 'Retry this COD refund transfer? The existing pending ledger entry will be reused.'
+      : 'Start processing this COD refund? The customer will no longer be able to edit the destination.')) return;
+    this.returnBusyId = item.id;
+    this.orderService.startCodRefund(item.id).subscribe({ next: updated => { this.returnBusyId = ''; Object.assign(item, updated); this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.error = error?.error?.message || 'COD refund could not be started.'; } });
+  }
+  completeCodRefund(): void {
+    const item = this.codRefundReturn; if (!item || this.returnBusyId) return;
+    this.codRefundError = ''; this.returnBusyId = item.id;
+    this.orderService.completeCodRefund(item.id, this.codRefundReference.trim(), this.codRefundNote.trim()).subscribe({
+      next: () => { this.returnBusyId = ''; this.closeCodRefund(); this.message = 'COD refund completed.'; this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.codRefundError = error?.error?.message || 'COD refund could not be completed.'; }
+    });
+  }
+  failCodRefund(): void {
+    const item = this.codRefundReturn; if (!item || this.returnBusyId) return;
+    this.codRefundError = ''; this.returnBusyId = item.id;
+    this.orderService.failCodRefund(item.id, this.codRefundNote.trim()).subscribe({
+      next: () => { this.returnBusyId = ''; this.closeCodRefund(); this.message = 'COD refund marked failed and remains retryable.'; this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.codRefundError = error?.error?.message || 'COD refund failure could not be recorded.'; }
+    });
+  }
+  returnRejectLabel(item: AdminReturn): string | null {
+    if (item.cancellationPending) return null;
+    if (['requested','shiprocket_failed'].includes(item.status)) return 'Reject request';
+    if (['return_created','pickup_scheduled','pickup_failed'].includes(item.status)) return 'Cancel return';
+    if (item.status === 'received') return 'Reject after inspection';
+    return null;
   }
 
   get visibleOrders(): Order[] {
@@ -207,6 +373,7 @@ export class AdminComponent implements OnInit {
 
   openOrder(order: Order): void {
     this.selectedOrder = order;
+    this.invoiceError = '';
     queueMicrotask(() => {
       const dialog = this.orderDialog?.nativeElement;
       if (dialog && !dialog.open) dialog.showModal();
@@ -273,9 +440,27 @@ export class AdminComponent implements OnInit {
     });
   }
 
+  downloadInvoice(order: Order): void {
+    if (!order.shipment?.shiprocketOrderId || this.invoiceBusyOrderId) return;
+    this.invoiceError = '';
+    this.invoiceBusyOrderId = order.id;
+    this.shippingService.getInvoice(order.id).subscribe({
+      next: (response) => {
+        this.invoiceBusyOrderId = '';
+        try { saveInvoice(response, `${order.orderNumber || order.id}_Invoice.pdf`); }
+        catch { this.invoiceError = 'Invoice is not available yet. Please try again later.'; }
+      },
+      error: () => {
+        this.invoiceBusyOrderId = '';
+        this.invoiceError = 'Invoice is not available yet. Please try again later.';
+      }
+    });
+  }
+
   newProduct(): void {
     this.editing = false;
     this.form = this.emptyForm();
+    this.imagePairs = [];
     this.showForm = true;
     this.message = '';
     this.error = '';
@@ -300,10 +485,15 @@ export class AdminComponent implements OnInit {
             v.colorId || this.colors.find((color) => color.name === v.color)?.id || ''
           ).filter(Boolean))],
           images: product.images.join(', '),
-          stock: product.stock,
+          zoomImages: (product.zoomImages || []).map(url => url || '').join(', '),
+          sizeInventory: Object.fromEntries((product.sizeInventory || []).map(item => [item.sizeId, {
+            stock: item.stockQuantity, threshold: item.lowStockThresholdQuantity, configured: item.configured
+          }])),
+          inventoryReason: '',
           badgeId: product.badgeId || '',
           featured: product.featured
         };
+        this.imagePairs = imagePairsFromFields(this.form.images, this.form.zoomImages);
         this.showForm = true;
       },
       error: (err) => (this.error = err?.error?.message || 'Could not load product details.')
@@ -319,10 +509,10 @@ export class AdminComponent implements OnInit {
     this.error = '';
     this.uploadService.uploadImages(input.files).subscribe({
       next: ({ urls }) => {
-        const existing = this.form.images
-          ? this.form.images.split(',').map((s) => s.trim()).filter(Boolean)
-          : [];
-        this.form.images = [...existing, ...urls].join(', ');
+        this.setImagePairs([
+          ...this.imagePairs,
+          ...urls.map(imageUrl => ({ imageUrl, zoomImageUrl: null }))
+        ]);
         this.uploading = false;
         input.value = '';
       },
@@ -333,16 +523,87 @@ export class AdminComponent implements OnInit {
     });
   }
 
+  updateDisplayImageUrls(value: string): void {
+    this.form.images = value;
+    this.imagePairs = imagePairsFromFields(this.form.images, this.form.zoomImages);
+  }
+
+  updateZoomImageUrls(value: string): void {
+    this.form.zoomImages = value;
+    this.imagePairs = imagePairsFromFields(this.form.images, this.form.zoomImages);
+  }
+
+  private setImagePairs(pairs: ProductImagePair[]): void {
+    this.imagePairs = pairs;
+    const fields = fieldsFromImagePairs(pairs);
+    this.form.images = fields.images;
+    this.form.zoomImages = fields.zoomImages;
+    this.lastDisplayImageUrls = fields.images;
+    this.lastZoomImageUrls = fields.zoomImages;
+  }
+
+  startImageDrag(index: number, event: DragEvent): void {
+    this.draggedImageIndex = index;
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', String(index));
+    }
+  }
+
+  allowImageDrop(event: DragEvent): void {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  }
+
+  dropImage(index: number, event: DragEvent): void {
+    event.preventDefault();
+    if (this.draggedImageIndex === null) return;
+    this.setImagePairs(moveImagePair(this.imagePairs, this.draggedImageIndex, index));
+    this.draggedImageIndex = null;
+  }
+
+  moveImage(index: number, delta: -1 | 1): void {
+    this.setImagePairs(moveImagePair(this.imagePairs, index, index + delta));
+  }
+
+  removeImage(index: number): void {
+    this.setImagePairs(removeImagePair(this.imagePairs, index));
+  }
+
+  onZoomImageSelected(event: Event, index: number): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file || this.uploadingZoomIndex !== null) return;
+    this.uploadingZoomIndex = index;
+    this.error = '';
+    this.uploadService.uploadImages([file]).subscribe({
+      next: ({ urls }) => {
+        const pairs = this.imagePairs;
+        if (pairs[index] && urls[0]) pairs[index] = { ...pairs[index], zoomImageUrl: urls[0] };
+        this.setImagePairs(pairs);
+        this.uploadingZoomIndex = null;
+        input.value = '';
+      },
+      error: err => {
+        this.error = err?.error?.message || 'Zoom image upload failed.';
+        this.uploadingZoomIndex = null;
+      }
+    });
+  }
+
+  removeZoomImage(index: number): void {
+    const pairs = this.imagePairs;
+    if (!pairs[index]) return;
+    pairs[index] = { ...pairs[index], zoomImageUrl: null };
+    this.setImagePairs(pairs);
+  }
+
   cancel(): void {
     this.showForm = false;
   }
 
   private toPayload(): ProductWrite {
-    const split = (s: string) =>
-      s
-        .split(',')
-        .map((x) => x.trim())
-        .filter(Boolean);
+    const pairs = this.imagePairs;
     const selectedSizes = this.sizes.filter((size) => this.form.sizeIds.includes(size.id));
     const selectedColors = this.colors.filter((color) => this.form.colorIds.includes(color.id));
     const variantSelections = selectedSizes.flatMap((size) =>
@@ -353,22 +614,26 @@ export class AdminComponent implements OnInit {
         colorId: color.id
       }))
     );
-    const totalStock = Math.max(0, Math.floor(Number(this.form.stock) || 0));
-    const stockPerVariant = variantSelections.length ? Math.floor(totalStock / variantSelections.length) : 0;
-    const stockRemainder = variantSelections.length ? totalStock % variantSelections.length : 0;
     return {
       name: this.form.name,
       basePrice: Number(this.form.price),
       categoryId: this.form.categoryId,
       badgeId: this.form.badgeId || null,
       description: this.form.description,
-      images: split(this.form.images),
+      images: pairs.map(pair => pair.imageUrl),
+      zoomImages: pairs.map(pair => pair.zoomImageUrl),
       sizeIds: [...this.form.sizeIds],
       colorIds: [...this.form.colorIds],
-      variants: variantSelections.map((variant, index) => ({
+      variants: variantSelections.map((variant) => ({
         ...variant,
-        stock: stockPerVariant + (index < stockRemainder ? 1 : 0)
+        stock: 0
       })),
+      sizeInventory: selectedSizes.map(size => ({
+        sizeId: size.id,
+        stockQuantity: Number(this.form.sizeInventory[size.id]?.stock),
+        lowStockThresholdQuantity: Number(this.form.sizeInventory[size.id]?.threshold ?? 0)
+      })),
+      inventoryReason: this.form.inventoryReason.trim() || null,
       featured: this.form.featured
     };
   }
@@ -378,6 +643,15 @@ export class AdminComponent implements OnInit {
     if (!this.form.name || this.form.price == null || !this.form.categoryId ||
         !this.form.sizeIds.length || !this.form.colorIds.length) {
       this.error = 'Name, price, category, at least one size and at least one color are required.';
+      return;
+    }
+    const invalidSize = this.form.sizeIds.find(id => {
+      const item = this.form.sizeInventory[id];
+      return !item || !Number.isSafeInteger(Number(item.stock)) || Number(item.stock) < 0 ||
+        !Number.isSafeInteger(Number(item.threshold)) || Number(item.threshold) < 0;
+    });
+    if (invalidSize) {
+      this.error = 'Enter a whole non-negative stock and low-stock threshold for every selected size.';
       return;
     }
     const payload = this.toPayload();
@@ -618,10 +892,37 @@ export class AdminComponent implements OnInit {
 
   toggleProductOption(type: OptionType, id: string, checked: boolean): void {
     const selected = type === 'sizes' ? this.form.sizeIds : this.form.colorIds;
-    if (checked && !selected.includes(id)) selected.push(id);
+    if (checked && !selected.includes(id)) {
+      selected.push(id);
+      if (type === 'sizes' && !this.form.sizeInventory[id]) {
+        this.form.sizeInventory[id] = { stock: 0, threshold: 0, configured: false };
+      }
+    }
     if (!checked) {
       const index = selected.indexOf(id);
       if (index >= 0) selected.splice(index, 1);
+    }
+  }
+
+  get totalSizeStock(): number {
+    return this.form.sizeIds.reduce((total, id) => total + (Number(this.form.sizeInventory[id]?.stock) || 0), 0);
+  }
+
+  sizeStock(id: string): SizeStockForm {
+    return this.form.sizeInventory[id] ||= { stock: 0, threshold: 0, configured: false };
+  }
+
+  sizeStockStatus(id: string): string {
+    if (!this.form.sizeIds.includes(id)) return 'Not offered';
+    const item = this.sizeStock(id); const stock = Number(item.stock || 0); const threshold = Number(item.threshold || 0);
+    if (stock === 0) return 'Out of stock';
+    return stock <= threshold ? 'Low stock' : 'In stock';
+  }
+
+  updateOpeningStock(id: string): void {
+    const item = this.sizeStock(id);
+    if (!item.configured && Number(item.threshold || 0) === 0) {
+      item.threshold = Math.ceil((Number(item.stock) || 0) * 0.1);
     }
   }
 

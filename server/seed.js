@@ -123,6 +123,9 @@ async function seed() {
   await connectDB();
   console.log('Clearing existing data…');
   // Explicit delete order respects FK constraints
+  await pool.query('DELETE FROM product_review_helpful');
+  await pool.query('DELETE FROM product_review_images');
+  await pool.query('DELETE FROM product_reviews');
   await pool.query('DELETE FROM return_items');
   await pool.query('DELETE FROM return_requests');
   await pool.query('DELETE FROM order_items');

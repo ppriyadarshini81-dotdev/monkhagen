@@ -1,9 +1,15 @@
 const Shipment = require('../models/Shipment');
 const { shiprocket, shippingError } = require('../config/shiprocket');
 const { uuid, providerId, serviceabilityInput, packageDetails, assertShippable, assertFulfillmentSafe,
-  buildOrderPayload, normalizeCouriers, normalizeTracking, optionalNumber, safeUrl } = require('./shippingMapping');
+  buildOrderPayload, normalizeCouriers, normalizeTracking, normalizeInvoice, optionalNumber, safeUrl } = require('./shippingMapping');
+const emails = require('./transactionalEmailService');
+const { mappedForwardStatus } = require('./shippingWebhookService');
 
 const REVIEW_MESSAGE = 'A previous shipping operation has an uncertain outcome. Reconcile it with Shiprocket before retrying.';
+async function notifySafely(action) {
+  try { await action(); }
+  catch (error) { console.error('Shipping notification could not be queued.', { code: /^[A-Z0-9_]{1,100}$/.test(error.code || '') ? error.code : 'EMAIL_QUEUE_FAILED' }); }
+}
 
 function requireShipment(row) {
   if (!row?.shiprocket_shipment_id) throw shippingError(409, 'SHIPMENT_NOT_CREATED', 'Create the shipment first.');
@@ -36,7 +42,30 @@ function indiaTimestamp(value) {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-function createShippingService({ repository = Shipment, api = shiprocket } = {}) {
+function invoiceFailure(error) {
+  const message = 'Invoice is not available yet. Please try again later.';
+  if (error.code === 'SHIPROCKET_TIMEOUT') return shippingError(504, 'INVOICE_TIMEOUT', message);
+  if (error.code === 'SHIPROCKET_AUTH_FAILED' || error.code === 'SHIPROCKET_NOT_CONFIGURED' ||
+      error.code === 'SHIPROCKET_PERMISSION_DENIED') {
+    return shippingError(503, 'INVOICE_PROVIDER_UNAVAILABLE', message);
+  }
+  if (error.upstreamStatus === 429) return shippingError(429, 'INVOICE_RATE_LIMITED', message);
+  if ([400, 404, 409, 422].includes(error.upstreamStatus)) {
+    return shippingError(404, 'INVOICE_NOT_AVAILABLE', message);
+  }
+  return shippingError(502, 'INVOICE_UNAVAILABLE', message);
+}
+
+function invoiceFilename(source, shiprocketOrderId) {
+  const orderReference = String(source.order_number || source.id)
+    .replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'Order';
+  return `${orderReference}_Invoice_${shiprocketOrderId}.pdf`;
+}
+
+function createShippingService({ repository = Shipment, api = shiprocket, notifications = null } = {}) {
+  const emailNotifications = notifications || (repository === Shipment && api === shiprocket ? emails : {
+    orderShipped: async () => {}, orderOutForDelivery: async () => {}, orderDelivered: async () => {}, shipmentFailure: async () => {}
+  });
   async function mutate(client, orderId, row, operation, action) {
     requireIdle(row);
     await repository.patch(client, orderId, {
@@ -217,6 +246,10 @@ function createShippingService({ repository = Shipment, api = shiprocket } = {})
           tracking_checked_at: new Date(),
           ...(result.available && result.status ? { shipping_status: result.status } : {})
         }, { pickedUpAt: indiaTimestamp(result.pickedUpAt), deliveredAt });
+        const normalized = mappedForwardStatus({ shipment_status_id: result.statusCode, shipment_status: result.status });
+        if (normalized === 'shipped') await notifySafely(() => emailNotifications.orderShipped(orderId));
+        if (normalized === 'out_for_delivery') await notifySafely(() => emailNotifications.orderOutForDelivery(orderId));
+        if (normalized === 'delivered') await notifySafely(() => emailNotifications.orderDelivered(orderId));
       }
       // Customer responses deliberately omit label links, internal operation state and provider IDs.
       return {
@@ -229,6 +262,28 @@ function createShippingService({ repository = Shipment, api = shiprocket } = {})
         events: row?.tracking_events || [], lastCheckedAt: row?.tracking_checked_at || null
       };
     });
+  }
+
+  async function invoice(orderId, user) {
+    orderId = uuid(orderId);
+    const source = await repository.invoiceSource(orderId);
+    if (!source || (source.user_id !== user.id && !['admin', 'super_admin'].includes(user.role))) {
+      throw shippingError(404, 'ORDER_NOT_FOUND', 'Order not found.');
+    }
+    let shiprocketOrderId;
+    try { shiprocketOrderId = providerId(source.shiprocket_order_id, 'shiprocket_order_id'); }
+    catch { throw shippingError(404, 'INVOICE_NOT_AVAILABLE', 'Invoice is not available yet. Please try again later.'); }
+    try {
+      const result = await api.request('/orders/print/invoice', {
+        method: 'POST', body: { ids: [shiprocketOrderId] }
+      });
+      const invoiceUrl = normalizeInvoice(result);
+      const document = await api.downloadInvoice(invoiceUrl);
+      return { document, filename: invoiceFilename(source, shiprocketOrderId) };
+    } catch (error) {
+      if (error.code?.startsWith('INVOICE_')) throw error;
+      throw invoiceFailure(error);
+    }
   }
 
   // Recover a remote success lost to a timeout/crash without trusting IDs or status supplied by Angular.
@@ -280,10 +335,13 @@ function createShippingService({ repository = Shipment, api = shiprocket } = {})
       console.error('Shipment processing deferred:', {
         orderId, code: /^[A-Z_]+$/.test(error.code || '') ? error.code : 'SHIPPING_INTERNAL_ERROR'
       });
+      if (['SHIPROCKET_AUTH_FAILED','SHIPROCKET_NOT_CONFIGURED','SHIPROCKET_PERMISSION_DENIED','SHIPPING_RECONCILIATION_REQUIRED'].includes(error.code)) {
+        await notifySafely(() => emailNotifications.shipmentFailure(orderId, error.code));
+      }
     }
   }
 
-  return { serviceability, createShipment, assignAwb, generatePickup, generateLabel, tracking, reconcile, processPendingOrder };
+  return { serviceability, createShipment, assignAwb, generatePickup, generateLabel, tracking, invoice, reconcile, processPendingOrder };
 }
 
-module.exports = { ...createShippingService(), createShippingService };
+module.exports = { ...createShippingService({ notifications: emails }), createShippingService };

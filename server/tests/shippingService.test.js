@@ -8,7 +8,7 @@ const ORDER_ID = '10000000-0000-4000-8000-000000000001';
 const USER_ID = '20000000-0000-4000-8000-000000000001';
 const parcel = { pickup_location: 'Test warehouse', weight: 0.5, length: 25, breadth: 20, height: 5 };
 const orderFixture = () => ({
-  id: ORDER_ID, user_id: USER_ID, payment_method: 'razorpay', payment_status: 'paid', order_status: 'confirmed',
+  id: ORDER_ID, order_number: 'MH-TEST-001', user_id: USER_ID, payment_method: 'razorpay', payment_status: 'paid', order_status: 'confirmed',
   razorpay_order_id: 'order_test', razorpay_payment_id: 'pay_test', paid_at: new Date(),
   created_at: '2026-09-13T04:00:00Z', customer_email: 'customer@example.test',
   subtotal: '1499.00', discount_amount: '0', shipping_amount: '99', total_amount: '1598'
@@ -17,7 +17,7 @@ const address = { full_name: 'Test Customer', address_line1: '123 Test Street', 
   postal_code: '110001', country: 'India', phone: '+91 9876543210' };
 const items = [{ id: 'line-1', variant_id: 'variant-1', product_name: 'Test Tee', quantity: 1, unit_price: '1499', sku: 'TEE-M-BLACK' }];
 
-function setup({ order = orderFixture(), request, row: initial } = {}) {
+function setup({ order = orderFixture(), request, downloadInvoice, row: initial } = {}) {
   let row = initial || null;
   let locked = false;
   const calls = [];
@@ -30,15 +30,23 @@ function setup({ order = orderFixture(), request, row: initial } = {}) {
     },
     async order() { return order; },
     async find() { return row; },
+    async invoiceSource() { return order ? { id: order.id, user_id: order.user_id,
+      order_number: order.order_number, shiprocket_order_id: row?.shiprocket_order_id ?? null } : null; },
     async enqueue() { row ||= { order_id: ORDER_ID, shipping_status: 'pending', attempt_count: 0, pickup_status: 'pending' }; },
     async details() { return { address, items }; },
     async patch(_client, _id, changes) { row = { ...row, ...changes }; return row; },
     async save(client, id, changes) { return this.patch(client, id, changes); }
   };
-  const api = { async request(path, options) {
-    calls.push({ path, options });
-    return request ? request(path, options) : { order_id: 101, shipment_id: 202 };
-  } };
+  const api = {
+    async request(path, options) {
+      calls.push({ path, options });
+      return request ? request(path, options) : { order_id: 101, shipment_id: 202 };
+    },
+    async downloadInvoice(url) {
+      calls.push({ path: url, download: true });
+      return downloadInvoice ? downloadInvoice(url) : Buffer.from('%PDF-1.4 test invoice');
+    }
+  };
   return { service: createShippingService({ repository, api }), calls, repository, getRow: () => row };
 }
 
@@ -51,6 +59,10 @@ test('maps immutable order snapshots, INR totals, variant SKUs and package units
   assert.equal(body.billing_customer_name, 'Test');
   assert.equal(body.billing_last_name, 'Customer');
   assert.equal(body.billing_phone, '9876543210');
+  assert.equal(body.billing_city, 'Delhi');
+  assert.equal(body.billing_state, 'Delhi');
+  assert.equal(body.billing_pincode, '110001');
+  assert.equal(body.billing_country, 'India');
   assert.equal(body.sub_total, 1499);
   assert.equal(body.shipping_charges, 99);
   assert.deepEqual(body.order_items[0], { name: 'Test Tee', sku: 'TEE-M-BLACK', units: 1, selling_price: 1499 });
@@ -203,6 +215,51 @@ test('tracking checks ownership before contacting Shiprocket, strips provider in
   await fixture.service.tracking(ORDER_ID, { id: 'admin-id', role: 'admin' });
   assert.equal(fixture.calls.length, 1);
   assert.equal(normalizeTracking({ tracking_data: { track_status: 0, error: 'provider-private-text' } }).available, false);
+});
+
+test('invoice generation checks ownership and uses only the stored Shiprocket order ID', async () => {
+  const fixture = setup({ row: { order_id: ORDER_ID, shiprocket_order_id: 101, shiprocket_shipment_id: 202 },
+    request: async () => ({ is_invoice_created: true, invoice_url: 'https://example.test/invoice.pdf' }) });
+  await assert.rejects(fixture.service.invoice(ORDER_ID, { id: 'another-user', role: 'customer' }),
+    error => error.code === 'ORDER_NOT_FOUND');
+  assert.equal(fixture.calls.length, 0);
+  const own = await fixture.service.invoice(ORDER_ID, { id: USER_ID, role: 'customer' });
+  assert.equal(own.filename, 'MH-TEST-001_Invoice_101.pdf');
+  assert.equal(own.document.subarray(0, 5).toString(), '%PDF-');
+  assert.equal(fixture.calls[0].path, '/orders/print/invoice');
+  assert.deepEqual(fixture.calls[0].options, { method: 'POST', body: { ids: [101] } });
+  assert.ok(!fixture.calls.some(call => call.path.includes('/orders/create/adhoc')));
+  const admin = await fixture.service.invoice(ORDER_ID, { id: 'admin-id', role: 'admin' });
+  assert.equal(admin.filename, own.filename);
+  assert.deepEqual(admin.document, own.document);
+});
+
+test('invoice generation safely handles missing mappings and provider failures', async () => {
+  const missing = setup({ row: { order_id: ORDER_ID, shiprocket_order_id: null } });
+  await assert.rejects(missing.service.invoice(ORDER_ID, { id: USER_ID, role: 'customer' }),
+    error => error.code === 'INVOICE_NOT_AVAILABLE' && error.status === 404);
+  assert.equal(missing.calls.length, 0);
+
+  const cases = [
+    [shippingError(503, 'SHIPROCKET_AUTH_FAILED', 'private auth failure'), 'INVOICE_PROVIDER_UNAVAILABLE', 503],
+    [Object.assign(shippingError(502, 'SHIPROCKET_REQUEST_FAILED', 'private rate response'), { upstreamStatus: 429 }), 'INVOICE_RATE_LIMITED', 429],
+    [Object.assign(shippingError(502, 'SHIPROCKET_REQUEST_FAILED', 'private missing response'), { upstreamStatus: 404 }), 'INVOICE_NOT_AVAILABLE', 404],
+    [Object.assign(shippingError(502, 'SHIPROCKET_REQUEST_FAILED', 'private server response'), { upstreamStatus: 500 }), 'INVOICE_UNAVAILABLE', 502],
+    [shippingError(504, 'SHIPROCKET_TIMEOUT', 'private network timeout'), 'INVOICE_TIMEOUT', 504]
+  ];
+  for (const [failure, code, status] of cases) {
+    const fixture = setup({ row: { order_id: ORDER_ID, shiprocket_order_id: 101 }, request: async () => { throw failure; } });
+    await assert.rejects(fixture.service.invoice(ORDER_ID, { id: USER_ID, role: 'customer' }), error =>
+      error.code === code && error.status === status && !error.message.includes('private'));
+    assert.equal(fixture.calls.length, 1);
+  }
+
+  const malformed = setup({ row: { order_id: ORDER_ID, shiprocket_order_id: 101 }, request: async () => ({ invoice_url: 'http://unsafe.test/invoice.pdf' }) });
+  await assert.rejects(malformed.service.invoice(ORDER_ID, { id: USER_ID, role: 'customer' }),
+    error => error.code === 'INVOICE_UNAVAILABLE');
+  const unavailable = setup({ row: { order_id: ORDER_ID, shiprocket_order_id: 101 }, request: async () => ({ is_invoice_created: false }) });
+  await assert.rejects(unavailable.service.invoice(ORDER_ID, { id: USER_ID, role: 'customer' }),
+    error => error.code === 'INVOICE_NOT_AVAILABLE' && error.status === 404);
 });
 
 test('reconciliation verifies the remote internal order reference before adopting IDs', async () => {

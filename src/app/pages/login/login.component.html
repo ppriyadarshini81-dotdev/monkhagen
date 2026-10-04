@@ -12,145 +12,86 @@
   <div class="mh-auth__card mh-card">
     <a class="mh-logo" routerLink="/" aria-label="Monk Hagen home">MONK<span>HAGEN</span></a>
 
-    <ng-container *ngIf="mode !== 'forgot'; else forgotHeading">
-      <h1>{{ mode === 'signin' ? 'Welcome back' : 'Create your account' }}</h1>
-      <p class="mh-auth__sub">
-        {{ mode === 'signin' ? 'Sign in to view orders and continue shopping.' : 'Join Monk Hagen using any email address.' }}
-      </p>
+    <ng-container *ngIf="step === 'phone'; else otpHeading">
+      <h1>Welcome</h1>
+      <p class="mh-auth__sub">Sign in with your mobile number to view orders and continue shopping.</p>
     </ng-container>
-    <ng-template #forgotHeading>
-      <h1>Reset your password</h1>
-      <p class="mh-auth__sub">We will send a secure reset link to your email.</p>
+    <ng-template #otpHeading>
+      <h1>Verify your mobile number</h1>
+      <p class="mh-auth__sub">We sent a verification code to <strong>{{ maskedPhone }}</strong></p>
     </ng-template>
 
-    <div class="mh-auth__tabs" *ngIf="mode !== 'forgot'" role="tablist" aria-label="Account access">
-      <button type="button" role="tab" [attr.aria-selected]="mode === 'signin'" [class.is-active]="mode === 'signin'" (click)="setMode('signin')">Sign in</button>
-      <button type="button" role="tab" [attr.aria-selected]="mode === 'register'" [class.is-active]="mode === 'register'" (click)="setMode('register')">Create account</button>
-    </div>
-
-    <div class="mh-auth__content">
     <p class="mh-auth__notice" *ngIf="notice" role="status">{{ notice }}</p>
     <p class="mh-error" *ngIf="error" role="alert">{{ error }}</p>
 
-    <form class="mh-auth__form" #emailForm="ngForm" (ngSubmit)="submitEmail(emailForm)" novalidate>
-      <label *ngIf="mode === 'register'">
-        <span>Full name</span>
+    <form class="mh-auth__form" *ngIf="step === 'phone'" (ngSubmit)="sendOtp()" novalidate>
+      <label for="customer-phone">Mobile number</label>
+      <div class="mh-phone" [class.is-invalid]="submitted && !phoneControl.valid">
+        <span aria-hidden="true">+91</span>
         <input
-          type="text"
-          name="name"
-          [(ngModel)]="name"
-          #nameControl="ngModel"
-          autocomplete="name"
-          minlength="2"
-          maxlength="100"
+          id="customer-phone"
+          type="tel"
+          name="phone"
+          [(ngModel)]="phone"
+          #phoneControl="ngModel"
+          autocomplete="tel-national"
+          inputmode="numeric"
+          maxlength="10"
+          pattern="[6-9][0-9]{9}"
+          placeholder="Enter mobile number"
+          aria-describedby="phone-help"
           required
         />
-        <small class="mh-field-error" *ngIf="nameControl.invalid && (nameControl.touched || submitted)">Enter your full name.</small>
-      </label>
-
-      <label>
-        <span>Email address</span>
-        <input
-          type="email"
-          name="email"
-          [(ngModel)]="email"
-          #emailControl="ngModel"
-          autocomplete="email"
-          email
-          required
-        />
-        <small class="mh-field-error" *ngIf="emailControl.invalid && (emailControl.touched || submitted)">Enter a valid email address.</small>
-      </label>
-
-      <label *ngIf="mode !== 'forgot'">
-        <span>Password</span>
-        <span class="mh-auth__password">
-          <input
-            [type]="showPassword ? 'text' : 'password'"
-            name="password"
-            [(ngModel)]="password"
-            #passwordControl="ngModel"
-            [attr.autocomplete]="mode === 'register' ? 'new-password' : 'current-password'"
-            [minlength]="mode === 'register' ? 8 : 6"
-            [pattern]="mode === 'register' ? registrationPasswordPattern : ''"
-            [attr.aria-invalid]="passwordControl.invalid && (passwordControl.touched || submitted)"
-            aria-describedby="password-feedback"
-            required
-          />
-          <button type="button" (click)="showPassword = !showPassword" [attr.aria-label]="showPassword ? 'Hide password' : 'Show password'">
-            {{ showPassword ? 'Hide' : 'Show' }}
-          </button>
-        </span>
-        <small class="mh-field-hint" *ngIf="mode === 'register'">Use at least 8 characters, including a special character (e.g. @, #, !).</small>
-        <small id="password-feedback" class="mh-field-error" *ngIf="passwordControl.invalid && (passwordControl.touched || submitted)">
-          {{ mode === 'register' ? 'Password must contain at least 8 characters and a special character.' : 'Enter a valid password.' }}
-        </small>
-      </label>
-
-      <label *ngIf="mode === 'register'">
-        <span>Confirm password</span>
-        <span class="mh-auth__password">
-        <input
-          [type]="showConfirmPassword ? 'text' : 'password'"
-          name="confirmPassword"
-          [(ngModel)]="confirmPassword"
-          #confirmPasswordControl="ngModel"
-          autocomplete="new-password"
-          minlength="8"
-          [pattern]="registrationPasswordPattern"
-          [attr.aria-invalid]="(confirmPasswordControl.invalid || password !== confirmPassword) && (confirmPasswordControl.touched || submitted)"
-          aria-describedby="confirm-password-feedback"
-          required
-        />
-        <button type="button" (click)="showConfirmPassword = !showConfirmPassword" [attr.aria-label]="showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'">
-          {{ showConfirmPassword ? 'Hide' : 'Show' }}
-        </button>
-        </span>
-        <small id="confirm-password-feedback" class="mh-field-error" *ngIf="(confirmPasswordControl.invalid || password !== confirmPassword) && (confirmPasswordControl.touched || submitted)">
-          {{ !confirmPassword ? 'Please confirm your password.' : password !== confirmPassword ? 'Passwords do not match.' : 'Use at least 8 characters, including a special character.' }}
-        </small>
-      </label>
-
-      <button class="mh-auth__forgot" type="button" *ngIf="mode === 'signin'" (click)="setMode('forgot')">Forgot password?</button>
-
+      </div>
+      <small id="phone-help" class="mh-field-error" *ngIf="submitted && phoneControl.invalid">Enter a valid 10-digit Indian mobile number.</small>
       <button class="mh-btn mh-btn--primary mh-btn--block" type="submit" [disabled]="loading">
-        {{ loading ? 'Please wait...' : (mode === 'register' ? 'Create account' : mode === 'forgot' ? 'Send reset link' : 'Sign in') }}
+        {{ loading ? 'Sending...' : 'Send OTP' }}
       </button>
     </form>
 
-    <button class="mh-auth__back" type="button" *ngIf="mode === 'forgot'" (click)="setMode('signin')">&#8592; Back to sign in</button>
-
-    <ng-container *ngIf="mode === 'signin'">
-      <div class="mh-auth__divider"><span>or</span></div>
-      <button
-        class="mh-btn mh-btn--google mh-btn--block"
-        type="button"
-        [disabled]="loading"
-        (click)="continueWithGoogle()"
-      >
-        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-          <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.4 30.2 0 24 0 14.7 0 6.8 5.4 3 13.3l7.8 6.1C12.5 13.1 17.8 9.5 24 9.5z"/>
-          <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>
-          <path fill="#FBBC05" d="M10.8 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.6L2.5 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.5 10.7l8.3-6.1z"/>
-          <path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.3-7.7 2.3-6.2 0-11.5-4.2-13.2-9.9l-8.3 6c3.8 7.6 11.6 12.9 21.5 12.9z"/>
-        </svg>
-        Continue with Google
+    <form class="mh-auth__form" *ngIf="step === 'otp'" (ngSubmit)="verifyOtp()" novalidate>
+      <label id="otp-label">6-digit verification code</label>
+      <div class="mh-otp" role="group" aria-labelledby="otp-label" (paste)="onOtpPaste($event)">
+        <input
+          #otpInput
+          *ngFor="let digit of otpDigits; let index = index; trackBy: trackOtpInput"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          maxlength="1"
+          [value]="digit"
+          [attr.aria-label]="'Digit ' + (index + 1)"
+          (input)="onOtpInput(index, $event)"
+          (keydown)="onOtpKeydown(index, $event)"
+        />
+      </div>
+      <button class="mh-btn mh-btn--primary mh-btn--block" type="submit" [disabled]="loading || otp.length !== 6">
+        {{ loading ? 'Verifying...' : 'Verify & sign in' }}
       </button>
-    </ng-container>
-    </div>
+      <div class="mh-otp__actions">
+        <button type="button" (click)="resendOtp()" [disabled]="loading || resendRemaining > 0">
+          {{ resendRemaining > 0 ? 'Resend in ' + resendRemaining + 's' : 'Resend OTP' }}
+        </button>
+        <button type="button" (click)="changePhone()" [disabled]="loading">Change mobile number</button>
+      </div>
+    </form>
+
+    <div class="mh-auth__divider"><span>or</span></div>
+    <button
+      class="mh-btn mh-btn--google mh-btn--block"
+      type="button"
+      [disabled]="loading"
+      (click)="continueWithGoogle()"
+    >
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.2l6.7-6.7C35.7 2.4 30.2 0 24 0 14.7 0 6.8 5.4 3 13.3l7.8 6.1C12.5 13.1 17.8 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v8.5h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17z"/>
+        <path fill="#FBBC05" d="M10.8 28.6A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.6L2.5 13.3A23.9 23.9 0 0 0 0 24c0 3.8.9 7.4 2.5 10.7l8.3-6.1z"/>
+        <path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2 1.4-4.6 2.3-7.7 2.3-6.2 0-11.5-4.2-13.2-9.9l-8.3 6c3.8 7.6 11.6 12.9 21.5 12.9z"/>
+      </svg>
+      Continue with Google
+    </button>
 
     <p class="mh-auth__terms">By continuing, you agree to the Monk Hagen terms and privacy policy.</p>
   </div>
 </section>
-
-<dialog #accountCreatedDialog class="mh-account-success" aria-labelledby="account-success-title" aria-describedby="account-success-description" (cancel)="$event.preventDefault()">
-  <div class="mh-account-success__icon" aria-hidden="true">
-    <svg width="34" height="34" viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
-  </div>
-  <h2 id="account-success-title">Account created successfully</h2>
-  <p id="account-success-description">A verification email has been sent to your email address. Please verify your email before signing in.</p>
-  <p class="mh-account-success__hint">Check your inbox or spam folder for the verification link.</p>
-  <div class="mh-account-success__actions">
-    <button class="mh-btn mh-btn--primary" type="button" autofocus (click)="closeAccountCreatedDialog()">Okay</button>
-  </div>
-</dialog>

@@ -10,6 +10,7 @@ export interface ProductWrite {
   badgeId: string | null;
   description: string;
   images: string[];
+  zoomImages: Array<string | null>;
   sizeIds: string[];
   colorIds: string[];
   variants: Array<{
@@ -21,6 +22,12 @@ export interface ProductWrite {
     price?: number | null;
     stock: number;
   }>;
+  sizeInventory: Array<{
+    sizeId: string;
+    stockQuantity: number;
+    lowStockThresholdQuantity: number;
+  }>;
+  inventoryReason?: string | null;
   featured: boolean;
 }
 

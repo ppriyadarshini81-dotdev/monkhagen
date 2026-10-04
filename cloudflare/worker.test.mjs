@@ -58,6 +58,16 @@ test('fixed Render target preserves query, bearer token and cache validators', a
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
 });
 
+test('public dynamic API reads cannot retain stale catalogue data', async t => {
+  mockFetch(t, async () => Response.json([{ id: 'product-1', price: 1 }], {
+    headers: { 'Cache-Control': 'public, max-age=14400' }
+  }));
+  const response = await worker.fetch(request('/api/products'), env);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.equal(response.headers.get('Pragma'), 'no-cache');
+});
+
 for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
   test(`${method} preserves body and content type without caching`, async t => {
     const body = '{"quantity":2,"note":"unchanged"}';

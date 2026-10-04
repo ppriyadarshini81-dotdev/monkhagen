@@ -98,6 +98,7 @@ test('public routes ignore browser visibility flags; protected admin routes reje
   for (const resource of ['products', 'categories', 'badges', 'sizes', 'colors']) {
     const publicResponse = await fetch(`${base}/${resource}?activeOnly=false&includeInactive=true&role=admin`);
     assert.equal(publicResponse.status, 200);
+    if (resource === 'products') assert.equal(publicResponse.headers.get('cache-control'), 'no-store');
     const visible = await publicResponse.json();
     assert.equal(visible.length, 1);
     assert.equal(visible[0].isActive, true);

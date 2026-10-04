@@ -185,6 +185,7 @@
 .mh-cart__offer-copy code { display: inline-block; margin-top: 9px; padding: 5px 8px; border-radius: 5px; background: var(--mh-bg-elev-2); color: var(--mh-text); font-family: inherit; font-size: 10px; font-weight: 650; letter-spacing: .03em; }
 .mh-cart__offer-applied { align-self: end; color: #087f3d; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .mh-cart__offer-applied span { display: inline-grid; place-items: center; width: 17px; height: 17px; margin-right: 3px; border-radius: 50%; background: #e4f7eb; }
+.mh-cart__offer-pending { align-self: end; color: var(--mh-text-dim); font-size: 11px; font-weight: 650; white-space: nowrap; }
 
 
 .mh-address-dialog {
@@ -263,20 +264,27 @@
 .mh-payment-option__copy strong { display: block; font-size: 15px; }
 .mh-payment-option__copy small { display: block; margin-top: 5px; color: var(--mh-text-dim); font-size: 11px; font-weight: 400; line-height: 1.5; }
 .mh-payment-option__tag { padding: 5px 8px; border-radius: 999px; background: var(--mh-bg-elev-2); color: var(--mh-text-dim); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+.mh-payment-option__tag--cod { background: #050505; color: #fff; font-weight: 700; }
 .mh-payment-note { padding: 14px 16px; border-radius: 10px; background: var(--mh-bg-elev); color: var(--mh-text-dim); font-size: 12px; line-height: 1.6; }
 .mh-payment-actions { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; }
 .mh-payment-actions .mh-btn--ghost { min-width: 105px; }
 @media (max-width: 520px) {
+  .mh-cart { padding: 32px 16px 20px; }
+  .mh-cart__head h1 { font-size: 32px; }
+  .mh-cart__grid { margin-top: 22px; }
   .mh-address-dialog { width: 100%; max-width: 100%; max-height: 94dvh; margin: auto 0 0; border-radius: 22px 22px 0 0; }
-  .mh-address-dialog__head { padding: 24px 20px 20px; }
-  .mh-checkout-steps { padding: 14px 20px; gap: 20px; }
-  .mh-address-dialog form { padding: 20px 20px 0; }
+  .mh-address-dialog__head { padding: 20px 16px 16px; }
+  .mh-address-dialog h2 { margin-top: 9px; font-size: 27px; }
+  .mh-address-intro { font-size: 12px; line-height: 1.5; }
+  .mh-checkout-steps { justify-content: space-between; padding: 12px 16px; gap: 6px; }
+  .mh-checkout-steps li { gap: 5px; font-size: 10px; }
+  .mh-address-dialog form { padding: 16px 16px 0; }
   .mh-address-footer { margin-inline: -20px; padding: 16px 20px max(16px, env(safe-area-inset-bottom)); }
   .mh-address-option { padding: 16px; }
   .mh-address-form-head { flex-direction: column; gap: 0; }
   .mh-address-cancel { margin: -10px 0 18px; }
-  .mh-payment-option { grid-template-columns: auto 38px minmax(0, 1fr); padding: 16px; }
-  .mh-payment-option__tag { display: none; }
+  .mh-payment-option { grid-template-columns: auto 38px minmax(0, 1fr); gap: 10px; padding: 14px; }
+  .mh-payment-option__tag { grid-column: 2 / -1; justify-self: start; padding-inline: 6px; font-size: 8px; }
   .mh-payment-option__icon { width: 38px; height: 38px; }
   .mh-payment-actions { grid-template-columns: 1fr; }
   .mh-payment-actions .mh-btn--ghost { order: 2; }
@@ -328,17 +336,19 @@
 
 .mh-cart__success-cta {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   justify-content: center;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1023px) {
   .mh-cart__grid {
     grid-template-columns: 1fr;
   }
   .mh-cart__side {
     position: static;
   }
+  .mh-cart__thumb img { object-fit: contain; }
 }
 
 @media (max-width: 520px) {
@@ -372,4 +382,12 @@
   }
   .mh-cart__offer-card { grid-template-columns: 40px minmax(0, 1fr); }
   .mh-cart__offer-applied { grid-column: 2; justify-self: start; }
+  .mh-cart__summary { padding: 20px 16px; }
+  .mh-cart__success { padding: 64px 0; }
+}
+
+@media (max-width: 359px) {
+  .mh-cart { padding-inline: 12px; }
+  .mh-cart__item { grid-template-columns: 62px minmax(0, 1fr); gap: 12px; }
+  .mh-cart__thumb { width: 62px; height: 82px; }
 }

@@ -17,7 +17,7 @@ export class AuthService {
 
   private readUser(): User | null {
     const raw = localStorage.getItem(USER_KEY);
-    try { return raw ? (JSON.parse(raw) as User) : null; }
+    try { return raw ? this.normalizeUser(JSON.parse(raw) as User) : null; }
     catch { localStorage.removeItem(USER_KEY); return null; }
   }
 
@@ -48,15 +48,19 @@ export class AuthService {
     return this.loginWithFirebase(idToken);
   }
 
-  /** @deprecated OTP login replaced by Google auth */
   sendOtp(phone: string): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.api}/send-otp`, { phone });
+    return this.http.post<{ message: string }>(`${this.api}/otp/send`, { phone });
   }
 
-  /** @deprecated OTP login replaced by Google auth */
-  verifyOtp(phone: string, otp: string, name?: string): Observable<AuthResponse> {
+  verifyOtp(phone: string, otp: string): Observable<AuthResponse> {
     return this.http
-      .post<AuthResponse>(`${this.api}/verify-otp`, { phone, otp, name })
+      .post<AuthResponse>(`${this.api}/otp/verify`, { phone, otp })
+      .pipe(tap((res) => this.persist(res)));
+  }
+
+  linkGoogleAccount(email: string, idToken: string): Observable<AuthResponse> {
+    return this.http
+      .post<AuthResponse>(`${this.api}/link-google`, { email, idToken })
       .pipe(tap((res) => this.persist(res)));
   }
 
@@ -72,14 +76,22 @@ export class AuthService {
   }
 
   refreshUser(user: User): void {
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
-    this.userSubject.next(user);
+    const normalized = this.normalizeUser(user);
+    localStorage.setItem(USER_KEY, JSON.stringify(normalized));
+    this.userSubject.next(normalized);
   }
 
   private persist(res: AuthResponse): void {
+    const user = this.normalizeUser(res.user);
     localStorage.setItem(TOKEN_KEY, res.token);
-    localStorage.setItem(USER_KEY, JSON.stringify(res.user));
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
     sessionStorage.setItem(PROFILE_HINT_KEY, '1');
-    this.userSubject.next(res.user);
+    this.userSubject.next(user);
+  }
+
+  private normalizeUser(user: User): User {
+    return user.name === 'Customer' && !user.email && !user.firebaseUid
+      ? { ...user, name: 'User' }
+      : user;
   }
 }

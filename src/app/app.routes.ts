@@ -49,6 +49,19 @@ export const routes: Routes = [
     pathMatch: 'full'
   },
   {
+    path: 'admin/ledger',
+    canActivate: [adminGuard],
+    loadComponent: () =>
+      import('./pages/admin-ledger/admin-ledger.component').then((m) => m.AdminLedgerComponent),
+    title: 'Financial Ledger — Monk Hagen'
+  },
+  {
+    path: 'admin/stock',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./pages/admin-stock/admin-stock.component').then((m) => m.AdminStockComponent),
+    title: 'Stock Management — Monk Hagen'
+  },
+  {
     path: 'admin',
     canActivate: [adminGuard],
     loadComponent: () =>

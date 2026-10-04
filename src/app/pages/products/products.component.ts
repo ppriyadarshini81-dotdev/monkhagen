@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, Optional } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Product } from '../../models/product.model';
 import { Category } from '../../models/category.model';
@@ -7,6 +7,7 @@ import { ProductService } from '../../services/product.service';
 import { CategoryService } from '../../services/category.service';
 import { ProductCardComponent } from '../../components/product-card/product-card.component';
 import { cachedMediaUrl } from '../../utils/media-url';
+import { ProductScrollRestorationService } from '../../services/product-scroll-restoration.service';
 
 @Component({
   selector: 'app-products',
@@ -27,7 +28,8 @@ export class ProductsComponent implements OnInit {
 
   constructor(
     private productService: ProductService,
-    private categoryService: CategoryService
+    private categoryService: CategoryService,
+    @Optional() private productScroll?: ProductScrollRestorationService
   ) {}
 
   ngOnInit(): void {
@@ -54,6 +56,7 @@ export class ProductsComponent implements OnInit {
         next: (products) => {
           this.products = this.applySort(products);
           this.loading = false;
+          this.productScroll?.restoreAfterProductsRender();
         },
         error: () => (this.loading = false)
       });

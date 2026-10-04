@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const { releaseExpiredReservations } = require('./inventoryService');
+const { redactExpired } = require('./codRefundService');
 let running = false;
 async function runMaintenance(database = pool) {
   const client = await database.connect();
@@ -15,9 +16,11 @@ async function runMaintenance(database = pool) {
     const analyticsSessions = await client.query(`DELETE FROM analytics_sessions WHERE id IN
       (SELECT s.id FROM analytics_sessions s WHERE s.last_activity_at < NOW() - INTERVAL '400 days'
         AND NOT EXISTS (SELECT 1 FROM analytics_events e WHERE e.session_id = s.id) LIMIT 1000)`);
+    const codRefundDestinationsRedacted = await redactExpired(client);
     await client.query('COMMIT');
     return { expiredReservationsChecked: released,
-      analyticsRowsRemoved: analyticsEvents.rowCount + analyticsSessions.rowCount };
+      analyticsRowsRemoved: analyticsEvents.rowCount + analyticsSessions.rowCount,
+      codRefundDestinationsRedacted };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;

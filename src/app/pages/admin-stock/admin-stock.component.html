@@ -1,0 +1,36 @@
+<main class="stock-page">
+  <header class="stock-head"><div><span class="eyebrow">Admin inventory</span><h1>Stock Management</h1><p>Monitor product and size-level inventory.</p></div><button (click)="load()" [disabled]="loading">Refresh</button></header>
+  <p class="error" *ngIf="error">{{ error }}</p>
+  <section class="summary" *ngIf="data">
+    <article><span>Total products</span><strong>{{ data.summary.totalProducts }}</strong></article>
+    <article><span>Total units in stock</span><strong>{{ data.summary.totalUnits }}</strong></article>
+    <article class="warning"><span>Low stock sizes</span><strong>{{ data.summary.lowStockSizes }}</strong></article>
+    <article class="danger"><span>Out of stock sizes</span><strong>{{ data.summary.outOfStockSizes }}</strong></article>
+    <article class="setup"><span>Needs setup</span><strong>{{ data.summary.setupRequiredSizes }}</strong></article>
+  </section>
+  <section class="filters">
+    <label><span>Search</span><input #searchBox (input)="search(searchBox.value)" placeholder="Product, SKU, category or size" /></label>
+    <label><span>Status</span><select [(ngModel)]="filters.status" (change)="filterChanged()"><option value="ALL">All</option><option value="IN_STOCK">In stock</option><option value="LOW_STOCK">Low stock</option><option value="OUT_OF_STOCK">Out of stock</option><option value="SETUP_REQUIRED">Setup required</option></select></label>
+    <label><span>Category</span><select [(ngModel)]="filters.category" (change)="filterChanged()"><option value="">All categories</option><option *ngFor="let item of categories" [value]="item.id">{{ item.name }}</option></select></label>
+    <label><span>Size</span><select [(ngModel)]="filters.size" (change)="filterChanged()"><option value="">All sizes</option><option *ngFor="let item of sizes" [value]="item.id">{{ item.name }}</option></select></label>
+    <label><span>Sort</span><select [(ngModel)]="filters.sort" (change)="filterChanged()"><option value="lowest">Problems first</option><option value="highest">Highest stock</option><option value="product">Product name</option><option value="updated">Recently updated</option></select></label>
+    <label><span>Rows</span><select [(ngModel)]="filters.limit" (change)="filterChanged()"><option [ngValue]="25">25</option><option [ngValue]="50">50</option><option [ngValue]="100">100</option></select></label>
+  </section>
+  <section class="table-card">
+    <div class="loading" *ngIf="loading">Loading size inventory…</div>
+    <div class="table-wrap" *ngIf="!loading && data"><table><thead><tr><th>Product</th><th>Category</th><th>Size</th><th>Current stock</th><th>Threshold</th><th>Remaining</th><th>Status</th><th>Last updated</th><th>Actions</th></tr></thead>
+      <tbody><tr *ngFor="let item of data.items" [class.low]="item.status === 'LOW_STOCK'" [class.out]="item.status === 'OUT_OF_STOCK'" [class.needs-setup]="item.status === 'SETUP_REQUIRED'">
+        <td><div class="product"><img *ngIf="item.imageUrl" [src]="item.imageUrl" [alt]="item.productName" /><span><strong>{{ item.productName }}</strong></span></div></td>
+        <td>{{ item.category }}</td><td><b>{{ item.size }}</b></td><td>{{ item.configured ? item.currentStock : '—' }}</td><td>{{ item.configured ? item.threshold : '—' }}</td><td>{{ item.remainingPercent === null ? '—' : (item.remainingPercent + '%') }}</td>
+        <td><span class="badge" [attr.data-status]="item.status">{{ statusLabel(item.status) }}</span></td><td>{{ item.updatedAt | date:'mediumDate' }}</td>
+        <td><div class="actions"><button (click)="openAdjust(item)" [disabled]="!item.configured">Adjust</button><button (click)="viewHistory(item)">History</button></div></td>
+      </tr></tbody></table></div>
+    <div class="empty" *ngIf="!loading && data && !data.items.length">No stock records match these filters.</div>
+    <footer *ngIf="data"><span>{{ data.pagination.total }} size records</span><div><button (click)="page(-1)" [disabled]="filters.page <= 1">Previous</button><b>Page {{ filters.page }} of {{ data.pagination.pages }}</b><button (click)="page(1)" [disabled]="filters.page >= data.pagination.pages">Next</button></div></footer>
+  </section>
+</main>
+
+<div class="modal" *ngIf="selected" (click)="closeAdjust()"><section (click)="$event.stopPropagation()"><button class="close" (click)="closeAdjust()">×</button><span class="eyebrow">Adjust stock</span><h2>{{ selected.productName }}</h2><p>Size {{ selected.size }}</p><dl><div><dt>Current stock</dt><dd>{{ selected.currentStock }}</dd></div><div><dt>Result</dt><dd>{{ adjustmentResult }}</dd></div></dl>
+  <label><span>Adjustment</span><input type="number" step="1" [(ngModel)]="adjustment" placeholder="Example: 10 or -3" /></label><label><span>Reason *</span><textarea rows="3" maxlength="500" [(ngModel)]="reason" placeholder="New stock received, damaged units removed…"></textarea></label><button class="confirm" (click)="saveAdjustment()" [disabled]="saving">{{ saving ? 'Saving…' : 'Confirm adjustment' }}</button></section></div>
+
+<div class="modal" *ngIf="historyItem" (click)="closeHistory()"><section class="history" (click)="$event.stopPropagation()"><button class="close" (click)="closeHistory()">×</button><span class="eyebrow">Stock history</span><h2>{{ historyItem.productName }} · {{ historyItem.size }}</h2><div class="loading" *ngIf="historyLoading">Loading history…</div><div class="history-list" *ngIf="!historyLoading"><article *ngFor="let item of movements"><time>{{ item.createdAt | date:'medium' }}</time><strong [class.negative]="item.quantityChange < 0">{{ item.quantityChange > 0 ? '+' : '' }}{{ item.quantityChange }}</strong><span>{{ statusLabel(item.type) }}</span><p>{{ item.reason || 'No reason recorded' }}</p><small>{{ item.orderNumber || item.returnNumber || item.createdBy }} · {{ item.quantityBefore }} → {{ item.quantityAfter }}</small></article><p *ngIf="!movements.length">No movements recorded yet.</p></div></section></div>

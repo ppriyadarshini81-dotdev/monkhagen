@@ -7,9 +7,17 @@ const shipping = require('./shippingService');
 const inventory = require('./inventoryService');
 const analytics = require('./analyticsService');
 const offers = require('./offerService');
+const emails = require('./transactionalEmailService');
+const sms = require('./transactionalSmsService');
+const ledger = require('./financialLedgerService');
 
 const CURRENCY = 'INR';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function notifySafely(action) {
+  try { await action(); }
+  catch (error) { console.error('Payment notification could not be queued.', { code: /^[A-Z0-9_]{1,100}$/.test(error.code || '') ? error.code : 'EMAIL_QUEUE_FAILED' }); }
+}
 
 function httpError(status, message) {
   const error = new Error(message);
@@ -103,7 +111,6 @@ async function createPaymentOrder(userId, { addressId, checkoutToken }) {
     const prepaidOffer = await offers.firstPrepaidOffer(client, userId, amount);
     const discount = prepaidOffer.discountPaise;
     const payable = prepaidOffer.totalPaise;
-    await inventory.deduct(client, items);
     const localOrderNumber = orderNumber();
     const result = await client.query(`INSERT INTO orders
       (user_id, cart_id, checkout_token, order_number, subtotal, discount_amount, shipping_amount, total_amount,
@@ -111,6 +118,7 @@ async function createPaymentOrder(userId, { addressId, checkoutToken }) {
       VALUES ($1,$2,$3,$4,$5,$6,0,$7,'razorpay','pending','placed',NOW(),NOW() + INTERVAL '15 minutes') RETURNING id`,
       [userId, cart.id, checkoutToken, localOrderNumber, fromPaise(amount), fromPaise(discount), fromPaise(payable)]);
     const localOrderId = result.rows[0].id;
+    await inventory.deduct(client, items, { orderId: localOrderId, movementType: 'ORDER_RESERVED' });
     await inventory.snapshotAddress(client, localOrderId, address);
     await inventory.snapshotItems(client, localOrderId, items);
     const remote = await razorpay.orders.create({ amount: payable, currency: CURRENCY, receipt: localOrderNumber,
@@ -141,6 +149,7 @@ async function finalizePaidOrder(client, { razorpayOrderId, paymentId, signature
       throw httpError(409, 'This order is already linked to another payment.');
     }
     if (order.payment_status === 'paid' && !order.fulfillment_hold_reason) await Shipment.enqueue(client, order.id);
+    await ledger.payment(client, order, paymentId);
     return { order, newlyFinalized: false };
   }
   let holdReason = order.fulfillment_hold_reason || null;
@@ -151,14 +160,17 @@ async function finalizePaidOrder(client, { razorpayOrderId, paymentId, signature
     allocated = false;
   } else if (!allocated) {
     const itemResult = await client.query(
-    `SELECT variant_id, SUM(quantity)::int AS quantity
-     FROM order_items WHERE order_id = $1 GROUP BY variant_id ORDER BY variant_id`,
+    `SELECT psd.id AS inventory_id, oi.size, SUM(oi.quantity)::int AS quantity
+     FROM order_items oi
+     JOIN product_variants pv ON pv.id = oi.variant_id
+     JOIN product_size_details psd ON psd.product_id = oi.product_id AND psd.size_id = pv.size_id
+     WHERE oi.order_id = $1 GROUP BY psd.id, oi.size ORDER BY psd.id`,
     [order.id]
   );
     await client.query('SAVEPOINT captured_inventory');
     try {
       if (!itemResult.rows.length) throw httpError(409, 'Order inventory needs review.');
-      await inventory.deduct(client, itemResult.rows);
+      await inventory.deduct(client, itemResult.rows, { orderId: order.id, movementType: 'ORDER_SOLD' });
       allocated = true;
       await client.query('RELEASE SAVEPOINT captured_inventory');
     } catch (error) {
@@ -187,6 +199,7 @@ async function finalizePaidOrder(client, { razorpayOrderId, paymentId, signature
     );
   }
   if (!holdReason) await Shipment.enqueue(client, order.id);
+  await ledger.payment(client, updated.rows[0], paymentId);
   return { order: updated.rows[0], newlyFinalized: true };
 }
 
@@ -240,8 +253,9 @@ async function verifyPayment(userId, { localOrderId, razorpayPaymentId, razorpay
   // The queue row is committed. Shipping failures cannot roll back or fail a captured payment.
   if (!process.env.VERCEL) {
     if (finalization.order.payment_status === 'paid' && !finalization.order.fulfillment_hold_reason) void shipping.processPendingOrder(order.id);
-    if (finalization.order.payment_status === 'paid') void sendOrderConfirmation(order.id).catch(() => console.warn('Order confirmation email will be retried.'));
   }
+  if (finalization.order.payment_status === 'paid') await notifySafely(() => sendOrderConfirmation(order.id));
+  if (finalization.order.payment_status === 'paid') await notifySafely(() => sms.orderConfirmed(order.id));
   return {
     localOrderId: order.id,
     orderNumber: finalization.order.order_number,
@@ -271,6 +285,7 @@ async function processWebhook(rawBody, headers) {
   let analyticsOrder = null;
   let paymentAttempt = null;
   let paymentAttemptStatus = null;
+  let completedRefund = null;
   try {
     await client.query('BEGIN');
     const claim = await client.query(
@@ -314,7 +329,7 @@ async function processWebhook(rawBody, headers) {
         analyticsOrder = failed.rows[0] || analyticsOrder;
       }
     } else if (eventType === 'refund.processed') {
-      await recordProcessedRefund(client, payload.payload?.refund?.entity, payment);
+      completedRefund = await recordProcessedRefund(client, payload.payload?.refund?.entity, payment, String(eventId));
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -337,12 +352,14 @@ async function processWebhook(rawBody, headers) {
   if (finalizedOrderId && !process.env.VERCEL) {
     // The worker rechecks payment/hold state under its own durable lease.
     if (dispatchAllowed) void shipping.processPendingOrder(finalizedOrderId);
-    void sendOrderConfirmation(finalizedOrderId).catch(() => console.warn('Order confirmation email will be retried.'));
   }
+  if (finalizedOrderId) await notifySafely(() => sendOrderConfirmation(finalizedOrderId));
+  if (finalizedOrderId) await notifySafely(() => sms.orderConfirmed(finalizedOrderId));
+  if (completedRefund?.returnId) await notifySafely(() => emails.refundCompleted(completedRefund.returnId, completedRefund.refundId));
   return { duplicate: false };
 }
 
-async function recordProcessedRefund(client, refund, payment) {
+async function recordProcessedRefund(client, refund, payment, eventId = null) {
   const validId = value => typeof value === 'string' && /^[a-zA-Z0-9_]{1,255}$/.test(value);
   if (!refund || !validId(refund.id) || !validId(refund.payment_id) || refund.status !== 'processed' ||
       refund.currency !== CURRENCY || !Number.isSafeInteger(refund.amount) || refund.amount <= 0) {
@@ -380,6 +397,36 @@ async function recordProcessedRefund(client, refund, payment) {
   await client.query(`UPDATE orders SET refunded_amount = $1,
     payment_status = $2, fulfillment_hold_reason = 'ORDER_REFUND_REVIEW_REQUIRED', updated_at = NOW() WHERE id = $3`,
     [fromPaise(refunded), refunded === total ? 'refunded' : 'partially_refunded', order.id]);
+
+  // A signed Razorpay processed event is the source of truth for return
+  // completion. Notes cover the narrow race where the webhook arrives before
+  // the refund-create response has been persisted locally.
+  const notedReturnId = refund.notes?.return_request_id;
+  const validReturnId = typeof notedReturnId === 'string' && UUID_RE.test(notedReturnId) ? notedReturnId : null;
+  const linkedReturn = await client.query(
+    `SELECT * FROM return_requests WHERE razorpay_refund_id = $1
+       OR ($2::uuid IS NOT NULL AND id = $2) FOR UPDATE`, [refund.id, validReturnId]
+  );
+  const returnRequest = linkedReturn.rows[0];
+  if (returnRequest) {
+    if (returnRequest.order_id !== order.id || toPaise(returnRequest.refund_amount) !== refund.amount ||
+        (returnRequest.razorpay_refund_id && returnRequest.razorpay_refund_id !== refund.id)) {
+      throw httpError(409, 'Refund does not match the linked return request.');
+    }
+    await client.query(
+      `UPDATE return_requests SET razorpay_refund_id = $1, status = 'refunded', refund_status = 'refunded',
+       refunded_at = COALESCE(refunded_at, NOW()), completed_at = COALESCE(completed_at, NOW()),
+       pending_operation = NULL, operation_started_at = NULL, last_error_code = NULL, updated_at = NOW()
+       WHERE id = $2`, [refund.id, returnRequest.id]
+    );
+  }
+  await ledger.refund(client, {
+    orderId: order.id, returnId: returnRequest?.id || null, refundId: refund.id,
+    amount: fromPaise(refund.amount), status: 'SUCCESS', eventId,
+    eventType: 'REFUND_PROCESSED',
+    occurredAt: Number.isSafeInteger(refund.created_at) ? new Date(refund.created_at * 1000) : new Date()
+  });
+  return { returnId: returnRequest?.id || null, refundId: refund.id, orderId: order.id };
 }
 
 module.exports = {

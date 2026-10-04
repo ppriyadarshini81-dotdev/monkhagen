@@ -1,10 +1,10 @@
 <section class="mh-acct-section">
   <h2>Returns</h2>
   <p class="mh-text-dim" style="font-size:13px;margin:8px 0 20px">
-    To request a return on a delivered order, go to <strong>My Orders</strong> and contact support within 7 days of delivery.
+    To request a return on an eligible delivered order, open <strong>My Orders</strong> and choose Return item within 7 days of delivery.
   </p>
 
-  <div *ngIf="loading" class="mh-empty">Loading…</div>
+  <div *ngIf="loading" class="mh-empty">Loading...</div>
   <div *ngIf="!loading && returns.length === 0" class="mh-empty">No return requests yet.</div>
 
   <div class="mh-returns" *ngIf="!loading && returns.length > 0">
@@ -14,14 +14,51 @@
           <div class="mh-return-card__num">#{{ r.returnNumber }}</div>
           <div class="mh-text-dim" style="font-size:12px">{{ r.requestedAt | date:'mediumDate' }}</div>
         </div>
-        <span class="mh-status" [class]="'mh-status--' + statusClass(r.status)">{{ r.status }}</span>
+        <span class="mh-status" [class]="'mh-status--' + statusClass(r.status)">{{ r.cancellationPending ? 'Cancellation pending' : statusLabel(r.status) }}</span>
       </div>
-      <p style="font-size:14px;margin:10px 0 4px"><strong>Reason:</strong> {{ r.reason }}</p>
+      <div class="mh-return-items"><div *ngFor="let item of r.items"><strong>{{ item.productName }}</strong><span>Qty {{ item.quantity }} · {{ statusLabel(item.reason || '') }}</span></div></div>
       <p *ngIf="r.comments" style="font-size:13px;color:var(--mh-text-dim)">{{ r.comments }}</p>
-      <div *ngIf="r.refundAmount > 0" style="font-size:14px;margin-top:8px">
-        Refund: ₹{{ r.refundAmount }} ·
-        <span [class]="'mh-status mh-status--' + (r.refundStatus === 'refunded' ? 'green' : 'grey')">{{ r.refundStatus }}</span>
+      <p class="mh-return-delay" *ngIf="r.pickupDelayed">We received your return request, but pickup scheduling is taking longer than expected.</p>
+      <p class="mh-return-delay" *ngIf="r.cancellationPending">Cancellation is being confirmed with the delivery partner.</p>
+      <div class="mh-return-progress" *ngIf="r.status !== 'rejected' && r.status !== 'cancelled'">
+        <span [class.done]="progress(r.status) >= 0">Requested</span><span [class.done]="progress(r.status) >= 2">Pickup</span><span [class.done]="progress(r.status) >= 3">Picked up</span><span [class.done]="progress(r.status) >= 5">Received</span><span [class.done]="progress(r.status) >= 7">Refund</span>
       </div>
+      <div *ngIf="r.refundAmount > 0" style="font-size:14px;margin-top:8px">
+        Refund: &#8377;{{ r.refundAmount }} ·
+        <span [class]="'mh-status mh-status--' + (r.refundStatus === 'refunded' ? 'green' : 'grey')">{{ statusLabel(r.refundStatus) }}</span>
+      </div>
+      <section class="mh-cod-refund" *ngIf="r.paymentMethod === 'cod' && (r.refundDestination.required || r.refundDestination.provided)">
+        <div class="mh-cod-refund__summary">
+          <div><small>{{ r.refundDestination.required ? 'Refund details required' : 'Refund destination' }}</small>
+            <strong *ngIf="r.refundDestination.provided">{{ r.refundDestination.method === 'UPI' ? 'UPI' : 'Bank Transfer' }}</strong>
+            <span *ngIf="r.refundDestination.masked">{{ r.refundDestination.masked }}</span>
+            <span>{{ refundDestinationStatus(r) }}</span>
+            <span *ngIf="r.refundDestination.transactionReference">Reference: {{ r.refundDestination.transactionReference }}</span>
+          </div>
+          <button type="button" *ngIf="r.refundDestination.required || r.refundDestination.canEdit"
+            (click)="openRefundForm(r)">{{ r.refundDestination.provided ? 'Edit details' : 'Provide refund details' }}</button>
+        </div>
+        <p *ngIf="r.refundDestination.required">Choose where you would like to receive your &#8377;{{ r.refundAmount }} COD refund.</p>
+
+        <form *ngIf="refundFormReturnId === r.id" (ngSubmit)="submitRefundDestination(r)" autocomplete="off" class="mh-cod-refund__form">
+          <fieldset><legend>Choose refund method</legend><label><input type="radio" name="refundMethod-{{ r.id }}" [(ngModel)]="refundMethod" value="UPI" /> UPI</label>
+            <label><input type="radio" name="refundMethod-{{ r.id }}" [(ngModel)]="refundMethod" value="BANK" /> Bank Account</label></fieldset>
+          <ng-container *ngIf="refundMethod === 'UPI'">
+            <label><span>UPI ID *</span><input name="upi-{{ r.id }}" [(ngModel)]="upiId" required maxlength="320" placeholder="name@bank" autocapitalize="none" spellcheck="false" /></label>
+            <label><span>Confirm UPI ID *</span><input name="confirmUpi-{{ r.id }}" [(ngModel)]="confirmUpiId" required maxlength="320" placeholder="name@bank" autocapitalize="none" spellcheck="false" /></label>
+          </ng-container>
+          <ng-container *ngIf="refundMethod === 'BANK'">
+            <label><span>Account Holder Name *</span><input name="holder-{{ r.id }}" [(ngModel)]="accountHolderName" required maxlength="100" /></label>
+            <label><span>Account Number *</span><input type="password" inputmode="numeric" name="account-{{ r.id }}" [(ngModel)]="accountNumber" required minlength="6" maxlength="20" /></label>
+            <label><span>Confirm Account Number *</span><input type="password" inputmode="numeric" name="confirmAccount-{{ r.id }}" [(ngModel)]="confirmAccountNumber" required minlength="6" maxlength="20" /></label>
+            <label><span>IFSC Code *</span><input name="ifsc-{{ r.id }}" [(ngModel)]="ifsc" required minlength="11" maxlength="11" autocapitalize="characters" /></label>
+            <label><span>Bank Name</span><input name="bank-{{ r.id }}" [(ngModel)]="bankName" maxlength="100" /></label>
+          </ng-container>
+          <p class="mh-cod-refund__error" *ngIf="refundError">{{ refundError }}</p>
+          <div class="mh-cod-refund__actions"><button type="button" (click)="clearRefundForm()" [disabled]="refundSaving">Cancel</button>
+            <button type="submit" [disabled]="refundSaving">{{ refundSaving ? 'Saving...' : 'Submit Refund Details' }}</button></div>
+        </form>
+      </section>
     </div>
   </div>
 </section>

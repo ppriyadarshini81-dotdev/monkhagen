@@ -5,15 +5,21 @@ const { pool } = require('../config/db');
 const shipping = require('../services/shippingService');
 const razorpayConfig = require('../config/razorpay');
 const mail = require('../services/orderConfirmationEmail');
+const sms = require('../services/transactionalSmsService');
 
 const ORDER_ID = '10000000-0000-4000-8000-000000000001';
 const USER_ID = '20000000-0000-4000-8000-000000000001';
 const VARIANT_ID = '30000000-0000-4000-8000-000000000001';
+const INVENTORY_ID = '40000000-0000-4000-8000-000000000001';
+const PRODUCT_ID = '50000000-0000-4000-8000-000000000001';
+const SIZE_ID = '60000000-0000-4000-8000-000000000001';
 process.env.RAZORPAY_KEY_SECRET = 'test-only-secret';
 process.env.RAZORPAY_WEBHOOK_SECRET = 'test-only-webhook';
 let payment;
 razorpayConfig.getRazorpay = () => ({ razorpay: { payments: { fetch: async () => payment } } });
 mail.sendOrderConfirmation = async () => false;
+let smsCalls = [];
+sms.orderConfirmed = async orderId => { smsCalls.push(orderId); return { sent: 1, failed: 0, skipped: 0 }; };
 // Load after replacing external integrations: these tests cannot create a real payment/shipment/email.
 const payments = require('../services/paymentService');
 const originalQuery = pool.query;
@@ -23,6 +29,7 @@ afterEach(() => {
   pool.query = originalQuery;
   pool.connect = originalConnect;
   shipping.processPendingOrder = originalProcess;
+  smsCalls = [];
 });
 
 function setup({ duplicateEvent = false } = {}) {
@@ -39,8 +46,10 @@ function setup({ duplicateEvent = false } = {}) {
       if (sql === 'COMMIT') committed = true;
       if (sql.includes('INSERT INTO payment_webhook_events')) return { rows: duplicateEvent ? [] : [{ event_id: 'event-test' }] };
       if (sql.includes('SELECT * FROM orders')) return { rows: [order] };
-      if (sql.includes('FROM order_items')) return { rows: [{ variant_id: VARIANT_ID, quantity: 1 }] };
-      if (sql.includes('UPDATE product_variants')) return { rows: [{ id: VARIANT_ID }] };
+      if (sql.includes('FROM order_items')) return { rows: [{ inventory_id: INVENTORY_ID, size: 'M', quantity: 1 }] };
+      if (sql.includes('UPDATE product_size_details')) return { rows: [{ id: INVENTORY_ID,
+        product_id: PRODUCT_ID, size_id: SIZE_ID, quantity_before: 1, quantity_after: 0 }] };
+      if (sql.includes('INSERT INTO inventory_movements')) return { rows: [{ id: '70000000-0000-4000-8000-000000000001' }] };
       if (sql.includes("payment_status = 'paid'")) return { rows: [{ ...order, payment_status: 'paid', order_status: 'confirmed' }] };
       if (sql.includes('INSERT INTO shipments')) queueInserted = true;
       return { rows: [] };
@@ -72,12 +81,14 @@ test('verified capture queues shipping before commit and starts processing only 
   const paid = fixture.statements.findIndex(sql => sql.includes("payment_status = 'paid'"));
   assert.ok(paid >= 0 && insert > paid && insert < fixture.statements.indexOf('COMMIT'));
   assert.deepEqual(fixture.kicks, [{ id: ORDER_ID, committed: true, queueInserted: true }]);
+  assert.deepEqual(smsCalls, [ORDER_ID]);
 });
 
 test('frontend success with invalid signature never queues a shipment', async () => {
   const fixture = setup();
   await assert.rejects(payments.verifyPayment(USER_ID, verification('00')), /signature/);
   assert.equal(fixture.kicks.length, 0);
+  assert.equal(smsCalls.length, 0);
   assert.equal(fixture.statements.length, 0);
 });
 
@@ -117,12 +128,14 @@ test('authenticated captured webhook queues shipping after payment commit', asyn
   const fixture = setup();
   await payments.processWebhook(...webhook('payment.captured'));
   assert.deepEqual(fixture.kicks, [{ id: ORDER_ID, committed: true, queueInserted: true }]);
+  assert.deepEqual(smsCalls, [ORDER_ID]);
 });
 
 test('failed, duplicate and forged webhooks never trigger a shipment', async () => {
   let fixture = setup();
   await payments.processWebhook(...webhook('payment.failed', { status: 'failed' }));
   assert.equal(fixture.kicks.length, 0);
+  assert.equal(smsCalls.length, 0);
   fixture = setup({ duplicateEvent: true });
   assert.equal((await payments.processWebhook(...webhook('payment.captured'))).duplicate, true);
   assert.equal(fixture.kicks.length, 0);

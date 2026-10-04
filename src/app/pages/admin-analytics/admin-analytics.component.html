@@ -31,6 +31,7 @@
     <span>{{ overview.period.label }}</span>
     <span>{{ overview.period.timezone }}</span>
     <span *ngIf="refreshedAt">Updated {{ refreshedAt | date:'shortTime' }}</span>
+    <span *ngIf="overview.trackingStartedAt">Tracking available since {{ overview.trackingStartedAt | date:'mediumDate' }}</span>
   </div>
   <p class="analytics-error" *ngIf="error">{{ error }}</p>
 
@@ -39,25 +40,49 @@
   </div>
 
   <ng-container *ngIf="overview">
-    <div class="kpi-grid kpi-grid--primary">
-      <article class="kpi" *ngFor="let item of primaryKpis">
-        <span class="kpi__label">{{ item.label }}</span>
-        <strong>{{ value(item) }}</strong>
-        <small [class.positive]="(metric(item.key).changePercent || 0) > 0"
-               [class.negative]="(metric(item.key).changePercent || 0) < 0">
-          {{ changeLabel(metric(item.key)) }}
-        </small>
-      </article>
-    </div>
-
-    <div class="kpi-grid kpi-grid--secondary">
-      <article class="kpi kpi--small" *ngFor="let item of secondaryKpis">
-        <span class="kpi__label">{{ item.label }}</span>
-        <strong>{{ value(item) }}</strong>
-        <small>{{ changeLabel(metric(item.key)) }}</small>
-      </article>
-    </div>
+    <section class="metric-group" *ngFor="let group of kpiGroups">
+      <div class="metric-group__head"><div><h2>{{ group.title }}</h2><p>{{ group.description }}</p></div></div>
+      <div class="kpi-grid">
+        <button type="button" class="kpi kpi--small" *ngFor="let item of group.items"
+          [class.kpi--selected]="selectedMetric === item.key" (click)="selectMetric(item.key)"
+          [attr.aria-label]="'Open ' + item.label + ' details'">
+          <span class="kpi__label">{{ item.label }} <i aria-hidden="true">i</i></span>
+          <strong>{{ value(item) }}</strong>
+          <small [class.positive]="(metric(item.key).changePercent || 0) > 0"
+                 [class.negative]="(metric(item.key).changePercent || 0) < 0">{{ changeLabel(metric(item.key)) }}</small>
+        </button>
+      </div>
+    </section>
   </ng-container>
+
+  <section class="panel panel--wide metric-trend" *ngIf="trend && overview">
+    <div class="panel__head"><div><span class="section-kicker">Selected metric</span><h2>{{ selectedDefinition.label }}</h2>
+      <p>{{ definition(selectedMetric) }}</p></div><strong>{{ value(selectedDefinition) }}</strong></div>
+    <div class="bar-chart" *ngIf="trend.points.length && hasTrendData; else noTrend">
+      <button type="button" class="bar-chart__item" *ngFor="let point of trend.points" (click)="openDrilldown(point)"
+        [attr.aria-label]="'Open ' + selectedDefinition.label + ' details for ' + shortDate(point.date)">
+        <span class="bar-chart__value">{{ trendLabel(point) }}</span>
+        <i [style.height.%]="trendHeight(point)" [attr.title]="shortDate(point.date) + ': ' + trendLabel(point)"></i>
+        <span class="bar-chart__tooltip"><b>{{ shortDate(point.date) }}</b><em>{{ selectedDefinition.label }}</em><strong>{{ trendLabel(point) }}</strong></span>
+        <small>{{ shortDate(point.date) }}</small>
+      </button>
+    </div>
+    <ng-template #noTrend><div class="empty"><strong>No {{ selectedDefinition.label | lowercase }} records</strong><br>
+      The chart is working, but this metric is zero for every date in the selected period.</div></ng-template>
+  </section>
+
+  <section class="panel panel--wide drilldown" *ngIf="drilldownLoading || drilldown || drilldownError">
+    <div class="panel__head"><div><span class="section-kicker">Daily drill-down</span>
+      <h2>{{ selectedDefinition.label }} details<span *ngIf="drilldown"> · {{ drilldown.date | date:'mediumDate' }}</span></h2>
+      <p *ngIf="drilldown">{{ drilldown.definition }}</p></div></div>
+    <div class="empty" *ngIf="drilldownLoading">Loading detailed records…</div>
+    <p class="analytics-error" *ngIf="drilldownError">{{ drilldownError }}</p>
+    <div class="table-wrap" *ngIf="drilldown && drilldown.rows.length"><table><thead><tr>
+      <th *ngFor="let column of drilldown.columns">{{ column.label }}</th></tr></thead><tbody>
+      <tr *ngFor="let row of drilldown.rows"><td *ngFor="let column of drilldown.columns">{{ cell(row,column.key) }}</td></tr>
+    </tbody></table></div>
+    <div class="empty" *ngIf="drilldown && !drilldown.rows.length">No underlying records exist for this metric and date.</div>
+  </section>
 
   <section class="panel panel--wide" *ngIf="revenue">
     <div class="panel__head">
@@ -101,6 +126,15 @@
           <small *ngIf="!first">{{ stage.conversionFromPrevious }}% continued · {{ stage.dropOffFromPrevious }}% drop-off</small>
         </div>
       </div>
+      <h3 class="minor-title">Guest journey</h3>
+      <div class="journey-segments">
+        <div><span>Guest visitors</span><strong>{{ funnel.guest.visitors }}</strong></div>
+        <div><span>Product viewers</span><strong>{{ funnel.guest.productViewers }}</strong></div>
+        <div><span>Added to cart</span><strong>{{ funnel.guest.addToCartVisitors }}</strong></div>
+        <div><span>Checkout</span><strong>{{ funnel.guest.checkoutVisitors }}</strong></div>
+        <div><span>Later logged in</span><strong>{{ funnel.guest.laterLoggedIn }}</strong></div>
+        <div><span>Purchased</span><strong>{{ funnel.guest.purchased }}</strong></div>
+      </div>
     </section>
 
     <section class="panel" *ngIf="visitors">
@@ -133,8 +167,8 @@
     <div class="table-wrap">
       <table>
         <thead><tr>
-          <th>Product</th><th><button (click)="sortProducts('views')">Views</button></th><th>Unique</th>
-          <th><button (click)="sortProducts('adds')">Adds</button></th><th>Add rate</th><th>Checkout</th>
+          <th>Product</th><th><button (click)="sortProducts('views')">Views</button></th><th>Unique</th><th>Auth</th><th>Guest</th>
+          <th><button (click)="sortProducts('adds')">Adds</button></th><th>Unique carts</th><th>View → cart</th><th>Cart → buy</th><th>Checkout</th>
           <th><button (click)="sortProducts('units')">Units</button></th><th>Orders</th>
           <th><button (click)="sortProducts('revenue')">Revenue</button></th>
           <th><button (click)="sortProducts('conversion')">Conversion</button></th>
@@ -142,7 +176,8 @@
         <tbody>
           <tr *ngFor="let product of products.products">
             <td><strong>{{ product.name }}</strong></td><td>{{ product.views }}</td><td>{{ product.uniqueViewers }}</td>
-            <td>{{ product.addToCarts }}</td><td>{{ product.addToCartRate }}%</td><td>{{ product.checkouts }}</td>
+            <td>{{ product.loggedInViewers }}</td><td>{{ product.guestViewers }}</td><td>{{ product.addToCarts }}</td>
+            <td>{{ product.uniqueCartVisitors }}</td><td>{{ product.addToCartRate }}%</td><td>{{ product.cartPurchaseRate }}%</td><td>{{ product.checkouts }}</td>
             <td>{{ product.unitsSold }}</td><td>{{ product.orders }}</td><td>{{ currency(product.revenue) }}</td>
             <td>{{ product.conversionRate }}%</td>
           </tr>
@@ -160,12 +195,13 @@
         <div><strong>{{ carts.summary.recovered }}</strong><span>Recovered</span></div>
       </div>
       <div class="value-callout"><span>Estimated abandoned value</span><strong>{{ currency(carts.summary.estimatedAbandonedValue) }}</strong><small>Inactive for at least 24 hours</small></div>
-      <div class="mini-list" *ngIf="carts.carts.length; else noCarts">
-        <article *ngFor="let cart of carts.carts.slice(0, 8)">
-          <div><strong>#{{ cart.customerReference }}</strong><span>{{ cart.products || 'Empty cart' }}</span></div>
-          <div><strong>{{ currency(cart.value) }}</strong><span>{{ cart.ageHours }}h ago</span></div>
-        </article>
-      </div>
+      <div class="table-wrap" *ngIf="carts.carts.length; else noCarts"><table>
+        <thead><tr><th>Customer / guest</th><th>Products</th><th>Value</th><th>Last activity</th><th>Checkout</th><th>Payment</th><th>Purchased</th></tr></thead>
+        <tbody><tr *ngFor="let cart of carts.carts.slice(0, 20)"><td>{{ cart.status === 'guest' ? 'Guest' : 'Customer' }} #{{ cart.customerReference }}</td>
+          <td>{{ cart.products || 'Empty cart' }}</td><td>{{ currency(cart.value) }}</td><td>{{ cart.ageHours }}h ago</td>
+          <td>{{ cart.checkoutStarted ? 'Yes' : 'No' }}</td><td>{{ cart.paymentAttempted ? cart.lastPaymentStatus : 'No attempt' }}</td>
+          <td>{{ cart.purchased ? 'Yes' : 'No' }}</td></tr></tbody>
+      </table></div>
       <ng-template #noCarts><div class="empty">No cart activity in this period.</div></ng-template>
     </section>
 
@@ -183,16 +219,94 @@
   </div>
 
   <section class="panel panel--wide" *ngIf="payments">
-    <div class="panel__head"><div><span class="section-kicker">Operations</span><h2>Recent payment issues</h2></div></div>
+    <div class="panel__head"><div><span class="section-kicker">Operations</span><h2>Payment attempts</h2></div></div>
     <div class="table-wrap" *ngIf="payments.issues.length; else noIssues">
-      <table><thead><tr><th>Order</th><th>Customer ref</th><th>Amount</th><th>Failure category</th><th>Attempted</th></tr></thead>
+      <table><thead><tr><th>Order</th><th>Customer ref</th><th>Provider ref</th><th>Amount</th><th>Method</th><th>Status</th><th>Failure category</th><th>Retry?</th><th>Purchased?</th><th>Attempted</th></tr></thead>
         <tbody><tr *ngFor="let issue of payments.issues">
           <td><strong>{{ issue.orderReference }}</strong></td><td>#{{ issue.customerReference }}</td>
-          <td>{{ currency(issue.amount) }}</td><td><span class="status status--failed">{{ issue.failureCategory }}</span></td>
+          <td>#{{ issue.providerReference }}</td><td>{{ currency(issue.amount) }}</td><td>{{ issue.paymentMethod }}</td><td><span class="status">{{ issue.status }}</span></td>
+          <td><span class="status" [class.status--failed]="issue.status === 'failed'">{{ issue.failureCategory }}</span></td>
+          <td>{{ issue.retried ? 'Yes' : 'No' }}</td><td>{{ issue.eventuallyPurchased ? 'Yes' : 'No' }}</td>
           <td>{{ issue.attemptedAt | date:'medium' }}</td>
         </tr></tbody>
       </table>
     </div>
-    <ng-template #noIssues><div class="empty">No failed payment attempts in this period.</div></ng-template>
+    <ng-template #noIssues><div class="empty">No payment attempts in this period.</div></ng-template>
   </section>
+
+  <section class="panel panel--wide" *ngIf="logins">
+    <div class="panel__head"><div><span class="section-kicker">Accounts</span><h2>Login & signup activity</h2>
+      <p>Opaque customer and visitor references preserve privacy while supporting journey investigation.</p></div></div>
+    <div class="table-wrap" *ngIf="logins.users.length"><table>
+      <thead><tr><th>Customer ref</th><th>Login count</th><th>First login</th><th>Last login</th></tr></thead>
+      <tbody><tr *ngFor="let user of logins.users"><td>#{{ user.customerReference }}</td><td>{{ user.loginCount }}</td>
+        <td>{{ user.firstLogin | date:'medium' }}</td><td>{{ user.lastLogin | date:'medium' }}</td></tr></tbody>
+    </table></div>
+    <h3 class="minor-title">Recent authentication events</h3>
+    <div class="table-wrap" *ngIf="logins.events.length; else noLogins"><table>
+      <thead><tr><th>Time</th><th>Event</th><th>Customer ref</th><th>Visitor ref</th><th>Entry</th><th>Exit</th></tr></thead>
+      <tbody><tr *ngFor="let event of logins.events"><td>{{ event.occurredAt | date:'medium' }}</td>
+        <td><span class="status">{{ event.type }}</span></td><td>#{{ event.customerReference }}</td>
+        <td>#{{ event.visitorReference }}</td><td>{{ event.entryPath }}</td><td>{{ event.exitPath || 'Active / unknown' }}</td></tr></tbody>
+    </table></div><ng-template #noLogins><div class="empty">No login or signup events in this period.</div></ng-template>
+  </section>
+
+  <section class="panel panel--wide" *ngIf="returns">
+    <div class="panel__head"><div><span class="section-kicker">Reverse commerce</span><h2>Returns & refunds</h2></div>
+      <a routerLink="/admin">Open returns operations</a></div>
+    <div class="stat-row stat-row--five"><div><strong>{{ returns.summary.requested }}</strong><span>Requested</span></div>
+      <div><strong>{{ returns.summary.received }}</strong><span>Received</span></div><div><strong>{{ returns.summary.completed }}</strong><span>Completed</span></div>
+      <div><strong>{{ returns.summary.failedOrCancelled }}</strong><span>Failed / cancelled</span></div>
+      <div><strong>{{ currency(returns.summary.refundedAmount) }}</strong><span>Refunded</span></div></div>
+    <div class="table-wrap" *ngIf="returns.returns.length; else noReturns"><table>
+      <thead><tr><th>Return</th><th>Order</th><th>Customer ref</th><th>Status</th><th>Refund</th><th>Amount</th><th>Requested</th></tr></thead>
+      <tbody><tr *ngFor="let item of returns.returns"><td><strong>{{ item.returnNumber }}</strong></td><td>{{ item.orderNumber }}</td>
+        <td>#{{ item.customerReference }}</td><td><span class="status">{{ item.status }}</span></td>
+        <td>{{ item.refundStatus }}</td><td>{{ currency(item.refundAmount) }}</td><td>{{ item.requestedAt | date:'medium' }}</td></tr></tbody>
+    </table></div><ng-template #noReturns><div class="empty">No return requests in this period.</div></ng-template>
+  </section>
+
+  <section class="panel panel--wide" *ngIf="errors">
+    <div class="panel__head"><div><span class="section-kicker">Site health</span><h2>Sanitized frontend errors</h2>
+      <p>Messages are length-limited and exclude stack traces, query strings, credentials, and form data.</p></div></div>
+    <div class="table-wrap" *ngIf="errors.errors.length; else noErrors"><table>
+      <thead><tr><th>Time</th><th>Page</th><th>Visitor ref</th><th>Source</th><th>Message</th></tr></thead>
+      <tbody><tr *ngFor="let item of errors.errors"><td>{{ item.occurredAt | date:'medium' }}</td><td>{{ item.path }}</td>
+        <td>#{{ item.visitorReference }}</td><td>{{ item.source }}</td><td>{{ item.message }}</td></tr></tbody>
+    </table></div><ng-template #noErrors><div class="empty">No frontend errors in this period.</div></ng-template>
+  </section>
+
+  <div class="metric-modal" *ngIf="metricModalOpen" role="dialog" aria-modal="true"
+    [attr.aria-label]="modalTitle + ' analytics'" (click)="closeMetricModal()">
+    <section class="metric-modal__card" (click)="$event.stopPropagation()">
+      <header class="metric-modal__head"><div><span class="section-kicker">Metric details</span>
+        <h2>{{ modalTitle }}</h2><p>{{ modalDescription }}</p></div>
+        <div class="metric-modal__value"><strong>{{ modalValue }}</strong><small>{{ modalChange }}</small></div>
+        <button type="button" class="metric-modal__close" (click)="closeMetricModal()" aria-label="Close metric details">×</button>
+      </header>
+      <div class="metric-modal__body">
+        <div class="bar-chart bar-chart--modal" *ngIf="trend && trend.points.length && hasTrendData; else modalNoTrend">
+          <button type="button" class="bar-chart__item" *ngFor="let point of trend.points" (click)="openDrilldown(point)"
+            [class.bar-chart__item--active]="drilldown?.date === (point.date | date:'yyyy-MM-dd')">
+            <span class="bar-chart__value">{{ trendLabel(point) }}</span><i [style.height.%]="trendHeight(point)"></i>
+            <span class="bar-chart__tooltip"><b>{{ shortDate(point.date) }}</b><em>{{ modalTitle }}</em><strong>{{ trendLabel(point) }}</strong></span>
+            <small>{{ shortDate(point.date) }}</small>
+          </button>
+        </div>
+        <ng-template #modalNoTrend><div class="empty"><strong>No {{ modalTitle | lowercase }} records</strong><br>
+          This metric is zero for every date in the selected period.</div></ng-template>
+
+        <div class="modal-detail-status" *ngIf="hasTrendData">Click any date bar to inspect that day. The latest non-zero day opens automatically.</div>
+        <div class="empty" *ngIf="drilldownLoading">Loading customer and activity details…</div>
+        <p class="analytics-error" *ngIf="drilldownError">{{ drilldownError }}</p>
+        <div class="modal-table" *ngIf="drilldown && drilldown.rows.length">
+          <h3>{{ drilldown.date | date:'mediumDate' }} · {{ drilldown.rows.length }} record{{ drilldown.rows.length === 1 ? '' : 's' }}</h3>
+          <div class="table-wrap"><table><thead><tr><th *ngFor="let column of drilldown.columns">{{ column.label }}</th></tr></thead>
+            <tbody><tr *ngFor="let row of drilldown.rows"><td *ngFor="let column of drilldown.columns">{{ cell(row,column.key) }}</td></tr></tbody>
+          </table></div>
+        </div>
+        <div class="empty" *ngIf="drilldown && !drilldown.rows.length">No underlying records exist for this date.</div>
+      </div>
+    </section>
+  </div>
 </section>

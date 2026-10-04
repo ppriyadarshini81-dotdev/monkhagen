@@ -2,7 +2,8 @@ import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AccountService } from '../../../services/account.service';
-import { Address, AddressPayload } from '../../../models/account.model';
+import { Address, AddressPayload, IndiaLocations } from '../../../models/account.model';
+import { canonicalLocation, sameLocation, stateFor, withLegacyOption } from '../../../utils/india-locations';
 
 const EMPTY_FORM = (): AddressPayload => ({
   fullName: '', phone: '', addressLine1: '', addressLine2: '',
@@ -25,25 +26,66 @@ export class AccountAddressesComponent implements OnInit {
   error = '';
   attempted = false;
   touched = new Set<keyof AddressPayload>();
+  locations: IndiaLocations | null = null;
+  locationsLoading = true;
+  locationError = '';
+  private legacyLocation: { state: string; city: string } | null = null;
   @ViewChild('addressFormElement', { read: ElementRef }) addressFormElement?: ElementRef<HTMLFormElement>;
 
   constructor(private account: AccountService) {}
 
-  ngOnInit(): void { this.load(); }
+  ngOnInit(): void {
+    this.load();
+    this.account.getAddressLocations().subscribe({
+      next: locations => {
+        this.locations = locations;
+        this.normaliseKnownLocation();
+        this.locationsLoading = false;
+      },
+      error: () => {
+        this.locationsLoading = false;
+        this.locationError = 'State and city options could not be loaded. Please refresh and try again.';
+      }
+    });
+  }
   load(): void { this.account.getAddresses().subscribe(a => this.addresses = a); }
 
-  openAdd(): void { this.editingId = null; this.form = EMPTY_FORM(); this.showForm = true; this.resetValidation(); }
+  openAdd(): void { this.editingId = null; this.legacyLocation = null; this.form = EMPTY_FORM(); this.showForm = true; this.resetValidation(); }
   openEdit(a: Address): void {
     this.editingId = a.id;
+    this.legacyLocation = { state: a.state, city: a.city };
     this.form = { fullName: a.fullName, phone: a.phone, addressLine1: a.addressLine1,
       addressLine2: a.addressLine2 || '', landmark: a.landmark || '',
       city: a.city, state: a.state, postalCode: a.postalCode,
       country: a.country, addressType: a.addressType };
+    this.normaliseKnownLocation();
     this.showForm = true; this.resetValidation();
   }
   cancel(): void { if (!this.saving) { this.showForm = false; this.resetValidation(); } }
 
   private resetValidation(): void { this.error = ''; this.attempted = false; this.touched.clear(); }
+
+  get stateOptions(): string[] {
+    return withLegacyOption(this.locations?.states.map(state => state.name) || [], this.legacyLocation?.state || '');
+  }
+
+  get cityOptions(): string[] {
+    const cities = stateFor(this.locations, this.form.state)?.cities || [];
+    const legacyCity = this.legacyLocation && this.form.state.toLocaleLowerCase('en-IN') === this.legacyLocation.state.toLocaleLowerCase('en-IN')
+      ? this.legacyLocation.city : '';
+    return withLegacyOption(cities, legacyCity);
+  }
+
+  stateChanged(state: string): void {
+    this.form.state = state;
+    this.form.city = '';
+    this.touched.delete('city');
+  }
+
+  private normaliseKnownLocation(): void {
+    const location = canonicalLocation(this.locations, this.form.state, this.form.city);
+    if (location) Object.assign(this.form, location);
+  }
 
   fieldError(field: keyof AddressPayload): string {
     const value = String(this.form[field] || '').trim();
@@ -58,6 +100,14 @@ export class AccountAddressesComponent implements OnInit {
     if (['fullName', 'city', 'state'].includes(field) && String(this.form[field]).length > 100) return 'Use no more than 100 characters.';
     if (field === 'addressLine1' && value.length < 5) return 'Enter a complete house, street and area.';
     if (['addressLine1', 'addressLine2', 'landmark'].includes(field) && String(this.form[field] || '').length > 255) return 'Use no more than 255 characters.';
+    if (field === 'state' && this.locations && !stateFor(this.locations, value) && value !== this.legacyLocation?.state) {
+      return 'Select a valid Indian state.';
+    }
+    if (field === 'city' && this.locations && value && this.form.state &&
+        !canonicalLocation(this.locations, this.form.state, value) &&
+        !sameLocation({ state: this.form.state, city: value }, this.legacyLocation)) {
+      return 'Select a city that belongs to the selected state.';
+    }
     return '';
   }
 
@@ -69,6 +119,10 @@ export class AccountAddressesComponent implements OnInit {
     if (this.saving) return;
     this.attempted = true;
     this.error = '';
+    if (!this.locations) {
+      this.error = this.locationError || 'State and city options are still loading.';
+      return;
+    }
     const fields: (keyof AddressPayload)[] = ['fullName', 'phone', 'addressLine1', 'addressLine2', 'landmark', 'city', 'state', 'postalCode'];
     const invalidField = fields.find(field => this.fieldError(field));
     if (invalidField) {
@@ -78,6 +132,8 @@ export class AccountAddressesComponent implements OnInit {
     }
     const payload = { ...this.form };
     for (const field of fields) payload[field] = String(this.form[field] || '').trim();
+    const canonical = canonicalLocation(this.locations, payload.state, payload.city);
+    if (canonical) Object.assign(payload, canonical);
     this.saving = true; this.error = '';
     const req = this.editingId
       ? this.account.updateAddress(this.editingId, payload)

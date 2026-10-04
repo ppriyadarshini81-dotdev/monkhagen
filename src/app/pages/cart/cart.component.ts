@@ -3,7 +3,7 @@ import { AfterViewInit, Component, ElementRef, OnInit, ViewChild } from '@angula
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { combineLatest, filter, take } from 'rxjs';
-import { Address, AddressPayload } from '../../models/account.model';
+import { Address, AddressPayload, IndiaLocations } from '../../models/account.model';
 import { CartItem } from '../../models/cart.model';
 import { AccountService } from '../../services/account.service';
 import { AuthService } from '../../services/auth.service';
@@ -11,6 +11,7 @@ import { CartService } from '../../services/cart.service';
 import { PaymentOrder, PaymentService, RazorpaySuccess } from '../../services/payment.service';
 import { AnalyticsService } from '../../services/analytics.service';
 import { OrderService } from '../../services/order.service';
+import { canonicalLocation, stateFor } from '../../utils/india-locations';
 
 type CheckoutStep = 'address' | 'payment';
 type PaymentMethod = 'razorpay' | 'cod';
@@ -38,6 +39,10 @@ export class CartComponent implements OnInit, AfterViewInit {
   checkoutStep: CheckoutStep = 'address';
   paymentMethod: PaymentMethod = 'razorpay';
   private checkoutToken = '';
+  locations: IndiaLocations | null = null;
+  locationsLoading = false;
+  locationError = '';
+  private locationsRequested = false;
 
   constructor(
     public cart: CartService,
@@ -52,6 +57,20 @@ export class CartComponent implements OnInit, AfterViewInit {
 
   ngOnInit(): void {
     this.analytics.track('CART_VIEWED');
+    if (this.auth.isLoggedIn) this.loadAddressLocations();
+  }
+
+  private loadAddressLocations(): void {
+    if (this.locationsRequested) return;
+    this.locationsRequested = true;
+    this.locationsLoading = true;
+    this.account.getAddressLocations().subscribe({
+      next: locations => { this.locations = locations; this.locationsLoading = false; },
+      error: () => {
+        this.locationsLoading = false;
+        this.locationError = 'State and city options could not be loaded. Please refresh and try again.';
+      }
+    });
   }
 
   ngAfterViewInit(): void {
@@ -77,6 +96,7 @@ export class CartComponent implements OnInit, AfterViewInit {
       this.router.navigate(['/login'], { queryParams: { redirect: '/cart?checkout=1' } });
       return;
     }
+    this.loadAddressLocations();
     this.error = '';
     this.checkoutError = '';
     this.addressAttempted = false;
@@ -109,8 +129,12 @@ export class CartComponent implements OnInit, AfterViewInit {
     return 0;
   }
 
+  get codFee(): number {
+    return this.paymentMethod === 'cod' ? 100 : 0;
+  }
+
   get grandTotal(): number {
-    return this.cart.total - this.checkoutDiscount + this.shippingFee;
+    return this.cart.total - this.checkoutDiscount + this.shippingFee + this.codFee;
   }
 
   get checkoutDiscount(): number {
@@ -207,6 +231,19 @@ export class CartComponent implements OnInit, AfterViewInit {
     this.shipping = { name: '', address: '', city: '', state: '', zip: '', phone: '' };
   }
 
+  get stateOptions(): string[] {
+    return this.locations?.states.map(state => state.name) || [];
+  }
+
+  get cityOptions(): string[] {
+    return stateFor(this.locations, this.shipping.state)?.cities || [];
+  }
+
+  stateChanged(state: string): void {
+    this.shipping.state = state;
+    this.shipping.city = '';
+  }
+
   cancelNewAddress(): void {
     const fallback = this.addresses.find((address) => address.id === this.lastSelectedAddressId) ||
       this.addresses.find((address) => address.isDefault) || this.addresses[0];
@@ -234,6 +271,11 @@ export class CartComponent implements OnInit, AfterViewInit {
     if (field === 'address' && value.length < 5) return 'Enter a complete house, street and area.';
     if (field === 'city' && value.length < 2) return 'Enter a valid city.';
     if (field === 'state' && value.length < 2) return 'Enter a valid state.';
+    if (field === 'state' && this.locations && !stateFor(this.locations, value)) return 'Select a valid Indian state.';
+    if (field === 'city' && this.locations && this.shipping.state &&
+        !canonicalLocation(this.locations, this.shipping.state, value)) {
+      return 'Select a city that belongs to the selected state.';
+    }
     if (field === 'zip' && !/^[1-9]\d{5}$/.test(value)) return 'Enter a valid 6-digit Indian PIN code.';
     if (field === 'phone' && !/^[6-9]\d{9}$/.test(value)) return 'Enter a valid 10-digit Indian mobile number.';
     return '';
@@ -307,12 +349,13 @@ export class CartComponent implements OnInit, AfterViewInit {
   }
 
   private addressPayload(): AddressPayload {
+    const location = canonicalLocation(this.locations, this.shipping.state, this.shipping.city);
     return {
       fullName: this.shipping.name.trim(),
       phone: this.shipping.phone.trim(),
       addressLine1: this.shipping.address.trim(),
-      city: this.shipping.city.trim(),
-      state: this.shipping.state.trim(),
+      city: location?.city || this.shipping.city.trim(),
+      state: location?.state || this.shipping.state.trim(),
       postalCode: this.shipping.zip.trim(),
       country: 'India',
       addressType: 'Home'

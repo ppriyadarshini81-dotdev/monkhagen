@@ -5,7 +5,8 @@
     <h1>Order Placed!</h1>
     <p>Your order <strong>#{{ orderId }}</strong> has been received. We'll email you the tracking details shortly.</p>
     <div class="mh-cart__success-cta">
-      <a class="mh-btn mh-btn--gold" routerLink="/products">Keep Shopping</a>
+      <a class="mh-btn mh-btn--gold" routerLink="/account/orders">View Orders</a>
+      <a class="mh-btn mh-btn--ghost" routerLink="/products">Keep Shopping</a>
       <a class="mh-btn mh-btn--ghost" routerLink="/">Home</a>
     </div>
   </div>
@@ -84,7 +85,8 @@
             <span>On your first prepaid order</span>
             <code>Code: {{ cart.prepaidOffer.code }}</code>
           </div>
-          <span class="mh-cart__offer-applied"><span aria-hidden="true">&#10003;</span> Applied</span>
+          <span class="mh-cart__offer-applied" *ngIf="cart.prepaidOffer.eligibilityVerified; else guestOfferStatus"><span aria-hidden="true">&#10003;</span> Applied</span>
+          <ng-template #guestOfferStatus><span class="mh-cart__offer-pending">Sign in to validate</span></ng-template>
         </article>
       </section>
       </div>
@@ -125,13 +127,17 @@
           <small class="mh-field-error" *ngIf="(addressControl.touched || addressAttempted) && addressFieldError('address')">{{ addressFieldError('address') }}</small>
         </label>
         <div class="mh-cart__row2">
-          <label class="mh-address-field">City *
-            <input #cityControl="ngModel" class="mh-input" [class.mh-input--invalid]="(cityControl.touched || addressAttempted) && addressFieldError('city')" name="city" autocomplete="address-level2" [(ngModel)]="shipping.city" required minlength="2" maxlength="100" />
-            <small class="mh-field-error" *ngIf="(cityControl.touched || addressAttempted) && addressFieldError('city')">{{ addressFieldError('city') }}</small>
-          </label>
           <label class="mh-address-field">State *
-            <input #stateControl="ngModel" class="mh-input" [class.mh-input--invalid]="(stateControl.touched || addressAttempted) && addressFieldError('state')" name="state" autocomplete="address-level1" [(ngModel)]="shipping.state" required minlength="2" maxlength="100" />
+            <select #stateControl="ngModel" class="mh-input mh-select" [class.mh-input--invalid]="(stateControl.touched || addressAttempted) && addressFieldError('state')" name="state" autocomplete="address-level1" [ngModel]="shipping.state" (ngModelChange)="stateChanged($event)" required [disabled]="locationsLoading || !!locationError">
+              <option value="">Select State</option><option *ngFor="let state of stateOptions" [value]="state">{{ state }}</option>
+            </select>
             <small class="mh-field-error" *ngIf="(stateControl.touched || addressAttempted) && addressFieldError('state')">{{ addressFieldError('state') }}</small>
+          </label>
+          <label class="mh-address-field">City *
+            <select #cityControl="ngModel" class="mh-input mh-select" [class.mh-input--invalid]="(cityControl.touched || addressAttempted) && addressFieldError('city')" name="city" autocomplete="address-level2" [(ngModel)]="shipping.city" required [disabled]="!shipping.state || locationsLoading || !!locationError">
+              <option value="">{{ shipping.state ? 'Select City' : 'Select state first' }}</option><option *ngFor="let city of cityOptions" [value]="city">{{ city }}</option>
+            </select>
+            <small class="mh-field-error" *ngIf="(cityControl.touched || addressAttempted) && addressFieldError('city')">{{ addressFieldError('city') }}</small>
           </label>
           <label class="mh-address-field">PIN code *
             <input #pinControl="ngModel" class="mh-input" [class.mh-input--invalid]="(pinControl.touched || addressAttempted) && addressFieldError('zip')" name="pin" autocomplete="postal-code" inputmode="numeric" [(ngModel)]="shipping.zip" required pattern="[1-9][0-9]{5}" maxlength="6" />
@@ -143,6 +149,7 @@
           </label>
         </div>
       </div>
+      <p class="mh-error" *ngIf="addingAddress && locationError">{{ locationError }}</p>
     </fieldset>
     <fieldset *ngIf="checkoutStep === 'payment'" class="mh-payment-methods" [disabled]="placing">
       <legend class="mh-address-legend">PAYMENT METHOD</legend>
@@ -156,15 +163,15 @@
         <input type="radio" name="paymentMethod" value="cod" [(ngModel)]="paymentMethod" />
         <span class="mh-payment-option__icon" aria-hidden="true">&#8377;</span>
         <span class="mh-payment-option__copy"><strong>Cash on Delivery</strong><small>Pay the order total when your delivery arrives</small></span>
-        <span class="mh-payment-option__tag">COD</span>
+        <span class="mh-payment-option__tag mh-payment-option__tag--cod">&#8377;100 COD fee</span>
       </label>
       <div class="mh-payment-note" *ngIf="paymentMethod === 'cod'">
-        Your order will be confirmed now. Payment remains pending until it is collected for this delivery.
+        A &#8377;100 COD charge has been added. Your order will be confirmed now and payment will be collected on delivery.
       </div>
     </fieldset>
     <p class="mh-error mh-checkout-error" role="alert" *ngIf="checkoutError">{{ checkoutError }}</p>
     <button type="button" class="mh-btn mh-btn--ghost" *ngIf="checkoutStep === 'address' && checkoutError && !placing && !addingAddress && addresses.length === 0" (click)="loadAddresses()">Reload addresses</button>
-    <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small *ngIf="checkoutDiscount">{{ cart.prepaidOffer.code }} Welcome Offer: &minus;&#8377;{{ checkoutDiscount | number: '1.2-2' }}</small><small *ngIf="!checkoutDiscount">Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number: '1.2-2' }}</strong></div>
+    <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small *ngIf="checkoutDiscount">{{ cart.prepaidOffer.code }} Welcome Offer: &minus;&#8377;{{ checkoutDiscount | number: '1.2-2' }}</small><small *ngIf="codFee">COD charge: +&#8377;{{ codFee | number: '1.2-2' }}</small><small *ngIf="!checkoutDiscount && !codFee">Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number: '1.2-2' }}</strong></div>
     <div class="mh-payment-actions" *ngIf="checkoutStep === 'payment'">
       <button type="button" class="mh-btn mh-btn--ghost" [disabled]="placing" (click)="backToAddress()">&#8592; Back</button>
       <button type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing">{{ placing ? 'Placing order...' : (paymentMethod === 'cod' ? 'Place COD order' : 'Pay securely') }} <span aria-hidden="true">&#8594;</span></button>

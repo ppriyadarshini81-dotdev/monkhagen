@@ -9,7 +9,7 @@
     <!-- Gallery -->
     <div class="mh-pd__gallery" (wheel)="imageTrackpadSlide($event)">
       <div class="mh-pd__main" (touchstart)="imageTouchStart($event)" (touchmove)="imageTouchMove($event)" (touchend)="imageTouchEnd($event)">
-        <img [src]="cachedMediaUrl(product.images[activeImage])" [alt]="product.name" />
+        <img [src]="cachedMediaUrl(product.images[activeImage])" [alt]="product.name" decoding="async" />
         <button class="mh-pd__open-image" type="button" (click)="openImageViewer()" aria-label="Open enlarged product image"></button>
         <span class="mh-pd__badge" *ngIf="product.badge">{{ product.badge }}</span>
         <button class="mh-pd__zoom-trigger" type="button" (click)="openImageViewer()" aria-label="Open enlarged product image" aria-haspopup="dialog">
@@ -34,7 +34,7 @@
           (click)="selectImage(i)"
           [attr.aria-label]="'Show product image ' + (i + 1)"
         >
-          <img [src]="cachedMediaUrl(img)" [alt]="product.name + ' ' + (i + 1)" />
+          <img [src]="cachedMediaUrl(img)" [alt]="product.name + ' ' + (i + 1)" loading="lazy" />
         </button>
       </div>
     </div>
@@ -43,6 +43,10 @@
     <div class="mh-pd__info">
       <span class="mh-eyebrow">{{ product.category }}</span>
       <h1>{{ product.name }}</h1>
+      <button class="mh-pd__rating-link" type="button" *ngIf="reviewSummary.total" (click)="scrollToReviews()">
+        <strong>{{ reviewSummary.average | number:'1.1-1' }} <span aria-hidden="true">&#9733;</span></strong>
+        <span>{{ reviewSummary.total }} {{ reviewSummary.total === 1 ? 'Review' : 'Reviews' }}</span>
+      </button>
       <div class="mh-pd__meta">
         <div class="mh-pd__mrp">
           <span><b>MRP:</b> <strong>&#8377;{{ product.price | number: '1.2-2' }}</strong></span>
@@ -86,10 +90,14 @@
           <button
             *ngFor="let s of product.sizes"
             [class.active]="selectedSize === s"
+            [class.is-unavailable]="!sizeAvailable(s)"
+            [disabled]="!sizeAvailable(s)"
+            [attr.aria-label]="s + (sizeAvailable(s) ? (sizeLowStock(s) ? ' — Only a few left' : '') : ' — Out of stock')"
             (click)="selectedSize = s; addError = ''"
           >
             {{ s }}
           </button>
+          <small class="mh-pd__low-stock" *ngIf="selectedSize && sizeLowStock(selectedSize)">Only a few left</small>
         </div>
       </div>
 
@@ -101,7 +109,7 @@
         </div>
         <button
           class="mh-btn mh-btn--gold mh-pd__add"
-          [disabled]="product.stock === 0 || adding"
+          [disabled]="product.stock === 0 || adding || (product.sizes.length > 0 && (!selectedSize || !sizeAvailable(selectedSize)))"
           (click)="addToCart()"
         >
           {{ added ? 'Added to Cart ✓' : 'Add to Cart' }}
@@ -139,6 +147,116 @@
   </div>
 </section>
 
+<section class="mh-reviews mh-container" id="customer-reviews" *ngIf="product && !loading" aria-labelledby="reviews-title">
+  <header class="mh-reviews__head">
+    <div><span class="mh-eyebrow">Community feedback</span><h2 id="reviews-title">Ratings &amp; Customer Reviews</h2></div>
+    <button class="mh-btn mh-btn--ghost" type="button" (click)="writeReview()">
+      {{ reviewEligibility?.ownReview ? 'Edit your review' : 'Write a review' }}
+    </button>
+  </header>
+
+  <p class="mh-error" role="alert" *ngIf="reviewsError">{{ reviewsError }}</p>
+
+  <div class="mh-reviews__empty" *ngIf="!reviewsLoading && reviewSummary.total === 0">
+    <h3>No reviews yet</h3>
+    <p>Be the first verified buyer to review this product.</p>
+  </div>
+
+  <div class="mh-reviews__summary" *ngIf="reviewSummary.total">
+    <div class="mh-reviews__score">
+      <strong>{{ reviewSummary.average | number:'1.1-1' }} <span aria-hidden="true">&#9733;</span></strong>
+      <span>{{ reviewSummary.total }} Verified {{ reviewSummary.total === 1 ? 'Buyer' : 'Buyers' }}</span>
+    </div>
+    <div class="mh-reviews__distribution" aria-label="Rating distribution">
+      <div *ngFor="let star of [5,4,3,2,1]">
+        <span>{{ star }} <span aria-hidden="true">&#9733;</span></span>
+        <span class="mh-reviews__bar"><i [style.width.%]="ratingPercent(star)"></i></span>
+        <strong>{{ ratingCount(star) }}</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="mh-reviews__photos" *ngIf="customerPhotos.length">
+    <h3>Customer Photos</h3>
+    <div>
+      <button type="button" *ngFor="let photo of customerPhotos" (click)="openReviewPhoto(photo.url)" aria-label="Open customer review photo">
+        <img [src]="cachedMediaUrl(photo.url)" alt="Customer review photo" loading="lazy" />
+      </button>
+    </div>
+  </div>
+
+  <div class="mh-reviews__toolbar" *ngIf="reviewSummary.total">
+    <label>Sort
+      <select [(ngModel)]="reviewSort" (change)="changeReviewSort()">
+        <option value="recent">Most Recent</option>
+        <option value="highest">Highest Rated</option>
+        <option value="lowest">Lowest Rated</option>
+        <option value="helpful">Most Helpful</option>
+      </select>
+    </label>
+  </div>
+
+  <p class="mh-reviews__loading" *ngIf="reviewsLoading">Loading customer reviews&hellip;</p>
+  <div class="mh-reviews__list" *ngIf="!reviewsLoading">
+    <article class="mh-review" *ngFor="let review of reviews">
+      <div class="mh-review__stars" [attr.aria-label]="review.rating + ' out of 5 stars'">
+        <span *ngFor="let star of starValues" [class.is-filled]="star <= review.rating" aria-hidden="true">&#9733;</span>
+      </div>
+      <p class="mh-review__text" *ngIf="review.text">{{ review.text }}</p>
+      <div class="mh-review__images" *ngIf="review.images.length">
+        <button type="button" *ngFor="let image of review.images" (click)="openReviewPhoto(image.url)" aria-label="Open review photo">
+          <img [src]="cachedMediaUrl(image.url)" alt="Customer review photo" loading="lazy" />
+        </button>
+      </div>
+      <div class="mh-review__meta">
+        <div><strong>{{ review.displayName }}</strong><span class="mh-review__verified" *ngIf="review.verifiedBuyer">Verified Buyer</span><span *ngIf="review.sizePurchased">Size {{ review.sizePurchased }}</span></div>
+        <time [attr.datetime]="review.createdAt">{{ review.createdAt | date:'dd MMM y' }}</time><span *ngIf="review.edited">Edited</span>
+      </div>
+      <button class="mh-review__helpful" type="button" [class.is-active]="review.helpfulByMe" (click)="toggleHelpful(review)"
+        [attr.aria-pressed]="review.helpfulByMe">&#128077; Helpful <span *ngIf="review.helpfulCount">{{ review.helpfulCount }}</span></button>
+    </article>
+  </div>
+
+  <nav class="mh-reviews__pages" *ngIf="reviewSummary.total > reviewLimit" aria-label="Review pages">
+    <button type="button" (click)="changeReviewPage(-1)" [disabled]="reviewPage === 1">Previous</button>
+    <span>Page {{ reviewPage }}</span>
+    <button type="button" (click)="changeReviewPage(1)" [disabled]="reviewPage * reviewLimit >= reviewSummary.total">Next</button>
+  </nav>
+</section>
+
+<dialog #reviewDialog class="mh-review-dialog" aria-labelledby="review-dialog-title">
+  <form method="dialog" class="mh-review-dialog__panel" (submit)="$event.preventDefault(); submitReview()">
+    <header><div><span class="mh-eyebrow">Verified purchase</span><h2 id="review-dialog-title">{{ reviewEligibility?.ownReview ? 'Edit your review' : 'Write a review' }}</h2></div>
+      <button type="button" (click)="closeReviewForm()" aria-label="Close review form">&times;</button></header>
+    <fieldset class="mh-review-form__stars">
+      <legend>Your rating</legend>
+      <button *ngFor="let star of starValues" type="button" (click)="reviewRating = star"
+        [class.is-filled]="star <= reviewRating" [attr.aria-pressed]="reviewRating === star"
+        [attr.aria-label]="star + (star === 1 ? ' star' : ' stars')">&#9733;</button>
+    </fieldset>
+    <label class="mh-review-form__text">Review <span>(optional)</span>
+      <textarea [(ngModel)]="reviewText" name="reviewText" maxlength="2000" rows="6" placeholder="Share your thoughts about quality, fit and comfort."></textarea>
+      <small>{{ reviewText.length }}/2000</small>
+    </label>
+    <div class="mh-review-form__photos">
+      <label>Photos <span>(optional, up to 5)</span><input type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif" (change)="selectReviewPhotos($event)" /></label>
+      <p *ngIf="reviewFiles.length">{{ reviewFiles.length }} new {{ reviewFiles.length === 1 ? 'photo' : 'photos' }} selected.</p>
+      <div *ngIf="reviewEligibility?.ownReview?.images?.length && !replaceReviewImages">
+        <img *ngFor="let image of reviewEligibility?.ownReview?.images" [src]="cachedMediaUrl(image.url)" alt="Existing review photo" />
+        <button type="button" (click)="removeReviewPhotos()">Remove existing photos</button>
+      </div>
+    </div>
+    <p class="mh-error" role="alert" *ngIf="reviewFormError">{{ reviewFormError }}</p>
+    <footer><button class="mh-btn mh-btn--ghost" type="button" (click)="closeReviewForm()">Cancel</button>
+      <button class="mh-btn mh-btn--gold" type="submit" [disabled]="reviewSubmitting">{{ reviewSubmitting ? 'Saving&hellip;' : 'Submit review' }}</button></footer>
+  </form>
+</dialog>
+
+<dialog #reviewPhotoDialog class="mh-review-photo-dialog" aria-label="Customer review photo" (click)="$event.target === reviewPhotoDialog && reviewPhotoDialog.close()">
+  <button type="button" (click)="reviewPhotoDialog.close()" aria-label="Close customer photo">&times;</button>
+  <img *ngIf="activeReviewPhoto" [src]="cachedMediaUrl(activeReviewPhoto)" alt="Customer review photo enlarged" />
+</dialog>
+
 <dialog #sizeChartDialog class="mh-pd__chart-dialog" aria-labelledby="size-chart-title" (click)="closeOnBackdrop($event)">
   <div class="mh-pd__chart-panel">
     <header>
@@ -151,8 +269,8 @@
 </dialog>
 
 <dialog #productImageDialog class="mh-pd__image-dialog" aria-label="Enlarged product images"
-  (click)="closeImageOnBackdrop($event)" (keydown)="imageViewerKeydown($event)">
-  <div class="mh-pd__image-viewer" *ngIf="product" (wheel)="imageTrackpadSlide($event)">
+  (click)="closeImageOnBackdrop($event)" (keydown)="imageViewerKeydown($event)" (close)="imageViewerClosed()">
+  <div class="mh-pd__image-viewer" *ngIf="product && imageViewerOpen" (wheel)="imageTrackpadSlide($event)">
     <header class="mh-pd__image-toolbar">
       <span>{{ activeImage + 1 }} / {{ product.images.length }}</span>
       <div class="mh-pd__zoom-controls">
@@ -162,18 +280,26 @@
         <button type="button" class="mh-pd__image-close" (click)="closeImageViewer()" aria-label="Close enlarged image">&times;</button>
       </div>
     </header>
-    <div class="mh-pd__image-stage" (touchstart)="imageTouchStart($event)" (touchmove)="imageTouchMove($event)" (touchend)="imageTouchEnd($event)">
-      <img [src]="cachedMediaUrl(product.images[activeImage])" [alt]="product.name + ' enlarged image ' + (activeImage + 1)"
-        [style.transform]="'scale(' + imageZoom + ')'" />
-      <ng-container *ngIf="product.images.length > 1">
-        <button class="mh-pd__viewer-arrow mh-pd__viewer-arrow--prev" type="button" (click)="changeImage(-1)" aria-label="Previous product image">&#8592;</button>
-        <button class="mh-pd__viewer-arrow mh-pd__viewer-arrow--next" type="button" (click)="changeImage(1)" aria-label="Next product image">&#8594;</button>
-      </ng-container>
+    <div #productImageStage class="mh-pd__image-stage" (scroll)="viewerScrolled($event)"
+      (touchstart)="imageTouchStart($event)" (touchmove)="imageTouchMove($event)" (touchend)="imageTouchEnd($event)">
+      <figure class="mh-pd__viewer-frame" *ngFor="let image of product.images; let i = index"
+        [attr.data-viewer-index]="i" [class.is-active]="i === activeImage">
+        <img [src]="cachedMediaUrl(viewerImageUrl(i))" (error)="viewerImageFailed($event, i)"
+          (dblclick)="toggleViewerZoom(i)"
+          (pointerdown)="viewerImagePointerDown($event, i)"
+          (pointerup)="viewerImagePointerUp($event, i)"
+          [alt]="product.name + ' enlarged image ' + (i + 1)"
+          [style.transform]="i === activeImage ? 'scale(' + imageZoom + ')' : 'scale(1)'" />
+      </figure>
     </div>
+    <ng-container *ngIf="product.images.length > 1">
+      <button class="mh-pd__viewer-arrow mh-pd__viewer-arrow--prev" type="button" (click)="changeImage(-1)" aria-label="Previous product image">&#8592;</button>
+      <button class="mh-pd__viewer-arrow mh-pd__viewer-arrow--next" type="button" (click)="changeImage(1)" aria-label="Next product image">&#8594;</button>
+    </ng-container>
     <div class="mh-pd__viewer-thumbs" *ngIf="product.images.length > 1">
       <button *ngFor="let img of product.images; let i = index" type="button" [class.active]="i === activeImage"
         (click)="selectImage(i)" [attr.aria-label]="'Open product image ' + (i + 1)">
-        <img [src]="cachedMediaUrl(img)" [alt]="product.name + ' thumbnail ' + (i + 1)" />
+        <img [src]="cachedMediaUrl(img)" [alt]="product.name + ' thumbnail ' + (i + 1)" loading="lazy" />
       </button>
     </div>
   </div>

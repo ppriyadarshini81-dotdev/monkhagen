@@ -4,9 +4,7 @@ const { randomBytes } = require('node:crypto');
 const {
   adminGoogleEmail,
   allowedCorsOrigins,
-  developmentOtpCode,
-  jwtSecret,
-  legacyOtpEnabled
+  jwtSecret
 } = require('../config/security');
 
 test('administrator identity requires explicit configuration without an implicit fallback', () => {
@@ -36,17 +34,5 @@ test('CORS is localhost-only in development and explicit in production', () => {
   assert.deepEqual(
     allowedCorsOrigins({ NODE_ENV: 'production', CORS_ORIGINS: 'https://monkhagen.com, https://www.monkhagen.com' }),
     ['https://monkhagen.com', 'https://www.monkhagen.com']
-  );
-});
-
-test('legacy OTP and its fixed development code are opt-in', () => {
-  assert.equal(legacyOtpEnabled({}), false);
-  assert.equal(legacyOtpEnabled({ ENABLE_LEGACY_OTP: 'true' }), true);
-  assert.equal(legacyOtpEnabled({ NODE_ENV: 'production', ENABLE_LEGACY_OTP: 'true' }), false);
-  assert.equal(developmentOtpCode({ DEV_OTP_CODE: '123456' }), '123456');
-  assert.equal(developmentOtpCode({ DEV_OTP_CODE: '1234567' }), null);
-  assert.equal(
-    developmentOtpCode({ NODE_ENV: 'production', DEV_OTP_CODE: '123456' }),
-    null
   );
 });

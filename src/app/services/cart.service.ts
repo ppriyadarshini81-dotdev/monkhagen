@@ -1,12 +1,14 @@
 import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
+import { Injectable, Optional } from '@angular/core';
 import { BehaviorSubject, firstValueFrom, Observable, of, tap, throwError } from 'rxjs';
 import { Cart, CartItem, PrepaidOffer } from '../models/cart.model';
 import { Product } from '../models/product.model';
 import { AuthService } from './auth.service';
+import { AnalyticsService } from './analytics.service';
 
 const EMPTY_OFFER: PrepaidOffer = {
-  code: 'MONKHAGEN10', discountPercent: 10, eligible: false, discountAmount: 0, totalAmount: 0
+  code: 'MONKHAGEN10', discountPercent: 10, eligible: false, eligibilityVerified: false,
+  discountAmount: 0, totalAmount: 0
 };
 const EMPTY_CART: Cart = { cartId: '', items: [], total: 0, prepaidOffer: EMPTY_OFFER };
 const GUEST_CART_KEY = 'mh_guest_cart_v1';
@@ -25,7 +27,8 @@ export class CartService {
 
   constructor(
     private http: HttpClient,
-    private auth: AuthService
+    private auth: AuthService,
+    @Optional() private analytics?: AnalyticsService
   ) {
     // Remove the obsolete cart shape. Guest carts use a versioned, variant-based shape.
     localStorage.removeItem('mh_cart');
@@ -135,7 +138,11 @@ export class CartService {
           stock: variant.stock
         });
       }
-      return of(this.persistGuestItems(items));
+      const cart = this.persistGuestItems(items);
+      this.analytics?.track('ADD_TO_CART', location.pathname, product.id, {
+        quantity: safeQuantity, estimatedValue: (variant.price ?? product.price) * safeQuantity
+      });
+      return of(cart);
     }
 
     return this.http.post<Cart>(`${this.api}/items`, {
@@ -154,7 +161,13 @@ export class CartService {
       if (items[index].stock !== null && safeQuantity > items[index].stock!) {
         return throwError(() => new Error(`Only ${items[index].stock} item(s) are available.`));
       }
+      const previousQuantity = items[index].quantity;
       items[index] = { ...items[index], quantity: safeQuantity };
+      const difference = safeQuantity - previousQuantity;
+      if (difference !== 0) this.analytics?.track(difference > 0 ? 'ADD_TO_CART' : 'REMOVE_FROM_CART',
+        location.pathname, items[index].productId, {
+          quantity: Math.abs(difference), estimatedValue: (items[index].price || 0) * Math.abs(difference)
+        });
       return of(this.persistGuestItems(items));
     }
     return this.http.put<Cart>(`${this.api}/items/${itemId}`, {
@@ -164,7 +177,13 @@ export class CartService {
 
   remove(itemId: string): Observable<Cart> {
     if (!this.auth.isLoggedIn) {
-      return of(this.persistGuestItems(this.readGuestItems().filter((item) => item.id !== itemId)));
+      const items = this.readGuestItems();
+      const removed = items.find(item => item.id === itemId);
+      const cart = this.persistGuestItems(items.filter((item) => item.id !== itemId));
+      if (removed) this.analytics?.track('REMOVE_FROM_CART', location.pathname, removed.productId, {
+        quantity: removed.quantity, estimatedValue: (removed.price || 0) * removed.quantity
+      });
+      return of(cart);
     }
     return this.http.delete<Cart>(`${this.api}/items/${itemId}`).pipe(
       tap((cart) => this.apply(cart))
@@ -173,6 +192,9 @@ export class CartService {
 
   clear(): Observable<{ message: string }> {
     if (!this.auth.isLoggedIn) {
+      for (const item of this.readGuestItems()) this.analytics?.track('REMOVE_FROM_CART', location.pathname, item.productId, {
+        quantity: item.quantity, estimatedValue: (item.price || 0) * item.quantity
+      });
       localStorage.removeItem(GUEST_CART_KEY);
       this.apply(EMPTY_CART);
       return of({ message: 'Cart cleared.' });
@@ -197,11 +219,18 @@ export class CartService {
   private guestCart(): Cart {
     const items = this.readGuestItems();
     const total = items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);
+    const discountAmount = Math.round(total * EMPTY_OFFER.discountPercent) / 100;
     return {
       cartId: 'guest',
       items,
       total,
-      prepaidOffer: { ...EMPTY_OFFER, totalAmount: total }
+      prepaidOffer: {
+        ...EMPTY_OFFER,
+        eligible: true,
+        eligibilityVerified: false,
+        discountAmount,
+        totalAmount: total - discountAmount
+      }
     };
   }
 

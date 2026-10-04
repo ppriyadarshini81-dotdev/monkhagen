@@ -6,6 +6,7 @@ const gateway = require('../config/razorpay');
 const mail = require('../services/orderConfirmationEmail');
 const shipping = require('../services/shippingService');
 const inventory = require('../services/inventoryService');
+const transactionalEmail = require('../services/transactionalEmailService');
 process.env.RAZORPAY_KEY_SECRET = crypto.randomBytes(32).toString('hex');
 process.env.RAZORPAY_WEBHOOK_SECRET = crypto.randomBytes(32).toString('hex');
 let remoteCreates, providerPayment;
@@ -16,19 +17,23 @@ gateway.getRazorpay = () => ({ keyId: 'test-key', razorpay: {
 mail.sendOrderConfirmation = async () => false;
 const payments = require('../services/paymentService');
 const Order = require('../models/Order');
-const originals = { query: pool.query, connect: pool.connect, process: shipping.processPendingOrder };
-afterEach(() => { pool.query = originals.query; pool.connect = originals.connect; shipping.processPendingOrder = originals.process; });
+const originals = { query: pool.query, connect: pool.connect, process: shipping.processPendingOrder,
+  refundCompleted: transactionalEmail.refundCompleted };
+afterEach(() => { pool.query = originals.query; pool.connect = originals.connect; shipping.processPendingOrder = originals.process;
+  transactionalEmail.refundCompleted = originals.refundCompleted; });
 const USER = '20000000-0000-4000-8000-000000000001';
 const ADDRESS = '30000000-0000-4000-8000-000000000001';
 const VARIANT = '40000000-0000-4000-8000-000000000001';
 const PRODUCT = '50000000-0000-4000-8000-000000000001';
+const INVENTORY = '60000000-0000-4000-8000-000000000001';
+const SIZE = '70000000-0000-4000-8000-000000000001';
 const attempt = () => ({ addressId: ADDRESS, checkoutToken: crypto.randomUUID() });
 
 // Transaction/row-lock double with rollback/savepoint snapshots. All gateway,
 // shipping, mail and SQL I/O is replaced; no production business data is written.
-function setup({ stock = 3, quantity = 1, priorOrders = [] } = {}) {
+function setup({ stock = 3, quantity = 1, priorOrders = [], returnRequest = null } = {}) {
   let state = { stock, quantity, orders: structuredClone(priorOrders), items: [], refunds: new Map(), events: new Set(),
-    converted: new Set(), shipments: new Set() };
+    converted: new Set(), shipments: new Set(), returnRequest: returnRequest ? structuredClone(returnRequest) : null };
   const statements = [], kicks = [];
   remoteCreates = 0;
   let queue = Promise.resolve();
@@ -53,7 +58,8 @@ function setup({ stock = 3, quantity = 1, priorOrders = [] } = {}) {
         address_line1: '10 Test Road', city: 'Pune', state: 'Maharashtra', postal_code: '411001', country: 'India' }] };
       if (sql.startsWith('SELECT ci.product_id')) return { rows: [{ product_id: PRODUCT, variant_id: VARIANT,
         product_name: 'Test product', quantity: state.quantity, product_active: true, variant_active: true,
-        category_active: true, stock: state.stock, unit_price: '100.00', size: 'M', color: 'Black' }] };
+        category_active: true, inventory_id: INVENTORY, inventory_configured: true, size_active: true,
+        stock: state.stock, unit_price: '100.00', size: 'M', color: 'Black' }] };
       if (sql.startsWith('SELECT EXISTS')) return { rows: [{ has_order: state.orders.some(row =>
         row.user_id === params[0] && (row.payment_method === 'cod' ||
           ['paid','refunded','partially_refunded'].includes(row.payment_status))) }] };
@@ -70,18 +76,21 @@ function setup({ stock = 3, quantity = 1, priorOrders = [] } = {}) {
       }
       if (sql.startsWith('SELECT id FROM orders WHERE cart_id')) return { rows: state.orders.filter(row =>
         row.cart_id === params[0] && row.payment_status === 'pending' && row.inventory_reserved_at && !row.inventory_released_at) };
-      if (sql.startsWith('UPDATE product_variants')) {
-        if (sql.includes('stock = stock -')) {
+      if (sql.startsWith('UPDATE product_size_details')) {
+        const before = state.stock;
+        if (sql.includes('stock_quantity = stock_quantity -')) {
           if (state.stock < params[0]) return { rows: [] };
           state.stock -= params[0];
         } else state.stock += params[0];
-        return { rows: [{ id: VARIANT }] };
+        return { rows: [{ id: INVENTORY, product_id: PRODUCT, size_id: SIZE,
+          quantity_before: before, quantity_after: state.stock }] };
       }
+      if (sql.startsWith('INSERT INTO inventory_movements')) return { rows: [{ id: crypto.randomUUID() }] };
       if (sql.startsWith('INSERT INTO orders')) {
         const prepaid = sql.includes("'razorpay'");
         const row = { id: crypto.randomUUID(), user_id: params[0], cart_id: params[1], checkout_token: params[2],
-          order_number: params[3], total_amount: prepaid ? params[6] : params[4], subtotal: params[4],
-          discount_amount: prepaid ? params[5] : '0', shipping_amount: '0',
+          order_number: params[3], total_amount: params[6], subtotal: params[4],
+          discount_amount: prepaid ? params[5] : '0', shipping_amount: prepaid ? '0' : params[5],
           payment_method: prepaid ? 'razorpay' : 'cod', payment_status: 'pending', order_status: prepaid ? 'placed' : 'confirmed',
           inventory_reserved_at: prepaid ? new Date() : null, inventory_reservation_expires_at: new Date(Date.now() + 900000),
           inventory_deducted_at: prepaid ? null : new Date(), fulfillment_hold_reason: null, refunded_amount: '0' };
@@ -91,6 +100,10 @@ function setup({ stock = 3, quantity = 1, priorOrders = [] } = {}) {
         state.items.push({ order_id: params[0], product_id: params[1], variant_id: params[2], product_name: params[3],
           quantity: params[7], unit_price: params[8], total_price: params[9] });
       }
+      if (sql.startsWith('SELECT psd.id AS inventory_id')) return { rows: state.items.some(row => row.order_id === params[0])
+        ? [{ inventory_id: INVENTORY, product_id: PRODUCT, size_id: SIZE, size: 'M',
+          quantity: state.items.filter(row => row.order_id === params[0]).reduce((sum, row) => sum + row.quantity, 0) }]
+        : [] };
       if (sql.startsWith('SELECT variant_id')) return { rows: state.items.filter(row => row.order_id === params[0]) };
       if (sql.startsWith('SELECT * FROM order_items')) return { rows: state.items.filter(row => row.order_id === params[0]) };
       if (sql.startsWith('SELECT * FROM order_addresses')) return { rows: [] };
@@ -122,6 +135,10 @@ function setup({ stock = 3, quantity = 1, priorOrders = [] } = {}) {
         state.refunds.has(params[0]) ? [state.refunds.get(params[0])] : [] };
       if (sql.startsWith('SELECT COALESCE(SUM(amount)')) return { rows: [{ amount:
         [...state.refunds.values()].filter(row => row.order_id === params[0]).reduce((sum, row) => sum + row.amount, 0) }] };
+      if (sql.startsWith('SELECT * FROM return_requests')) return { rows: state.returnRequest ? [{ ...state.returnRequest }] : [] };
+      if (sql.startsWith('UPDATE return_requests SET razorpay_refund_id')) {
+        Object.assign(state.returnRequest, { razorpay_refund_id: params[0], status: 'refunded', refund_status: 'refunded' });
+      }
       return { rows: [] };
     } };
   };
@@ -234,12 +251,17 @@ test('COD is server-priced, allocates stock and converts its cart atomically; du
   const input = attempt();
   const [first, second] = await Promise.all([Order.createCod(USER, input), Order.createCod(USER, input)]);
   assert.equal(first.id, second.id);
-  assert.equal(first.totalAmount, 100);
+  assert.equal(first.subtotal, 100);
+  assert.equal(first.shippingAmount, 100);
+  assert.equal(first.totalAmount, 200);
   assert.equal(fixture.state.stock, 0);
   assert.equal(fixture.state.orders.length, 1);
   assert.equal(fixture.state.converted.has(USER), true);
   assert.equal(fixture.state.shipments.size, 1);
   assert.ok(fixture.state.orders[0].inventory_deducted_at);
+  const snapshotQuery = fixture.statements.find(({ sql }) => sql.startsWith('SELECT ci.product_id'))?.sql || '';
+  assert.match(snapshotQuery, /FOR UPDATE OF ci, p, pv$/);
+  assert.doesNotMatch(snapshotQuery, /FOR UPDATE OF[^\n]*psd/);
   assert.equal(remoteCreates, 0);
 });
 test('legacy COD retries without tokens cannot process a converted cart again', async () => {
@@ -265,6 +287,25 @@ test('processed partial/full refunds deduplicate refund IDs and capture replay c
   assert.equal((await payments.verifyPayment(USER, verify)).paymentStatus, 'refunded');
   assert.equal(fixture.kicks.length, kicks);
   assert.equal(fixture.state.stock, 0);
+});
+
+test('signed refund.processed completes the linked return and queues the completed-refund notification once', async () => {
+  const fixture = setup({ stock: 1 });
+  await payments.createPaymentOrder(USER, attempt());
+  const order = fixture.state.orders[0];
+  await payments.verifyPayment(USER, captured(order));
+  const linkedReturn = { id: crypto.randomUUID(), order_id: order.id, refund_amount: order.total_amount,
+    razorpay_refund_id: 'rfnd_linked', status: 'refund_initiated', refund_status: 'processing' };
+  fixture.state.returnRequest = linkedReturn;
+  const notifications = [];
+  transactionalEmail.refundCompleted = async (returnId, refundId) => notifications.push({ returnId, refundId });
+  const refund = { id: 'rfnd_linked', payment_id: 'pay_mock', amount: Math.round(Number(order.total_amount) * 100),
+    currency: 'INR', status: 'processed', notes: { return_request_id: linkedReturn.id } };
+  const webhookId = crypto.randomUUID();
+  await payments.processWebhook(...event('refund.processed', { refund: { entity: refund } }, webhookId));
+  await payments.processWebhook(...event('refund.processed', { refund: { entity: refund } }, webhookId));
+  assert.equal(fixture.state.returnRequest.status, 'refunded');
+  assert.deepEqual(notifications, [{ returnId: linkedReturn.id, refundId: refund.id }]);
 });
 test('signed invalid or excessive refunds roll back without changing paid financial state', async () => {
   const fixture = setup();

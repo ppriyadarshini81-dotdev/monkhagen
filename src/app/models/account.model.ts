@@ -71,6 +71,7 @@ export interface Order {
   trackingStatus: string | null;
   pickupStatus: string | null;
   estimatedDelivery: string | null;
+  invoiceAvailable: boolean;
   shippedAt: string | null;
   deliveredAt: string | null;
   createdAt: string;
@@ -96,11 +97,23 @@ export interface TrackingInfo {
   lastCheckedAt: string | null;
 }
 
+export interface IndiaLocations {
+  country: 'India';
+  attribution: string;
+  states: Array<{ name: string; cities: string[] }>;
+}
+
 export interface ReturnItem {
   id: string;
   orderItemId: string;
+  productName: string;
+  sku: string | null;
+  size: string | null;
+  color: string | null;
   quantity: number;
   reason: string | null;
+  comments: string | null;
+  refundAmount: number;
 }
 
 export interface ReturnRequest {
@@ -112,18 +125,61 @@ export interface ReturnRequest {
   status: string;
   refundAmount: number;
   refundStatus: string;
+  paymentMethod: string;
+  refundDestination: CodRefundDestination;
+  returnAwb: string | null;
+  pickupStatus: string | null;
+  pickupDelayed: boolean;
+  cancellationPending: boolean;
   items: ReturnItem[];
   requestedAt: string;
+  receivedAt: string | null;
   approvedAt: string | null;
-  completedAt: string | null;
+  rejectedAt: string | null;
+  refundedAt: string | null;
   createdAt: string;
 }
 
+export interface CodRefundDestination {
+  required: boolean;
+  provided: boolean;
+  method: 'UPI' | 'BANK' | null;
+  masked: string | null;
+  status: 'PROVIDED' | 'PROCESSING' | 'FAILED' | 'COMPLETED' | 'REDACTED' | null;
+  canEdit: boolean;
+  transactionReference: string | null;
+  completedAt: string | null;
+}
+
+export type CodRefundDestinationPayload =
+  | { method: 'UPI'; upiId: string; confirmUpiId: string }
+  | { method: 'BANK'; accountHolderName: string; accountNumber: string; confirmAccountNumber: string; ifsc: string; bankName?: string };
+
 export interface ReturnPayload {
   orderId: string;
-  reason: string;
+  idempotencyKey: string;
   comments?: string;
-  items: { orderItemId: string; quantity: number; reason?: string }[];
+  items: { orderItemId: string; quantity: number; reason: string; comments?: string }[];
+}
+
+export interface ReturnEligibility {
+  orderId: string;
+  eligible: boolean;
+  reason: string | null;
+  message: string | null;
+  deliveredAt?: string;
+  returnUntil: string | null;
+  reasons: Array<{ code: string; label: string }>;
+  items: Array<{
+    orderItemId: string;
+    productName: string;
+    sku: string | null;
+    size: string | null;
+    color: string | null;
+    purchasedQuantity: number;
+    returnedQuantity: number;
+    remainingQuantity: number;
+  }>;
 }
 
 export interface CreditTransaction {

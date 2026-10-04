@@ -3,11 +3,12 @@ const { UUID } = require('../middleware/validation');
 
 const CLIENT_EVENTS = new Set([
   'PAGE_VIEW', 'PRODUCT_VIEWED', 'CART_VIEWED', 'CHECKOUT_STARTED',
-  'ADDRESS_SELECTED', 'PAYMENT_WINDOW_CLOSED'
+  'ADDRESS_SELECTED', 'PAYMENT_WINDOW_CLOSED', 'ADD_TO_CART',
+  'REMOVE_FROM_CART', 'FRONTEND_ERROR'
 ]);
 const SERVER_EVENTS = new Set([
   'ADD_TO_CART', 'REMOVE_FROM_CART', 'PAYMENT_STARTED', 'PAYMENT_SUCCESS',
-  'PAYMENT_FAILED', 'ORDER_CREATED', 'LOGIN', 'SIGNUP'
+  'PAYMENT_FAILED', 'ORDER_CREATED', 'LOGIN', 'SIGNUP', 'LOGOUT'
 ]);
 
 function httpError(status, message) {
@@ -26,15 +27,47 @@ function sessionIdFromRequest(req) {
   return typeof value === 'string' && UUID.test(value) ? value : null;
 }
 
+function cleanErrorText(value, max = 240) {
+  if (typeof value !== 'string') return null;
+  return value.replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/[?&][^\s=]{1,40}=[^\s&]{1,200}/g, '[query]')
+    .replace(/[A-Za-z0-9_-]{32,}/g, '[redacted]')
+    .replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) || null;
+}
+
+function cleanMetadata(event) {
+  const input = event?.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata) ? event.metadata : {};
+  if (event.type === 'FRONTEND_ERROR') {
+    return {
+      category: cleanErrorText(input.category, 80) || 'javascript_error',
+      message: cleanErrorText(input.message) || 'Frontend error',
+      ...(cleanErrorText(input.appVersion, 40) ? { appVersion: cleanErrorText(input.appVersion, 40) } : {})
+    };
+  }
+  if (['ADD_TO_CART','REMOVE_FROM_CART'].includes(event.type)) {
+    const quantity = Number(input.quantity);
+    const estimatedValue = Number(input.estimatedValue);
+    return {
+      ...(Number.isSafeInteger(quantity) && quantity > 0 && quantity <= 100 ? { quantity } : {}),
+      ...(Number.isFinite(estimatedValue) && estimatedValue >= 0 && estimatedValue <= 1000000
+        ? { estimatedValue: Math.round(estimatedValue * 100) / 100 } : {})
+    };
+  }
+  return {};
+}
+
 async function ensureSession({ sessionId, visitorId, entryPath = '/', userId = null }, database = pool) {
   if (!UUID.test(sessionId || '') || !UUID.test(visitorId || '')) throw httpError(400, 'Invalid analytics session.');
   const normalizedPath = cleanPath(entryPath) || '/';
   const { rows } = await database.query(`
     INSERT INTO analytics_sessions
-      (id, visitor_id, user_id, entry_path, is_authenticated_at_start)
-    VALUES ($1,$2,$3,$4,$3::uuid IS NOT NULL)
+      (id, visitor_id, user_id, entry_path, is_authenticated_at_start, is_internal)
+    VALUES ($1,$2,$3,$4,$3::uuid IS NOT NULL, EXISTS(
+      SELECT 1 FROM users u JOIN roles r ON r.id=u.role_id
+      WHERE u.id=$3 AND r.name IN ('admin','super_admin')))
     ON CONFLICT (id) DO UPDATE SET
       user_id = COALESCE(analytics_sessions.user_id, EXCLUDED.user_id),
+      is_internal = analytics_sessions.is_internal OR EXCLUDED.is_internal,
       last_activity_at = NOW()
     WHERE analytics_sessions.visitor_id = EXCLUDED.visitor_id
       AND (analytics_sessions.user_id IS NULL OR EXCLUDED.user_id IS NULL
@@ -48,12 +81,20 @@ async function ensureSession({ sessionId, visitorId, entryPath = '/', userId = n
   return rows[0];
 }
 
-async function touchSession({ sessionId, visitorId, ended = false, userId = null }) {
+async function touchSession({ sessionId, visitorId, ended = false, userId = null, activeSeconds = 0, exitPath = null }, database = pool) {
   if (!UUID.test(sessionId || '') || !UUID.test(visitorId || '')) throw httpError(400, 'Invalid analytics session.');
-  const { rowCount } = await pool.query(`UPDATE analytics_sessions
+  if (!Number.isSafeInteger(activeSeconds) || activeSeconds < 0 || activeSeconds > 60) throw httpError(400, 'Invalid analytics activity duration.');
+  const normalizedExit = exitPath == null ? null : cleanPath(exitPath);
+  if (exitPath != null && !normalizedExit) throw httpError(400, 'Invalid analytics exit path.');
+  const { rowCount } = await database.query(`UPDATE analytics_sessions
     SET user_id = COALESCE(user_id, $3), last_activity_at = NOW(),
-        ended_at = CASE WHEN $4 THEN NOW() ELSE ended_at END
-    WHERE id = $1 AND visitor_id = $2`, [sessionId, visitorId, userId, Boolean(ended)]);
+        ended_at = CASE WHEN $4 THEN NOW() ELSE ended_at END,
+        exit_path = COALESCE($6, exit_path), active_seconds = active_seconds + $5,
+        last_heartbeat_at = CASE WHEN $5 > 0 THEN NOW() ELSE last_heartbeat_at END,
+        is_internal = is_internal OR EXISTS(SELECT 1 FROM users u JOIN roles r ON r.id=u.role_id
+          WHERE u.id=$3 AND r.name IN ('admin','super_admin'))
+    WHERE id = $1 AND visitor_id = $2`,
+  [sessionId, visitorId, userId, Boolean(ended), activeSeconds, normalizedExit]);
   if (!rowCount) throw httpError(404, 'Analytics session not found.');
 }
 
@@ -68,7 +109,14 @@ async function ingestEvents({ sessionId, visitorId, events, userId = null }) {
     const path = cleanPath(event.path);
     if (!path) throw httpError(400, 'Invalid analytics path.');
     if (event.productId != null && !UUID.test(event.productId)) throw httpError(400, 'Invalid analytics product.');
-    return { id: event.eventId, type: event.type, path, productId: event.productId || null };
+    if (['ADD_TO_CART','REMOVE_FROM_CART'].includes(event.type) && userId) {
+      throw httpError(400, 'Authenticated cart analytics must be recorded by the server.');
+    }
+    if (['ADD_TO_CART','REMOVE_FROM_CART'].includes(event.type) && !event.productId) {
+      throw httpError(400, 'Cart analytics require a product.');
+    }
+    return { id: event.eventId, type: event.type, path, productId: event.productId || null,
+      metadata: cleanMetadata(event) };
   });
   await ensureSession({ sessionId, visitorId, entryPath: events[0]?.path || '/', userId });
 
@@ -79,9 +127,9 @@ async function ingestEvents({ sessionId, visitorId, events, userId = null }) {
     await client.query('BEGIN');
     for (const event of normalized) {
       const result = await client.query(`INSERT INTO analytics_events
-        (id, session_id, user_id, event_type, path, product_id)
-        VALUES ($1,$2,$3,$4,$5,$6)
-        ON CONFLICT (id) DO NOTHING`, [event.id, sessionId, userId, event.type, event.path, event.productId]);
+        (id, session_id, user_id, event_type, path, product_id, metadata)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        ON CONFLICT (id) DO NOTHING`, [event.id, sessionId, userId, event.type, event.path, event.productId, event.metadata]);
       if (result.rowCount) {
         if (event.type === 'PAGE_VIEW') pageViews += 1;
         if (event.type === 'PRODUCT_VIEWED') productViews += 1;
@@ -116,7 +164,9 @@ async function recordServerEvent(req, eventType, references = {}) {
       ON CONFLICT (dedupe_key) DO NOTHING`, [dedupeKey, sessionId, userId, eventType,
         references.productId || null, references.cartId || null, references.orderId || null]);
     await pool.query(`UPDATE analytics_sessions SET user_id = COALESCE(user_id, $2),
-      last_activity_at = NOW() WHERE id = $1`, [sessionId, userId]);
+      last_activity_at = NOW(), is_internal = is_internal OR EXISTS(
+        SELECT 1 FROM users u JOIN roles r ON r.id=u.role_id
+        WHERE u.id=$2 AND r.name IN ('admin','super_admin')) WHERE id = $1`, [sessionId, userId]);
   } catch (error) {
     console.warn('Analytics event was not recorded.', { code: error.code || 'ANALYTICS_WRITE_FAILED' });
   }
@@ -150,6 +200,8 @@ async function recordOrderEvent(order, eventType, dedupeSuffix) {
 module.exports = {
   CLIENT_EVENTS,
   cleanPath,
+  cleanErrorText,
+  cleanMetadata,
   ensureSession,
   touchSession,
   ingestEvents,

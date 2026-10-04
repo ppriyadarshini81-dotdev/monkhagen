@@ -1,5 +1,7 @@
 const TOKEN_LIFETIME_MS = 10 * 24 * 60 * 60 * 1000;
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
+const MAX_INVOICE_BYTES = 20 * 1024 * 1024;
+const { isIP } = require('node:net');
 
 function shippingError(status, code, message, uncertain = false) {
   const error = new Error(message);
@@ -43,7 +45,7 @@ function createShiprocketClient({ fetchImpl = (...args) => fetch(...args), now =
   let expiresAt = 0;
   let loginPromise;
 
-  async function send(path, { method = 'GET', body, query, authToken } = {}) {
+  async function send(path, { method = 'GET', body, query, authToken, acceptEmptyResponse = false } = {}) {
     const settings = config();
     const url = new URL(`/v1/external${path}`, settings.baseUrl);
     for (const [key, value] of Object.entries(query || {})) url.searchParams.set(key, String(value));
@@ -57,6 +59,11 @@ function createShiprocketClient({ fetchImpl = (...args) => fetch(...args), now =
           ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) },
         ...(body ? { body: JSON.stringify(body) } : {})
       });
+      // Shiprocket documents 204 No Content for cancellation. Only callers
+      // which explicitly opt in may treat an empty successful response as valid.
+      if (acceptEmptyResponse && response.ok && response.status === 204) {
+        return { status: response.status, data: {} };
+      }
       // Consume the body inside the timeout as well. Never expose the provider's error text.
       let data;
       try { data = await response.json(); }
@@ -123,6 +130,67 @@ function createShiprocketClient({ fetchImpl = (...args) => fetch(...args), now =
     return loginPromise;
   }
 
+  async function downloadInvoice(invoiceUrl) {
+    const settings = config();
+    let url;
+    try { url = new URL(invoiceUrl); }
+    catch { throw shippingError(502, 'SHIPROCKET_INVALID_RESPONSE', 'Shiprocket returned an invalid invoice URL.'); }
+    if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443') ||
+        url.hostname === 'localhost' || isIP(url.hostname)) {
+      throw shippingError(502, 'SHIPROCKET_INVALID_RESPONSE', 'Shiprocket returned an invalid invoice URL.');
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), settings.timeout);
+    try {
+      const response = await fetchImpl(url, {
+        method: 'GET', redirect: 'error', signal: controller.signal,
+        headers: { Accept: 'application/pdf, application/octet-stream' }
+      });
+      if (!response.ok) {
+        const error = shippingError(response.status === 404 ? 404 : response.status === 429 ? 429 : 502,
+          'SHIPROCKET_REQUEST_FAILED', 'Invoice is not available yet. Please try again later.');
+        error.upstreamStatus = response.status;
+        throw error;
+      }
+      const type = String(response.headers?.get?.('content-type') || '').split(';')[0].trim().toLowerCase();
+      // Shiprocket's invoice CDN currently serves valid PDFs as text/pdf.
+      // Keep the magic-byte validation below so accepting that MIME cannot admit non-PDF content.
+      if (type && !['application/pdf', 'text/pdf', 'application/octet-stream'].includes(type)) {
+        throw shippingError(502, 'SHIPROCKET_INVALID_RESPONSE', 'Shiprocket returned an invalid invoice document.');
+      }
+      const declared = Number(response.headers?.get?.('content-length'));
+      if (Number.isFinite(declared) && declared > MAX_INVOICE_BYTES) {
+        throw shippingError(502, 'SHIPROCKET_INVALID_RESPONSE', 'Shiprocket invoice exceeds the permitted size.');
+      }
+      const reader = response.body?.getReader?.();
+      if (!reader) throw shippingError(502, 'SHIPROCKET_INVALID_RESPONSE', 'Shiprocket returned an invalid invoice document.');
+      const chunks = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_INVOICE_BYTES) {
+          controller.abort();
+          throw shippingError(502, 'SHIPROCKET_INVALID_RESPONSE', 'Shiprocket invoice exceeds the permitted size.');
+        }
+        chunks.push(Buffer.from(value));
+      }
+      const document = Buffer.concat(chunks, total);
+      if (document.length < 5 || document.subarray(0, 5).toString('ascii') !== '%PDF-') {
+        throw shippingError(502, 'SHIPROCKET_INVALID_RESPONSE', 'Shiprocket returned an invalid invoice document.');
+      }
+      return document;
+    } catch (error) {
+      if (error.code?.startsWith('SHIPROCKET_')) throw error;
+      throw shippingError(controller.signal.aborted ? 504 : 502,
+        controller.signal.aborted ? 'SHIPROCKET_TIMEOUT' : 'SHIPROCKET_UNAVAILABLE',
+        'Invoice is not available yet. Please try again later.');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   return {
     async request(path, options = {}) {
       let usedToken = await authenticate();
@@ -134,7 +202,8 @@ function createShiprocketClient({ fetchImpl = (...args) => fetch(...args), now =
         if (result.status === 401) throw providerError(401, 'SHIPROCKET_AUTH_FAILED');
       }
       return result.data;
-    }
+    },
+    downloadInvoice
   };
 }
 

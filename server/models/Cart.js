@@ -56,11 +56,12 @@ const Cart = {
         p.slug  AS product_slug,
         pv.size, pv.color, pv.sku,
         COALESCE(pv.price, p.base_price) AS effective_price,
-        pv.stock,
+        CASE WHEN psd.inventory_configured AND psd.is_active THEN psd.stock_quantity ELSE 0 END AS stock,
         pi.image_url
       FROM cart_items ci
       JOIN products p       ON p.id  = ci.product_id
       JOIN product_variants pv ON pv.id = ci.variant_id
+      LEFT JOIN product_size_details psd ON psd.product_id = p.id AND psd.size_id = pv.size_id
       LEFT JOIN product_images pi ON pi.product_id = p.id AND pi.is_primary = TRUE
       WHERE ci.cart_id = $1
       ORDER BY ci.created_at
@@ -74,17 +75,20 @@ const Cart = {
   async addItem(userId, { productId, variantId, quantity = 1 }) {
     const cartId = await this.getOrCreate(userId);
     const { rows: variantRows } = await pool.query(
-      `SELECT pv.stock
+      `SELECT psd.stock_quantity AS stock, pv.size
        FROM product_variants pv
        JOIN products p ON p.id = pv.product_id
+       JOIN product_size_details psd ON psd.product_id = p.id AND psd.size_id = pv.size_id
        WHERE pv.id = $1
          AND pv.product_id = $2
          AND pv.is_active = TRUE
-         AND p.is_active = TRUE`,
+         AND p.is_active = TRUE
+         AND psd.is_active = TRUE
+         AND psd.inventory_configured = TRUE`,
       [variantId, productId]
     );
     if (!variantRows[0]) {
-      throw httpError(400, 'The selected product variant is unavailable.');
+      throw httpError(409, 'The selected product size is unavailable.');
     }
 
     const { rows: itemRows } = await pool.query(
@@ -94,7 +98,7 @@ const Cart = {
     const nextQuantity = Number(itemRows[0]?.quantity || 0) + quantity;
     if (!Number.isSafeInteger(nextQuantity) || nextQuantity < 1 || nextQuantity > 100) throw httpError(400, 'A maximum of 100 units per item is supported.');
     if (nextQuantity > variantRows[0].stock) {
-      throw httpError(400, `Only ${variantRows[0].stock} item(s) are available.`);
+      throw httpError(409, `${variantRows[0].size} has only ${variantRows[0].stock} item(s) available.`);
     }
 
     if (itemRows[0]) {
@@ -116,9 +120,10 @@ const Cart = {
   async updateItem(userId, itemId, { quantity }) {
     const cartId = await this.getOrCreate(userId);
     const { rows } = await pool.query(
-      `SELECT ci.id, pv.stock
+      `SELECT ci.id, pv.size, psd.stock_quantity AS stock
        FROM cart_items ci
        JOIN product_variants pv ON pv.id = ci.variant_id
+       JOIN product_size_details psd ON psd.product_id = ci.product_id AND psd.size_id = pv.size_id
        WHERE ci.id = $1 AND ci.cart_id = $2`,
       [itemId, cartId]
     );
@@ -126,7 +131,7 @@ const Cart = {
       throw httpError(404, 'Cart item not found.');
     }
     if (quantity > rows[0].stock) {
-      throw httpError(400, `Only ${rows[0].stock} item(s) are available.`);
+      throw httpError(409, `${rows[0].size} has only ${rows[0].stock} item(s) available.`);
     }
 
     await pool.query(

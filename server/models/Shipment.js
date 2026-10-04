@@ -58,6 +58,17 @@ const Shipment = {
     return rows[0] || null;
   },
 
+  async invoiceSource(orderId) {
+    const { rows } = await pool.query(
+      `SELECT o.id, o.order_number, o.user_id, s.shiprocket_order_id
+       FROM orders o
+       LEFT JOIN shipments s ON s.order_id = o.id
+       WHERE o.id = $1`,
+      [orderId]
+    );
+    return rows[0] || null;
+  },
+
   async order(client, orderId) {
     const { rows } = await client.query(
       `SELECT o.*, u.email AS customer_email FROM orders o

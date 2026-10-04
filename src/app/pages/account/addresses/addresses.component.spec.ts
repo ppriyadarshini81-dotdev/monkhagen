@@ -2,17 +2,23 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, Subject } from 'rxjs';
 import { AccountAddressesComponent } from './addresses.component';
 import { AccountService } from '../../../services/account.service';
-import { Address, AddressPayload } from '../../../models/account.model';
+import { Address, AddressPayload, IndiaLocations } from '../../../models/account.model';
 
 describe('Address book validation', () => {
   let fixture: ComponentFixture<AccountAddressesComponent>;
   let account: jasmine.SpyObj<AccountService>;
   const valid: AddressPayload = { fullName: 'Test Customer', phone: '9876543210', addressLine1: '12 Test Street',
     city: 'Delhi', state: 'Delhi', postalCode: '110001', country: 'India', addressType: 'Home' };
+  const locations: IndiaLocations = { country: 'India', attribution: 'test', states: [
+    { name: 'Delhi', cities: ['Delhi', 'New Delhi'] },
+    { name: 'Haryana', cities: ['Faridabad', 'Gurugram'] },
+    { name: 'Punjab', cities: ['Amritsar', 'Ludhiana'] }
+  ] };
 
   beforeEach(async () => {
-    account = jasmine.createSpyObj('AccountService', ['getAddresses', 'addAddress', 'updateAddress']);
+    account = jasmine.createSpyObj('AccountService', ['getAddresses', 'getAddressLocations', 'addAddress', 'updateAddress']);
     account.getAddresses.and.returnValue(of([]));
+    account.getAddressLocations.and.returnValue(of(locations));
     account.addAddress.and.returnValue(of({ ...valid, id: 'address-test' } as Address));
     account.updateAddress.and.returnValue(of({ ...valid, id: 'address-test' } as Address));
     await TestBed.configureTestingModule({ imports: [AccountAddressesComponent],
@@ -61,6 +67,30 @@ describe('Address book validation', () => {
     expect(fixture.componentInstance.showForm).toBeFalse();
   });
 
+  it('loads Indian states and dependent Haryana and Punjab cities', () => {
+    const component = fixture.componentInstance;
+    expect(component.stateOptions).toEqual(['Delhi', 'Haryana', 'Punjab']);
+    component.stateChanged('Haryana');
+    expect(component.cityOptions).toEqual(['Faridabad', 'Gurugram']);
+    component.form.city = 'Gurugram';
+    component.stateChanged('Punjab');
+    expect(component.form.city).toBe('');
+    expect(component.cityOptions).toEqual(['Amritsar', 'Ludhiana']);
+  });
+
+  it('keeps city disabled until a state is selected', async () => {
+    let city: HTMLSelectElement = fixture.nativeElement.querySelector('#addr-city');
+    expect(city.disabled).toBeTrue();
+    const state: HTMLSelectElement = fixture.nativeElement.querySelector('#addr-state');
+    state.value = 'Haryana';
+    state.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    city = fixture.nativeElement.querySelector('#addr-city');
+    expect(city.disabled).toBeFalse();
+  });
+
   it('validates edits and resets messages when cancelled or reopened', () => {
     const component = fixture.componentInstance;
     component.save();
@@ -85,5 +115,16 @@ describe('Address book validation', () => {
     expect(component.form).toEqual(valid);
     expect(component.error).toBe('Please try again.');
     expect(component.saving).toBeFalse();
+  });
+
+  it('loads and preserves a legacy saved city that is absent from the dataset', () => {
+    const component = fixture.componentInstance;
+    const legacy = { ...valid, id: 'legacy-address', state: 'Haryana', city: 'Legacy Township' } as Address;
+    component.openEdit(legacy);
+    expect(component.cityOptions).toContain('Legacy Township');
+    component.save();
+    expect(account.updateAddress).toHaveBeenCalledWith('legacy-address', jasmine.objectContaining({
+      state: 'Haryana', city: 'Legacy Township'
+    }));
   });
 });

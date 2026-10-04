@@ -7,19 +7,20 @@ const asyncHandler = require('../middleware/asyncHandler');
 exports.list = asyncHandler(async (req, res) => {
   const { category, search, featured } = req.query;
   const products = await Product.findAll({ category, search, featured: featured === 'true', ...require('../middleware/validation').pagination(req.query) });
+  res.set('Cache-Control', 'no-store');
   res.json(products);
 });
 
 // Protected catalog reads retain unpublished records for administration.
 exports.adminList = asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'no-store');
-  res.json(await Product.findAll({ activeOnly: false, ...require('../middleware/validation').pagination(req.query) }));
+  res.json(await Product.findAll({ activeOnly: false, exposeInventory: true, ...require('../middleware/validation').pagination(req.query) }));
 });
 
 exports.adminGetOne = asyncHandler(async (req, res) => {
   const product = Product.isValidId(req.params.idOrSlug)
-    ? await Product.findById(req.params.idOrSlug)
-    : await Product.findBySlug(req.params.idOrSlug);
+    ? await Product.findById(req.params.idOrSlug, { exposeInventory: true })
+    : await Product.findBySlug(req.params.idOrSlug, { exposeInventory: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
   res.set('Cache-Control', 'no-store');
   res.json(product);
@@ -28,6 +29,7 @@ exports.adminGetOne = asyncHandler(async (req, res) => {
 // GET /api/products/categories
 exports.categories = asyncHandler(async (_req, res) => {
   const cats = await Category.find();
+  res.set('Cache-Control', 'no-store');
   res.json(cats.map((c) => c.name));
 });
 
@@ -38,25 +40,34 @@ exports.getOne = asyncHandler(async (req, res) => {
     ? await Product.findById(idOrSlug, { activeOnly: true })
     : await Product.findBySlug(idOrSlug, { activeOnly: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
+  res.set('Cache-Control', 'no-store');
   res.json(product);
 });
 
 // POST /api/products — admin
 exports.create = asyncHandler(async (req, res) => {
-  const product = await Product.create(sanitize(req.body));
+  const product = await Product.create({ ...sanitize(req.body), createdBy: req.user.id });
   res.status(201).json(product);
 });
 
 // PUT /api/products/:id — admin
 exports.update = asyncHandler(async (req, res) => {
-  const product = await Product.findById(req.params.id, { full: true });
+  const product = await Product.findById(req.params.id, { full: true, exposeInventory: true });
   if (!product) return res.status(404).json({ message: 'Product not found.' });
 
-  const payload = sanitize(req.body);
+  const payload = { ...sanitize(req.body), createdBy: req.user.id };
   const removed = [];
   if (Array.isArray(payload.images)) {
+    // Older admin/API clients send only display images. Preserve any existing
+    // zoom association by display URL instead of silently clearing it.
+    if (!Array.isArray(payload.zoomImages)) {
+      const existingZoomByUrl = new Map((product.imageObjects || []).map(image => [image.url, image.zoomUrl || null]));
+      payload.zoomImages = payload.images.map(image => existingZoomByUrl.get(image?.url ?? image) || null);
+    }
     const newUrls = new Set(payload.images.map((i) => i?.url ?? i));
     removed.push(...product.images.filter((url) => !newUrls.has(url)));
+    const newZoomUrls = new Set((payload.zoomImages || []).filter(Boolean));
+    removed.push(...(product.zoomImages || []).filter((url) => url && !newZoomUrls.has(url)));
   }
 
   const updated = await Product.update(req.params.id, payload);
@@ -72,14 +83,15 @@ exports.remove = asyncHandler(async (req, res) => {
 
   await Product.findByIdAndDelete(req.params.id);
   // A blocked/failed database delete must never remove live product assets.
-  await Promise.allSettled(product.images.map(deleteFile));
+  await Promise.allSettled([...product.images, ...(product.zoomImages || []).filter(Boolean)].map(deleteFile));
   res.json({ message: 'Product deleted.', id: product.id });
 });
 
 function sanitize(body) {
   const allowed = [
     'name', 'description', 'basePrice', 'categoryId', 'featured', 'badgeId',
-    'isActive', 'images', 'variants', 'sizeIds', 'colorIds'
+    'isActive', 'images', 'zoomImages', 'variants', 'sizeIds', 'colorIds',
+    'sizeInventory', 'inventoryReason'
   ];
   const out = {};
   for (const key of allowed) {

@@ -18,7 +18,7 @@ const { signToken, authenticate, requireAdmin, JWT_SECRET } = require('../middle
 const router = require('../routes/auth');
 const { applyGoogleAdminMigration } = require('../config/db');
 const originalMethods = Object.fromEntries(['findById', 'findByFirebaseUid', 'findOne',
-  'createFirebaseUser', 'linkFirebaseUid', 'updateFirebaseUser', 'setRole'].map(key => [key, User[key]]));
+  'createFirebaseUser', 'linkFirebaseUid', 'linkVerifiedGoogleAccount', 'updateFirebaseUser', 'setRole'].map(key => [key, User[key]]));
 let server, base;
 function user(overrides = {}) {
   const value = { id: 'account-id', email: process.env.ADMIN_GOOGLE_EMAIL, role: 'admin',
@@ -57,6 +57,12 @@ beforeEach(() => {
   };
   User.linkFirebaseUid = async (id, fields) => {
     mutations.push('link'); stored = user({ ...stored, firebaseUid: fields.uid }); return stored;
+  };
+  User.linkVerifiedGoogleAccount = async (id, fields) => {
+    mutations.push({ type: 'link-google', id, fields });
+    stored = user({ id: 'existing-google-account', role: 'customer', phone: stored.phone,
+      phoneVerified: true, email: fields.email, firebaseUid: fields.uid, name: 'Existing Customer' });
+    return stored;
   };
   User.updateFirebaseUser = async () => { mutations.push('update'); return stored; };
   User.setRole = async (id, role) => { mutations.push('role'); stored = user({ ...stored, role }); return stored; };
@@ -125,6 +131,43 @@ test('invalid, revoked, and unverified Firebase tokens cannot create accounts', 
   decoded.email_verified = false;
   assert.equal((await login()).status, 403);
   assert.equal((await login({ idToken: {} })).status, 400);
+  assert.deepEqual(mutations, []);
+});
+test('verified phone customer can prove the matching Google email and recover the existing account', async () => {
+  stored = user({ id: 'phone-account', role: 'customer', email: null, firebaseUid: null,
+    phone: '9876543210', phoneVerified: true, name: 'User' });
+  decoded = { uid: 'customer-google-uid', email: 'customer@example.com', email_verified: true,
+    name: 'Existing Customer', picture: 'https://example.test/photo.jpg', auth_time: 123456,
+    firebase: { sign_in_provider: 'google.com' } };
+  const response = await fetch(`${base}/api/auth/link-google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signToken(stored)}` },
+    body: JSON.stringify({ email: ' Customer@Example.com ', idToken: 'verified-google-token' })
+  });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.user.id, 'existing-google-account');
+  assert.equal(result.user.name, 'Existing Customer');
+  const claims = jwt.verify(result.token, JWT_SECRET);
+  assert.equal(claims.sub, 'existing-google-account');
+  assert.equal(claims.provider, 'google.com');
+  assert.equal(claims.firebaseUid, 'customer-google-uid');
+  assert.deepEqual(mutations.at(-1), { type: 'link-google', id: 'phone-account', fields: {
+    uid: 'customer-google-uid', email: 'customer@example.com', name: 'Existing Customer',
+    picture: 'https://example.test/photo.jpg'
+  } });
+});
+test('account recovery rejects a Google account that does not match the entered email', async () => {
+  stored = user({ id: 'phone-account', role: 'customer', email: null, firebaseUid: null,
+    phone: '9876543210', phoneVerified: true, name: 'User' });
+  decoded = { uid: 'customer-google-uid', email: 'different@example.com', email_verified: true,
+    firebase: { sign_in_provider: 'google.com' } };
+  const response = await fetch(`${base}/api/auth/link-google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${signToken(stored)}` },
+    body: JSON.stringify({ email: 'customer@example.com', idToken: 'verified-google-token' })
+  });
+  assert.equal(response.status, 403);
   assert.deepEqual(mutations, []);
 });
 test('legacy password endpoint is removed', async () => {

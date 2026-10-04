@@ -4,6 +4,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const { runMaintenance } = require('../services/securityMaintenance');
 const { processShippingQueue } = require('../services/shippingWorker');
 const { sendPendingConfirmations } = require('../services/emailWorker');
+const { sendPendingSms } = require('../services/smsWorker');
 
 router.get('/', asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -16,7 +17,8 @@ router.get('/', asyncHandler(async (req, res) => {
     const summary = await runMaintenance();
     const shipping = await processShippingQueue({ limit: 1 });
     const emails = await sendPendingConfirmations({ limit: 1 });
-    return { ...summary, shippingOrdersChecked: shipping, confirmationEmailsSent: emails };
+    const sms = await sendPendingSms({ limit: 1 });
+    return { ...summary, shippingOrdersChecked: shipping, confirmationEmailsSent: emails, transactionalSmsSent: sms };
   });
   // Release the durable lease before ending a serverless response.
   res.json(result);

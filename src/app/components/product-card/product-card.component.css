@@ -17,6 +17,7 @@
   aspect-ratio: 4 / 5;
   overflow: hidden;
   background: var(--mh-bg-elev-2);
+  touch-action: pan-y;
 }
 
 .mh-pcard__image-track {
@@ -38,6 +39,30 @@
   height: 100%;
   object-fit: cover;
 }
+
+.mh-pcard__image-dots {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 58px;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 70%);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.mh-pcard__image-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgb(17 17 17 / 30%);
+}
+
+.mh-pcard__image-dots span.active { background: var(--mh-accent); }
 
 @media (prefers-reduced-motion: reduce) {
   .mh-pcard__image-track {
@@ -76,9 +101,11 @@
   transition: opacity 0.1s ease, transform 0.1s ease;
 }
 
-.mh-pcard:hover .mh-pcard__add {
-  opacity: 1;
-  transform: translateY(0);
+@media (hover: hover) and (pointer: fine) {
+  .mh-pcard:hover .mh-pcard__add {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .mh-pcard__sizes {
@@ -167,9 +194,31 @@
   color: var(--mh-accent);
 }
 
-@media (hover: none) {
+@media (hover: none), (pointer: coarse) {
   .mh-pcard__add {
     opacity: 1;
     transform: none;
   }
+  .mh-pcard__image-dots { display: flex; }
+}
+
+@media (max-width: 1023px) {
+  .mh-pcard__media { aspect-ratio: 3 / 4; }
+  .mh-pcard__image-track img { object-fit: contain; }
+}
+
+@media (max-width: 767px) {
+  .mh-pcard:hover { transform: none; }
+  .mh-pcard__badge { top: 8px; left: 8px; padding: 4px 7px; font-size: 9px; }
+  .mh-pcard__add { left: 8px; right: 8px; bottom: 8px; min-height: 40px; padding: 8px; font-size: 11px; }
+  .mh-pcard__image-dots { bottom: 54px; }
+  .mh-pcard__sizes { left: 6px; right: 6px; bottom: 6px; padding: 9px; }
+  .mh-pcard__sizes > span { margin-bottom: 6px; font-size: 9px; }
+  .mh-pcard__size-list { gap: 4px; }
+  .mh-pcard__size-list button { min-width: 30px; min-height: 32px; padding: 5px 6px; }
+  .mh-pcard__body { padding: 11px 10px 12px; }
+  .mh-pcard__cat { display: block; overflow: hidden; font-size: 9px; letter-spacing: .1em; text-overflow: ellipsis; white-space: nowrap; }
+  .mh-pcard__name { min-height: 2.6em; margin: 6px 0 10px; overflow-wrap: anywhere; font-size: 13px; }
+  .mh-pcard__price { font-size: 14px; }
+  .mh-pcard__rating { font-size: 11px; }
 }

@@ -78,7 +78,12 @@ export default {
       for (const name of [...responseHeaders.keys()]) {
         if (name.startsWith('access-control-')) responseHeaders.delete(name);
       }
-      if (headers.has('Authorization') || (request.method !== 'GET' && request.method !== 'HEAD')) {
+      // Every API response is live application data except the dedicated media
+      // proxy. Explicitly opt dynamic GETs out of browser/zone caching so a
+      // catalogue edit cannot leave product prices stale on the storefront.
+      const cacheableMedia = (request.method === 'GET' || request.method === 'HEAD') &&
+        url.pathname === '/api/media';
+      if (!cacheableMedia || headers.has('Authorization')) {
         responseHeaders.set('Cache-Control', 'no-store');
         responseHeaders.set('Pragma', 'no-cache');
       }

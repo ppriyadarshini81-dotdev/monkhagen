@@ -40,6 +40,12 @@
     <button [class.active]="tab === 'orders'" (click)="tab = 'orders'">
       Orders ({{ orders.length }})
     </button>
+    <button [class.active]="tab === 'returns'" (click)="tab = 'returns'">
+      Returns ({{ returns.length }})
+    </button>
+    <button [class.active]="tab === 'reviews'" (click)="tab = 'reviews'">
+      Reviews ({{ customerReviews.length }})
+    </button>
     <button [class.active]="tab === 'content'" (click)="tab = 'content'">Product page content</button>
   </div>
 
@@ -73,25 +79,39 @@
         </div>
         <div>
           <label class="mh-label">Total stock</label>
-          <input class="mh-input" type="number" min="0" step="1" [(ngModel)]="form.stock" />
+          <output class="mh-input mh-admin__stock-total">{{ totalSizeStock }}</output>
+          <small class="mh-admin__field-help">Calculated automatically from active size inventory.</small>
         </div>
         <div class="mh-admin__full">
           <label class="mh-label">Product details</label>
           <textarea class="mh-textarea" rows="3" [(ngModel)]="form.description"></textarea>
         </div>
-        <div>
-          <label class="mh-label">Sizes * (select one or more)</label>
-          <details class="mh-checkdrop">
-            <summary>{{ selectedOptionLabel('sizes') }}</summary>
-            <div class="mh-checkdrop__menu">
-              <label *ngFor="let size of sizes">
-                <input type="checkbox" [checked]="optionSelected('sizes', size.id)"
-                  (change)="toggleProductOption('sizes', size.id, $any($event.target).checked)" />
-                <span>{{ size.name }}</span>
-              </label>
-              <span class="mh-checkdrop__empty" *ngIf="sizes.length === 0">Add sizes in the Sizes tab first.</span>
+        <div class="mh-admin__full">
+          <label class="mh-label">Size inventory *</label>
+          <p class="mh-admin__inventory-warning" *ngIf="editing && form.id && totalSizeStock === 0">
+            Size-level stock may need to be configured before customers can purchase this product.
+          </p>
+          <div class="mh-size-stock-editor">
+            <div class="mh-size-stock-editor__head"><span>Size</span><span>Available</span><span>Stock</span><span>Low-stock threshold</span><span>Status</span></div>
+            <div class="mh-size-stock-editor__row" *ngFor="let size of sizes" [class.is-disabled]="!optionSelected('sizes', size.id)">
+              <strong>{{ size.name }}</strong>
+              <input type="checkbox" [checked]="optionSelected('sizes', size.id)"
+                (change)="toggleProductOption('sizes', size.id, $any($event.target).checked)"
+                [attr.aria-label]="'Offer size ' + size.name" />
+              <input class="mh-input" type="number" min="0" step="1" [disabled]="!optionSelected('sizes', size.id)"
+                [(ngModel)]="sizeStock(size.id).stock" (ngModelChange)="updateOpeningStock(size.id)"
+                [attr.aria-label]="size.name + ' stock'" />
+              <input class="mh-input" type="number" min="0" step="1" [disabled]="!optionSelected('sizes', size.id)"
+                [(ngModel)]="sizeStock(size.id).threshold" [attr.aria-label]="size.name + ' low-stock threshold'" />
+              <span class="mh-size-stock-editor__status" [class.is-low]="sizeStockStatus(size.id) === 'Low stock'"
+                [class.is-out]="sizeStockStatus(size.id) === 'Out of stock'">{{ sizeStockStatus(size.id) }}</span>
             </div>
-          </details>
+            <p *ngIf="!sizes.length" class="mh-checkdrop__empty">Add sizes in the Sizes tab first.</p>
+            <div class="mh-size-stock-editor__total"><strong>Total</strong><b>{{ totalSizeStock }}</b></div>
+          </div>
+          <label class="mh-label mh-admin__stock-reason-label">Stock change reason</label>
+          <input class="mh-input" [(ngModel)]="form.inventoryReason" maxlength="500"
+            placeholder="Optional, for example: New stock received" />
         </div>
         <div>
           <label class="mh-label">Colors * (select one or more)</label>
@@ -110,13 +130,43 @@
         <div class="mh-admin__full">
           <label class="mh-label">Image URLs (comma separated)</label>
           <input class="mh-input" [(ngModel)]="form.images" placeholder="https://…, https://…" />
+          <label class="mh-label mh-admin__zoom-label">Zoom Image URLs (comma separated)</label>
+          <input class="mh-input" [(ngModel)]="form.zoomImages"
+            placeholder="https://high-resolution.example/front.webp, , https://high-resolution.example/detail.webp" />
+          <small class="mh-admin__image-help">Leave an empty position when a display image has no zoom image.</small>
           <div class="mh-admin__upload">
             <label class="mh-admin__uploadbtn">
               {{ uploading ? 'Uploading…' : '⬆ Upload images (R2)' }}
               <input type="file" accept="image/*" multiple (change)="onImagesSelected($event)" hidden [disabled]="uploading" />
             </label>
-            <div class="mh-admin__thumbs" *ngIf="form.images">
-              <img *ngFor="let url of form.images.split(',')" [src]="url.trim()" alt="" />
+            <div class="mh-admin__image-manager" *ngIf="imagePairs.length">
+              <article class="mh-admin__image-pair" *ngFor="let pair of imagePairs; let i = index"
+                [class.is-dragging]="draggedImageIndex === i" draggable="true"
+                (dragstart)="startImageDrag(i, $event)" (dragover)="allowImageDrop($event)"
+                (drop)="dropImage(i, $event)" (dragend)="draggedImageIndex = null">
+                <header>
+                  <strong>{{ i === 0 ? 'PRIMARY' : 'Image ' + (i + 1) }}</strong>
+                  <span>Drag to reorder</span>
+                </header>
+                <div class="mh-admin__image-pair-media">
+                  <div><span>Display</span><img [src]="pair.imageUrl" [alt]="'Display image ' + (i + 1)" /></div>
+                  <div><span>{{ pair.zoomImageUrl ? 'Zoom available' : 'No zoom' }}</span>
+                    <img *ngIf="pair.zoomImageUrl; else noZoomImage" [src]="pair.zoomImageUrl" [alt]="'Zoom image ' + (i + 1)" />
+                    <ng-template #noZoomImage><span class="mh-admin__zoom-empty">Optional</span></ng-template>
+                  </div>
+                </div>
+                <div class="mh-admin__image-pair-actions">
+                  <button type="button" (click)="moveImage(i, -1)" [disabled]="i === 0" aria-label="Move image left">&#8592;</button>
+                  <button type="button" (click)="moveImage(i, 1)" [disabled]="i === imagePairs.length - 1" aria-label="Move image right">&#8594;</button>
+                  <label>
+                    {{ uploadingZoomIndex === i ? 'Uploading...' : (pair.zoomImageUrl ? 'Replace zoom' : 'Add zoom') }}
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" hidden
+                      [disabled]="uploadingZoomIndex !== null" (change)="onZoomImageSelected($event, i)" />
+                  </label>
+                  <button type="button" *ngIf="pair.zoomImageUrl" (click)="removeZoomImage(i)">Remove zoom</button>
+                  <button type="button" class="danger" (click)="removeImage(i)">Remove pair</button>
+                </div>
+              </article>
             </div>
           </div>
         </div>
@@ -380,7 +430,103 @@
       </button>
     </div>
   </div>
+
+  <div class="mh-orders mh-admin-returns" *ngIf="tab === 'returns'">
+    <div class="mh-orders__toolbar">
+      <div><span class="mh-eyebrow">Reverse logistics</span><h2>Customer returns</h2><p>Approve stock only after receipt, then initiate or record the appropriate refund.</p></div>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="loadReturns()" [disabled]="returnsLoading">{{ returnsLoading ? 'Refreshing...' : 'Refresh returns' }}</button>
+    </div>
+    <p class="mh-empty" *ngIf="!returnsLoading && returns.length === 0">No return requests yet.</p>
+    <div class="mh-admin-return-card" *ngFor="let r of returns">
+      <header><div><small>Return ID</small><strong>#{{ r.returnNumber }}</strong><span>Order #{{ r.orderNumber || r.orderId }}</span></div><span class="mh-status" [ngClass]="statusClass(r.status)">{{ r.cancellationPending ? 'Cancellation pending' : statusLabel(r.status) }}</span></header>
+      <div class="mh-admin-return-grid">
+        <div><small>Customer</small><strong>{{ r.customer?.name || 'User' }}</strong><span>{{ r.customer?.email || r.customer?.phone || 'Contact unavailable' }}</span></div>
+        <div><small>Requested</small><strong>{{ r.requestedAt | date:'medium' }}</strong><span>{{ r.paymentMethod === 'cod' ? 'COD · manual refund' : 'Prepaid · Razorpay' }}</span></div>
+        <div><small>Shiprocket return</small><strong>{{ r.shiprocketReturnOrderId || 'Creating' }}</strong><span>{{ r.status === 'return_created' && !r.returnAwb ? 'Schedule pickup in Shiprocket' : ('AWB ' + (r.returnAwb || 'not assigned') + ' · ' + (r.pickupStatus || 'pending')) }}</span></div>
+        <div><small>Refund</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><span>{{ statusLabel(r.refundStatus) }}</span></div>
+      </div>
+      <div class="mh-cod-refund-summary" *ngIf="r.paymentMethod === 'cod'">
+        <div><small>COD refund destination</small>
+          <strong *ngIf="r.refundDestination.provided; else destinationNeeded">{{ r.refundDestination.method === 'UPI' ? 'UPI' : 'Bank transfer' }} &middot; {{ r.refundDestination.masked }}</strong>
+          <ng-template #destinationNeeded><strong>Waiting for customer details</strong></ng-template>
+          <span>{{ r.refundDestination.provided ? statusLabel(r.refundDestination.status) : 'The customer can submit details from Returns after approval.' }}</span>
+          <span *ngIf="r.refundDestination.transactionReference">Reference: {{ r.refundDestination.transactionReference }}</span>
+        </div>
+      </div>
+      <div class="mh-admin-return-items"><div *ngFor="let item of r.items"><strong>{{ item.productName }}</strong><span>{{ item.sku || 'No SKU' }} · Qty {{ item.quantity }} · {{ statusLabel(item.reason) }}</span><small *ngIf="item.comments">{{ item.comments }}</small></div></div>
+      <p class="mh-order-alert" *ngIf="r.pickupDelayed"><strong>Return creation needs attention</strong><span>The local request is safe. Confirm that no matching return exists in Shiprocket before retrying creation.</span></p>
+      <p class="mh-order-alert" *ngIf="r.cancellationPending"><strong>Cancellation needs reconciliation</strong><span>Check this return in Shiprocket before taking another action.</span></p>
+      <footer>
+        <button class="mh-btn mh-btn--ghost" type="button" *ngIf="r.status === 'shiprocket_failed'" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'retry')">Retry return creation</button>
+        <button class="mh-btn mh-btn--ghost" type="button" *ngIf="returnRejectLabel(r) as rejectLabel" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'reject')">{{ rejectLabel }}</button>
+        <button class="mh-btn mh-btn--gold" type="button" *ngIf="canApproveReturn(r)" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'approve')">Receive & approve</button>
+        <button class="mh-btn mh-btn--ghost" type="button" *ngIf="canRevealCodRefund(r)" [disabled]="!!returnBusyId" (click)="revealCodRefund(r)">View refund details</button>
+        <button class="mh-btn mh-btn--gold" type="button" *ngIf="canStartCodRefund(r)" [disabled]="!!returnBusyId" (click)="startCodRefund(r)">{{ r.refundDestination.status === 'FAILED' ? 'Retry COD refund' : 'Start COD refund' }}</button>
+        <button class="mh-btn mh-btn--gold" type="button" *ngIf="canRefundReturn(r)" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'refund')">Initiate refund</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="mh-orders mh-admin-reviews" *ngIf="tab === 'reviews'">
+    <div class="mh-orders__toolbar">
+      <div><span class="mh-eyebrow">Customer feedback</span><h2>Customer reviews</h2><p>Hide inappropriate content without changing what the customer wrote.</p></div>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="loadCustomerReviews()" [disabled]="reviewsLoading">{{ reviewsLoading ? 'Refreshing...' : 'Refresh reviews' }}</button>
+    </div>
+    <div class="mh-admin-reviews__filters">
+      <input type="search" [(ngModel)]="reviewSearch" placeholder="Search product" aria-label="Search reviews by product" />
+      <select [(ngModel)]="reviewRatingFilter" aria-label="Filter reviews by rating">
+        <option [ngValue]="null">All ratings</option><option *ngFor="let star of [5,4,3,2,1]" [ngValue]="star">{{ star }} stars</option>
+      </select>
+      <select [(ngModel)]="reviewStatusFilter" aria-label="Filter reviews by moderation status">
+        <option value="">All statuses</option><option value="approved">Visible</option><option value="hidden">Hidden</option>
+      </select>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="loadCustomerReviews()">Apply</button>
+    </div>
+    <p class="mh-empty" *ngIf="!reviewsLoading && customerReviews.length === 0">No customer reviews match these filters.</p>
+    <article class="mh-admin-review-card" *ngFor="let review of customerReviews">
+      <header><div><strong>{{ review.productName }}</strong><span>{{ review.rating }} / 5 stars &middot; {{ review.customerName }} &middot; Verified Buyer</span></div>
+        <span class="mh-status" [class.is-danger]="review.moderationStatus === 'hidden'" [class.is-success]="review.moderationStatus === 'approved'">{{ review.moderationStatus === 'approved' ? 'Visible' : 'Hidden' }}</span></header>
+      <p *ngIf="review.text">{{ review.text }}</p>
+      <div class="mh-admin-review-card__photos" *ngIf="review.images.length"><a *ngFor="let image of review.images" [href]="image.url" target="_blank" rel="noopener"><img [src]="image.url" alt="Customer review photo" /></a></div>
+      <footer><span>{{ review.createdAt | date:'mediumDate' }}<ng-container *ngIf="review.edited"> &middot; Edited</ng-container> &middot; Helpful {{ review.helpfulCount }}</span>
+        <button class="mh-btn mh-btn--ghost" type="button" (click)="moderateReview(review)" [disabled]="!!reviewBusyId">{{ review.moderationStatus === 'approved' ? 'Hide review' : 'Restore review' }}</button></footer>
+    </article>
+  </div>
 </section>
+
+<div class="mh-cod-refund-modal" *ngIf="codRefundReturn as refund" role="dialog" aria-modal="true" aria-labelledby="cod-refund-title" (click)="closeCodRefund()">
+  <section (click)="$event.stopPropagation()">
+    <header>
+      <div><span class="mh-eyebrow">Sensitive refund destination</span><h2 id="cod-refund-title">COD refund &middot; {{ refund.returnNumber }}</h2></div>
+      <button type="button" (click)="closeCodRefund()" aria-label="Close refund details">&times;</button>
+    </header>
+    <p class="mh-order-alert"><strong>Handle securely</strong><span>Use these details only for this refund. Viewing is recorded in the admin audit log.</span></p>
+    <dl class="mh-cod-refund-details" *ngIf="codRefundReveal as detail">
+      <div><dt>Refund amount</dt><dd>&#8377;{{ detail.refundAmount | number:'1.2-2' }}</dd></div>
+      <ng-container *ngIf="detail.method === 'UPI'; else bankDetails">
+        <div><dt>Method</dt><dd>UPI</dd></div><div><dt>UPI ID</dt><dd>{{ detail.upiId }}</dd></div>
+      </ng-container>
+      <ng-template #bankDetails>
+        <div><dt>Method</dt><dd>Bank transfer</dd></div>
+        <div><dt>Account holder</dt><dd>{{ detail.method === 'BANK' ? detail.accountHolderName : '' }}</dd></div>
+        <div><dt>Account number</dt><dd>{{ detail.method === 'BANK' ? detail.accountNumber : '' }}</dd></div>
+        <div><dt>IFSC</dt><dd>{{ detail.method === 'BANK' ? detail.ifsc : '' }}</dd></div>
+        <div *ngIf="detail.method === 'BANK' && detail.bankName"><dt>Bank</dt><dd>{{ detail.bankName }}</dd></div>
+      </ng-template>
+    </dl>
+    <p class="mh-error" role="alert" *ngIf="codRefundError">{{ codRefundError }}</p>
+    <div class="mh-cod-refund-action" *ngIf="refund.refundDestination.status === 'PROCESSING'">
+      <label>Transaction reference / UTR *<input type="text" [(ngModel)]="codRefundReference" maxlength="100" autocomplete="off" /></label>
+      <label>Internal note<textarea [(ngModel)]="codRefundNote" maxlength="500" rows="3" autocomplete="off"></textarea></label>
+      <p>Confirm completion only after the transfer has actually succeeded. The reference is shown to the customer.</p>
+    </div>
+    <footer>
+      <button class="mh-btn mh-btn--ghost" type="button" (click)="closeCodRefund()">Close</button>
+      <button class="mh-btn mh-btn--ghost" type="button" *ngIf="refund.refundDestination.status === 'PROCESSING'" [disabled]="!!returnBusyId || codRefundNote.trim().length < 2" (click)="failCodRefund()">Record failed transfer</button>
+      <button class="mh-btn mh-btn--gold" type="button" *ngIf="refund.refundDestination.status === 'PROCESSING'" [disabled]="!!returnBusyId || codRefundReference.trim().length < 3" (click)="completeCodRefund()">Confirm refund completed</button>
+    </footer>
+  </section>
+</div>
 
 <dialog #orderDialog class="mh-order-dialog" (close)="clearSelectedOrder()">
   <ng-container *ngIf="selectedOrder as order">
@@ -412,6 +558,7 @@
       <p class="mh-order-alert" *ngIf="shipmentError(order) as shippingError">
         <strong>Shipment needs attention</strong><span>{{ shippingError }}</span>
       </p>
+      <p class="mh-error" role="alert" *ngIf="invoiceError">{{ invoiceError }}</p>
 
       <div class="mh-order-dialog__grid">
         <section class="mh-order-panel mh-order-panel--items">
@@ -432,7 +579,7 @@
           <dl class="mh-order-totals">
             <div><dt>Subtotal</dt><dd>&#8377;{{ (order.subtotal ?? order.totalAmount ?? order.total ?? 0) | number }}</dd></div>
             <div *ngIf="order.discountAmount"><dt>Discount</dt><dd>&minus;&#8377;{{ order.discountAmount | number }}</dd></div>
-            <div><dt>Shipping</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Free' }}</dd></div>
+            <div><dt>{{ order.paymentMethod === 'cod' && order.shippingAmount ? 'COD charge' : 'Shipping' }}</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Free' }}</dd></div>
             <div class="mh-order-totals__grand"><dt>Total</dt><dd>&#8377;{{ (order.totalAmount ?? order.total ?? 0) | number }}</dd></div>
           </dl>
         </section>
@@ -474,6 +621,9 @@
     <div class="mh-order-dialog__foot">
       <small>Internal ID: {{ order.id }}</small>
       <div>
+        <button *ngIf="order.shipment?.shiprocketOrderId" class="mh-btn mh-btn--ghost" type="button" [disabled]="!!invoiceBusyOrderId" (click)="downloadInvoice(order)">
+          {{ invoiceBusyOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}
+        </button>
         <button class="mh-btn mh-btn--ghost" type="button" (click)="closeOrderDialog()">Close</button>
         <button *ngIf="canRetryShipment(order)" class="mh-btn mh-btn--gold" type="button" [disabled]="!!shippingBusyOrderId" (click)="retryShipment(order)">
           {{ shippingBusyOrderId === order.id ? 'Creating shipment...' : 'Create shipment' }}

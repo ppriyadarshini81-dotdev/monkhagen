@@ -16,8 +16,14 @@ function createApp() {
   } }));
   app.use('/api/webhooks/razorpay', express.raw({ type: 'application/json', limit: '1mb' }), require('./routes/webhooks'));
   app.use(express.json({ limit: '2mb' }));
+  app.use('/api/webhooks/tracking-updates', require('./routes/shiprocketWebhook'));
   app.use('/api', requestShape);
   app.use('/api/admin/analytics', require('./routes/adminAnalytics'));
+  app.use('/api/admin/ledger', require('./routes/adminLedger'));
+  app.use('/api/admin/stock', require('./routes/adminStock'));
+  app.use('/api/admin/returns', require('./routes/adminReturns'));
+  app.use('/api/admin/reviews', require('./routes/adminReviews'));
+  app.use('/api/products', require('./routes/productReviews'));
   const routes = { products: 'products', 'product-page-content': 'productPageContent', categories: 'categories',
     badges: 'badges', sizes: 'sizes', colors: 'colors', auth: 'auth', orders: 'orders', cart: 'cart',
     upload: 'upload', account: 'account', contact: 'contact', media: 'media', payments: 'payments',

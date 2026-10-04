@@ -32,7 +32,7 @@ Monk Hagen is a premium streetwear e-commerce website. Visitors discover product
 | Capability | Current implementation |
 | --- | --- |
 | Storefront | Home, catalog, product details, About, Contact and refund policy |
-| Customer identity | Firebase Google login and verified email/password login using any supported email address |
+| Customer identity | MSG91 mobile OTP login and Firebase Google login |
 | Administrator identity | Designated verified Google account only; no active admin-password login |
 | Product management | Categories, badges, managed sizes/colors, images, variants and inventory |
 | Product information | Per-product description plus database-managed shared care, size chart and delivery content |
@@ -41,7 +41,7 @@ Monk Hagen is a premium streetwear e-commerce website. Visitors discover product
 | Payments | Server-calculated totals, capture verification, signed webhooks and refund-event ledger |
 | Fulfillment | Shiprocket creation queue, tracking and guarded AWB/pickup/label/reconciliation APIs |
 | Customer orders | Paid-order list with thumbnails, progress summary, details and tracking dialogs |
-| Returns | Owned-order return-request API and customer return-history screen; not a complete refund-management UI |
+| Returns | Seven-day item-level requests, Shiprocket reverse pickup, customer progress, admin receipt/approval and Razorpay refund initiation |
 | Credits | Customer balance and transaction-history display; no implemented checkout redemption flow |
 | Email | Contact submissions and retried paid-order confirmations, with store-inbox BCC |
 | Deployment | Local Node runtime and Vercel entry point/configuration; live readiness requires the checklist below |
@@ -171,15 +171,24 @@ Migrations use a transaction-scoped advisory lock and a migration-name ledger. M
 ### 3.4 Authentication sequence
 
 ```text
-Google login / verified Firebase email-password login
+Google login
   -> browser obtains Firebase ID token
   -> POST /api/auth/firebase
   -> backend verifies ID token, verification state and identity binding
   -> backend determines role; designated Google identity required for admin
   -> backend issues short-lived application JWT
+
+Mobile OTP login
+  -> POST /api/auth/otp/send (backend calls MSG91)
+  -> customer enters the SMS code
+  -> POST /api/auth/otp/verify (backend verifies through MSG91)
+  -> backend finds or creates the verified phone customer
+  -> backend issues the same application JWT
+
+Both paths
   -> browser attaches JWT only to application API requests
   -> each protected request rechecks database user, role and session version
-     plus bounded Firebase account/revocation checks
+     plus bounded Firebase account/revocation checks for Firebase sessions
 ```
 
 Application tokens are HS256-signed with issuer `monkhagen-api` and audience `monkhagen-web`. Customer and administrator lifetimes are capped at one day. `JWT_EXPIRES_IN` may shorten this lifetime but cannot extend it beyond the security ceiling.
@@ -227,7 +236,7 @@ The backend verifies Razorpay webhook HMAC signatures using the webhook secret b
 
 Capture events finalize validated payments; failure events release eligible pending inventory once. `refund.processed` events maintain a refund ledger keyed by provider refund identity and validate positive amounts, currency, payment/order linkage and cumulative refund bounds.
 
-Refund events can set partial/full financial status and a fulfillment hold. **The application does not currently provide a complete automatic refund-issuance or Shiprocket cancellation workflow.** Receipt of a webhook is not the same as initiating a refund.
+Refund events can set partial/full financial status and a fulfillment hold. Approved prepaid returns can initiate a bounded Razorpay refund; the signed `refund.processed` webhook is still the source of truth for completion. COD refunds remain manual. Before physical pickup, cancelling a known Shiprocket return is attempted remotely before the local return becomes cancelled; uncertain outcomes stay pending reconciliation. Cancellation is unavailable after pickup, while rejection after warehouse receipt is a local inspection outcome.
 
 ### 3.7 Separate state dimensions
 
@@ -262,9 +271,11 @@ Before a remote create/AWB/pickup/label mutation, the backend records `pending_o
 
 ### 3.9 Email delivery semantics
 
-Paid confirmations are selected from unsent paid orders and protected by a transaction-scoped order lock. Successful SMTP delivery is followed by `confirmation_email_sent_at` persistence. Customer email is the recipient; the configured store inbox is BCC.
+Transactional mail reuses the existing TLS-verified Zoho/Nodemailer transport. Backend order, Shiprocket, return, approval and signed Razorpay refund transitions create rows in `transactional_email_events`; Angular page actions never send mail. Customer and administrator notifications are separate events and the unique `event_key` prevents normal API/webhook retries from sending the same notification twice.
 
-Retries cover ordinary delivery failures. SMTP acceptance followed by database failure can still produce a duplicate email on retry; the timestamp is not an external-provider exactly-once receipt.
+The worker claims pending events with `FOR UPDATE SKIP LOCKED`, records attempts and provider message IDs, and retries failures with bounded exponential delay. SMTP failures are notification-side effects and cannot roll back a successful order, shipment status, return, inventory restoration or refund. As with any SMTP system, a process crash after provider acceptance but before the local `sent` update cannot provide mathematical exactly-once delivery, but stale claims are safely recovered and ordinary webhook retries remain idempotent.
+
+One escaped, responsive MONK HAGEN HTML layout and plain-text fallback cover order confirmation, shipped, out-for-delivery, delivered, return requested/pickup/receipt/approval, refund initiated/completed and administrator operational/failure events. Customer templates exclude internal database, Razorpay and Shiprocket identifiers. `CONTACT_EMAIL` is reused as the administrator notification mailbox.
 
 ## 4. Module-wise functionality
 
@@ -311,7 +322,7 @@ Home currently requests featured products and a separate general product list, t
 **Frontend:** `src/app/pages/product-details/`, `components/product-page-content-editor/`.  
 **Backend:** `models/Product.js`, `ProductPageContent.js`; product and product-page-content routes.
 
-- Product gallery, image navigation and thumbnails.
+- Product gallery, image navigation and thumbnails use lightweight display images. The enlarged viewer supports vertical scrolling through every photo and double-click zoom; each optional position-matched high-resolution image loads only as its section becomes active, and a failed zoom image falls back once to its display image.
 - Managed color/size choices and quantity controls; sizes use consistent ordering.
 - Add to Cart validates required selections and displays errors.
 - Numerical stock counts are hidden from the customer product-details UI; “Sold out” remains meaningful.
@@ -320,6 +331,11 @@ Home currently requests featured products and a separate general product list, t
 - Expandable **Product details** uses each product's description.
 - Expandable **CARE / KEEP IT FRESH** uses shared instructions rendered as bullets, with spacing aligned to product details.
 - Shared estimated delivery and explanatory note are displayed from database content.
+- Public ratings use approved review data only, including a one-decimal average, star distribution, paginated sorting and approved customer photos.
+- Guests can read reviews. Review creation, editing and helpful voting require login; review creation additionally requires a delivered order-item owned by that customer.
+- One review per customer/product is linked to a deterministic delivered order item. A later return or refund preserves the historical verified-buyer status because delivery remains recorded.
+- Review photos use the existing private R2 client with inspected JPG, PNG, WebP or AVIF content, five-photo and 5 MB-per-photo transport limits, and generated `reviews/` object keys.
+- Administrators can hide or restore reviews but cannot rewrite customer ratings or comments.
 
 Content ownership is explicit:
 
@@ -332,25 +348,18 @@ Content ownership is explicit:
 
 Initial shared content includes a 2–4 day estimate and note about some locations taking up to seven days. Initial care covers cold/30°C washing, inside-out washing, similar colours, no bleach, no prolonged soaking and avoiding direct ironing on print. These are initial database values, not immutable frontend constants; administrators can change them.
 
-### 4.5 Login, registration and password recovery
+### 4.5 Customer login
 
 **Frontend:** `pages/login/`, `services/firebase.service.ts`, `auth.service.ts`.  
-**Backend:** Firebase authentication controller, auth middleware and user model.
+**Backend:** MSG91 OTP/Firebase authentication controllers, auth middleware and user model.
 
-- Sign in using Google or a previously created Firebase email/password account.
-- Registration accepts non-Gmail addresses, including Yahoo, Outlook and Zoho addresses.
-- The new password belongs to the Monk Hagen Firebase account, not to the customer's mailbox.
-- Firebase manages password credentials; application PostgreSQL does not store customer registration passwords.
-- Registration checks at least eight characters and a special character; confirmation mismatch is validated when leaving the confirmation field and at submission.
-- Password visibility controls support both password fields.
-- Registration sends a verification email and signs the Firebase session out.
-- A green success-check dialog explains verification; only **Okay** takes the user to blank Sign in fields.
-- Registration background stays on registration until acknowledgment; email is not automatically copied into login.
-- Google login is hidden on the Create account screen; the panel layout avoids tab-switch size jumps.
-- Unverified email-password accounts cannot complete application login.
-- Password-recovery responses avoid disclosing whether an account exists.
+- Sign in using an Indian mobile number and a six-digit MSG91 code, or continue with Google.
+- Customer email/password fields are not shown on the storefront login page.
+- OTP secrets stay on the backend; the browser receives only the existing application JWT after provider verification.
+- Resend has a 45-second browser countdown plus independent server limits per IP and normalized phone number.
+- An unverified profile phone is never silently merged into an existing Google account.
 
-Administrator login is Google-only for `ADMIN_GOOGLE_EMAIL`. Legacy password columns/dependencies are not evidence of an enabled admin-password endpoint. Legacy OTP is explicitly development-only and disabled by default.
+Administrator login is Google-only for `ADMIN_GOOGLE_EMAIL`. Legacy password columns/dependencies are not evidence of an enabled admin-password endpoint.
 
 ### 4.6 Profile and address book
 
@@ -401,7 +410,7 @@ The current browser checkout is prepaid Razorpay. A guarded COD order path exist
 - Requests are customer-owned; identifiers alone do not grant access.
 - Tracking is user-triggered, not continuous per-second polling.
 
-The paid-only filter also excludes orders whose current payment status becomes partially refunded/refunded; see known limitations. Thumbnails come from current product images, while financial/item/address snapshots are saved at order creation.
+Confirmed Razorpay orders remain visible after partial or full refunds, and COD orders remain visible through their supported financial states. Thumbnails come from current product images, while financial/item/address snapshots are saved at order creation.
 
 ### 4.9 Returns and store credits
 
@@ -412,12 +421,12 @@ Return submission API rules:
 
 - Order must belong to the caller and be delivered.
 - Request must be within the current seven-day window.
-- Only one active return request per order is allowed.
-- Items must belong to that order; quantities cannot exceed purchased quantities.
+- Multiple partial requests are allowed, but active returned quantities cannot cumulatively exceed purchased quantities.
+- Items must belong to that order; quantities cannot exceed the remaining returnable quantities.
 - Duplicate submitted item IDs, excessive items and invalid reason/comment lengths are rejected.
-- The request and selected items are saved atomically; order moves to `return_requested`.
+- The request and selected item-level refund allocation are saved atomically under an idempotency key.
 
-The current returns screen displays history/status. The API and client service support creation, but a complete customer request form and administrator approval/refund workflow are not implemented as a full end-to-end UI.
+The order-details dialog provides the customer request form. The backend creates a Shiprocket return order from the immutable customer address to the exact saved location named by `SHIPROCKET_PICKUP_LOCATION`, but does not assign a courier or schedule pickup. A Monk Hagen administrator schedules it from Shiprocket's New returns tab; signed tracking callbacks then advance pickup/transit/receipt state. The administrator returns tab can retry definitive return-creation failures, reject local requests, cancel known pre-pickup Shiprocket returns, record post-receipt inspection rejection, restore stock once after receipt, and initiate prepaid refunds. COD payout completion and uncertain provider reconciliation remain operator procedures.
 
 Credits show the customer's balance and bounded transaction history. No browser-accessible arbitrary balance setter or implemented coupon/credit checkout-redemption engine exists.
 
@@ -426,7 +435,7 @@ Credits show the customer's balance and bounded transaction history. No browser-
 **Frontend:** `pages/admin/`.  
 **Backend:** protected product/category/badge/size/color routes and models.
 
-- Manage products, descriptions, prices, status, images and size/color variants.
+- Manage products, descriptions, prices, status, paired display/zoom images and size/color variants. Image cards support pair-safe drag/drop ordering, accessible move controls, removal and per-pair R2 zoom uploads; the first pair is primary.
 - Manage categories, badges and available size/color options.
 - Manage variant inventory without exposing stock counts in the customer details UI.
 - Upload image assets to R2 and use existing permitted media URLs.
@@ -446,7 +455,7 @@ Deleting referenced records can legitimately return a conflict. R2 cleanup must 
 - Refresh orders and retry eligible shipment creation.
 - Backend exposes guarded status update, serviceability, AWB assignment, pickup, label generation and reconciliation operations.
 
-The existence of these operations does not mean every one has a completed button/workflow in the admin screen. In particular, do not assume fully automated courier selection, pickup scheduling, refund approval or returns administration.
+Courier selection and forward-shipment actions remain deliberate operator controls. The returns tab covers guarded pre-pickup cancellation, receipt, inspection rejection, approval and prepaid refund initiation, but COD payout completion and uncertain provider reconciliation remain manual procedures.
 
 ### 4.12 Contact, policies and notifications
 
@@ -472,7 +481,10 @@ The existence of these operations does not mean every one has a completed button
 | `categories`, `badges`, `sizes`, `colors` | Managed catalog classification/options |
 | `products` | Category, base price, description, badge and active state |
 | `product_size_details`, `product_color_details` | Product-to-managed-option associations |
-| `product_images` | Product image ordering and primary-image designation |
+| `product_images` | Product display URL, optional paired zoom URL, ordering and primary-image designation |
+| `product_reviews` | One delivered-purchase review per customer/product, with immutable purchase linkage and moderation state |
+| `product_review_images` | Generated R2 keys and public URLs for up to five review photos |
+| `product_review_helpful` | Unique customer/review helpful votes |
 | `product_variants` | Product/size/color/SKU combination, price, stock and availability |
 | `product_page_content` | Singleton shared size chart, care and delivery text |
 | `carts`, `cart_items` | User-owned active/converted/abandoned cart and variant quantities |
@@ -524,6 +536,10 @@ Current schema setup lives in [db.js](../server/config/db.js) and [migrations](.
 | `005_google_only_admin` | Remove legacy privileged passwords and disable non-designated privileged identities |
 | `006_security_integrity` | Financial/inventory integrity, refund ledger, limits and shared leases |
 | `007_session_revocation` | Database-backed application session version |
+| `008_analytics` | Privacy-bounded analytics events and reporting indexes |
+| `009_returns_workflow` | Item-level idempotent returns, reverse-shipment state, refund lifecycle and webhook deduplication |
+| `010_return_item_comments` | Repairs the optional return-item comments column for databases that applied an earlier revision of migration 009 |
+| `011_product_reviews` | Verified-purchase ratings, review photos, moderation and unique helpful votes |
 
 Runtime production account must not own application objects or have migration/administrative capabilities. Applying schema changes is a separate trusted operation, not a normal web request.
 
@@ -535,6 +551,8 @@ All paths below are relative to `/api`. This is a route index, not a complete Op
 | --- | --- | --- |
 | Health | `GET /health` | Public; basic application status |
 | Catalog | `/products`, `/categories`, `/badges`, `/sizes`, `/colors` | Active public reads; protected administrator mutations |
+| Product reviews | `GET /products/:productId/reviews[/summary]`, authenticated eligibility/create/edit/helpful routes | Approved reads are public; writes require an owned delivered purchase |
+| Admin reviews | `GET /admin/reviews`, `PATCH /admin/reviews/:reviewId/moderation` | Administrator view/filter and hide/restore only |
 | Shared content | `GET /product-page-content`, `PUT /product-page-content` | Public read; admin write |
 | Identity | `POST /auth/firebase`, alias `POST /auth/google` | Validated Firebase exchange; authentication rate limit |
 | Session | `GET /auth/me`, `POST /auth/logout` | Authenticated; logout invalidates application sessions |
@@ -544,10 +562,12 @@ All paths below are relative to `/api`. This is a route index, not a complete Op
 | Payment creation | `POST /payments/create-order` | Owned cart/address, authoritative totals and stock |
 | Payment verification | `POST /payments/verify` | Owned order, signature plus gateway capture verification |
 | Payment webhook | `POST /webhooks/razorpay` | Raw-body signature; not customer JWT authentication |
-| Customer account orders | `GET /account/orders`, `GET /account/orders/:orderId`, `GET /account/orders/:orderId/tracking` | Owned orders; list currently paid-only |
+| Customer account orders | `GET /account/orders`, `GET /account/orders/:orderId`, `GET /account/orders/:orderId/tracking` | Owned confirmed-payment/COD history |
 | Other order APIs | `POST /orders`, `GET /orders/mine` | Authenticated legacy/direct order path and own broader history |
 | Admin orders | `GET /orders`, `PUT /orders/:id/status` | Server-admin role and lifecycle/payment/shipment policy |
-| Returns | `GET/POST /account/returns` | Owned history and delivered-order eligibility |
+| Returns | `GET/POST /account/returns`, `GET /account/orders/:orderId/return-eligibility`, `GET /account/returns/:returnId` | Owned item-level history and seven-day delivery eligibility |
+| Admin returns | `GET /admin/returns`, `POST /admin/returns/:returnId/{approve,reject,refund,retry-creation}` | Administrator reverse logistics and guarded lifecycle actions |
+| Shiprocket tracking webhook | `POST /webhooks/tracking-updates` | Private `x-api-key`; idempotent normalized return updates |
 | Credits | `GET /account/credits`, `GET /account/credits/transactions` | Owned read-only API surface |
 | Shipping discovery | `POST /shipping/serviceability` | Authenticated, validated parcel/location and limits |
 | Shipping tracking | `GET /shipping/:orderId/tracking` | Owned customer order or authorized administrator |
@@ -564,7 +584,7 @@ Protected customer records are selected with owner predicates, not solely UUID l
 
 ### 7.1 Firebase
 
-Browser Firebase SDK handles Google popup login, email registration, verification and recovery. Backend Firebase Admin verifies tokens and account state. Production must authorize deployed domains in Firebase and enable both Google and Email/Password where customer registration is required.
+Browser Firebase SDK handles Google popup login. Backend Firebase Admin verifies tokens and account state. Production must authorize deployed domains in Firebase and keep the Google provider enabled.
 
 The designated administrator must authenticate through Google even if the same email address can be registered with a password. The backend does not grant administrator access just because a browser supplied an email or role.
 
@@ -599,6 +619,8 @@ See [Shiprocket setup and operations](shiprocket.md) for the existing integratio
 ### 7.5 Cloudflare R2
 
 R2 uses the S3-compatible backend SDK. Access keys are never provided to the frontend. Public media URLs are used for display, with eligible configured-origin images routed through the bounded media proxy.
+
+Product display and zoom uploads reuse the same authenticated, content-inspected R2 endpoint. Uploads are not resized or upscaled by the application; administrators provide the optimized display asset and optional real high-resolution counterpart.
 
 Uploads use application-generated keys rather than unsafe client filenames. Immutable cache metadata applies to newly uploaded versioned objects; replacing content at an existing URL can cause stale-cache behavior. Use new URLs for changed assets.
 
@@ -663,6 +685,8 @@ Product descriptions/care are rendered as text rather than arbitrary trusted HTM
 | Operation | Baseline allowance |
 | --- | --- |
 | Authentication | 10 requests / 15 minutes, IP-scoped |
+| OTP SMS send | 5 / 15 minutes per IP; 1 / 45 seconds, 3 / 15 minutes and 10 / day per phone |
+| OTP verification | 20 / 15 minutes per IP and 5 / 15 minutes per phone |
 | Contact | 5 / 15 minutes, IP-scoped |
 | Administrator access | 120 / minute, verified user-scoped |
 | Checkout/payment creation | 5 / 15 minutes |
@@ -712,15 +736,16 @@ Set local secrets privately in the root `.env`, which is ignored by Git. Do not 
 | Local DB fallback | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | Used only when URL is absent |
 | API identity | `JWT_SECRET`, `JWT_EXPIRES_IN`, `ADMIN_GOOGLE_EMAIL` | Strong secret, bounded lifetime, explicit Google administrator |
 | Firebase server | `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | Admin SDK private configuration, never frontend configuration |
+| Customer mobile OTP | `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` | Backend-only MSG91 OTP API credentials and approved template |
 | Browser policy | `CORS_ORIGINS`, `TRUST_PROXY` | Exact HTTPS production origins; trusted proxy networks only |
 | Razorpay | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Match test/live environment and webhook configuration |
 | Shiprocket login | `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_BASE_URL`, `SHIPROCKET_TIMEOUT_MS` | Server-only; restricted HTTPS API base |
 | Shiprocket parcel | `SHIPROCKET_PICKUP_LOCATION`, `SHIPROCKET_PACKAGE_WEIGHT_KG`, `SHIPROCKET_PACKAGE_LENGTH_CM`, `SHIPROCKET_PACKAGE_BREADTH_CM`, `SHIPROCKET_PACKAGE_HEIGHT_CM` | Real pickup name and package defaults in kg/cm |
+| Shiprocket returns | `SHIPROCKET_WEBHOOK_SECRET`; reuses `SHIPROCKET_PICKUP_LOCATION` | Reverse-tracking authentication; the exact saved Shiprocket pickup location supplies the return destination/contact |
 | R2 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | Private storage access plus public asset base |
-| SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `CONTACT_EMAIL` | Official inbox for submissions/order BCC |
+| SMTP | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `CONTACT_EMAIL` | Existing Zoho transport; `CONTACT_EMAIL` receives contact and administrator operational mail |
 | Maintenance | `CRON_SECRET` | Strong secret of at least 32 characters; exact bearer authorization |
 | Vercel parsing | `NODEJS_HELPERS` | Set to `0`; application fails closed if required raw-body safeguard is absent on Vercel |
-| Legacy development only | `ENABLE_LEGACY_OTP`, `DEV_OTP_CODE` | Disabled by default and unavailable as production auth fallback |
 
 Frontend Firebase web configuration is currently managed in [environment.ts](../src/environments/environment.ts). Backend environment changes do not automatically rewrite this browser build configuration. Private Firebase credentials must never be added there.
 
@@ -798,9 +823,9 @@ These are dated development checks, not new tests executed by this documentation
 ### 11.2 End-to-end acceptance scenarios
 
 1. Visitor can browse active products; inactive products do not leak through public APIs.
-2. Google customer login and verified Yahoo/other-email registration/login work.
-3. Registration shows acknowledgment dialog and blank Sign in screen after Okay.
-4. Non-designated Google users and password-based identities cannot access administrator endpoints.
+2. MSG91 mobile OTP and Firebase Google customer login work.
+3. OTP paste, resend cooldown and change-number controls work.
+4. Non-designated identities cannot access administrator endpoints.
 5. Customer cannot read/edit another customer's addresses/cart/orders/returns/credits.
 6. Invalid address fields show errors inside address-book/checkout forms.
 7. Product size-chart dialog, care accordion, gallery and hover slideshow behave on desktop/mobile.
@@ -873,9 +898,9 @@ This is a high-level summary of work represented by the repository and recent Gi
 | Shipping | Shiprocket login/create mapping, durable retry state, tracking and administrator shipment details |
 | Checkout/order UX | Wider professional address dialog, internal scrolling, field errors, saved-address fallback, paid-only customer list, details/tracking popups and thumbnails |
 | Performance | Deferred Razorpay script, stable card/image handling, cached media responses and hover image cycling |
-| Universal customer email | Firebase email/password registration, verification/recovery and non-Gmail support |
+| Customer mobile login | MSG91 OTP send/verify, abuse limits and verified-phone customer mapping |
 | Neon migration support | `DATABASE_URL`-first pool, local fallback, safe connection diagnostics |
-| Registration UX | Stable panel, password-special-character/match validation, visibility controls, green verification acknowledgment and clean Sign in transition |
+| Login UX | Indian mobile input, masked verification screen, six OTP positions, paste, resend countdown and Google alternative |
 | Product content | Editable shared delivery/care/size chart, per-product details, size popup and aligned accordions; customer stock-count removal |
 | Visual refinements | Five-slide two-second hero, removed pause control, About styling and product hover slideshows |
 | Critical security | Designated Google-only administrator; legacy privileged passwords disabled |
@@ -906,8 +931,8 @@ For full provenance, inspect `git log`; commit presence does not certify deploym
 ## 14. Known limitations and future work
 
 1. **Production configuration still needs independent verification.** Runtime database privileges, SMTP, domain/provider settings and scheduled maintenance are outside a successful local build.
-2. **Returns/refunds are not a complete operator workflow.** Add customer return submission UI, admin decisions, refund initiation, remote shipment cancellation and explicit stock-restoration policy if required.
-3. **Paid-only customer order visibility hides refund states.** Consider a confirmed-payment-history rule that preserves partially/full-refunded orders rather than exact current `paid` status.
+2. **Returns still require operator handling for exceptions.** COD payout completion, reverse-pickup cancellation and uncertain Shiprocket outcomes must be reconciled manually before retrying external mutations.
+3. **Reverse logistics needs live acceptance testing.** Confirm account-specific return permissions, webhook delivery, warehouse details and real pickup behavior in a controlled provider environment.
 4. **Progress display is simplified.** Current status-text heuristics should not be treated as the canonical provider state machine; distinguish “out for delivery” from actually delivered.
 5. **Catalog requests are not persistently cached.** Consider bounded service caching/invalidation after measuring route repeat loads; do not cache inventory/payment decisions as authority.
 6. **Media optimization is manual.** Add responsive image sizes/transcoding or an image delivery service if bandwidth/decode remains a problem.

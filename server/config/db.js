@@ -777,6 +777,50 @@ async function applyAnalyticsMigration(database = pool) {
   await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '008_analytics.sql'), 'utf8'));
 }
 
+async function applyReturnsWorkflowMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '009_returns_workflow.sql'), 'utf8'));
+}
+
+async function applyReturnItemCommentsMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '010_return_item_comments.sql'), 'utf8'));
+}
+
+async function applyProductReviewsMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '011_product_reviews.sql'), 'utf8'));
+}
+
+async function applyTransactionalEmailMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '012_transactional_email_events.sql'), 'utf8'));
+}
+
+async function applyProductZoomImagesMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '013_product_zoom_images.sql'), 'utf8'));
+}
+
+async function applyTransactionalSmsMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '014_transactional_sms_events.sql'), 'utf8'));
+}
+
+async function applyFinancialLedgerMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '015_financial_ledger.sql'), 'utf8'));
+}
+
+async function applyAnalyticsDashboardMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '016_analytics_dashboard.sql'), 'utf8'));
+}
+
+async function applySizeInventoryMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '017_size_inventory.sql'), 'utf8'));
+}
+
+async function applyCodRefundDestinationMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '018_cod_refund_destinations.sql'), 'utf8'));
+}
+
+async function applyFinancialEventActorMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '019_financial_event_actor.sql'), 'utf8'));
+}
+
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
   try {
@@ -829,9 +873,20 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const sessionsApplied = await runMigration('007_session_revocation', database =>
       database.query(readFileSync(path.join(__dirname, '..', 'migrations', '007_session_revocation.sql'), 'utf8')));
     const analyticsApplied = await runMigration('008_analytics', applyAnalyticsMigration);
+    const returnsApplied = await runMigration('009_returns_workflow', applyReturnsWorkflowMigration);
+    const returnItemCommentsApplied = await runMigration('010_return_item_comments', applyReturnItemCommentsMigration);
+    const productReviewsApplied = await runMigration('011_product_reviews', applyProductReviewsMigration);
+    const transactionalEmailApplied = await runMigration('012_transactional_email_events', applyTransactionalEmailMigration);
+    const productZoomImagesApplied = await runMigration('013_product_zoom_images', applyProductZoomImagesMigration);
+    const transactionalSmsApplied = await runMigration('014_transactional_sms_events', applyTransactionalSmsMigration);
+    const financialLedgerApplied = await runMigration('015_financial_ledger', applyFinancialLedgerMigration);
+    const analyticsDashboardApplied = await runMigration('016_analytics_dashboard', applyAnalyticsDashboardMigration);
+    const sizeInventoryApplied = await runMigration('017_size_inventory', applySizeInventoryMigration);
+    const codRefundDestinationApplied = await runMigration('018_cod_refund_destinations', applyCodRefundDestinationMigration);
+    const financialEventActorApplied = await runMigration('019_financial_event_actor', applyFinancialEventActorMigration);
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied || financialLedgerApplied || analyticsDashboardApplied || sizeInventoryApplied || codRefundDestinationApplied || financialEventActorApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
@@ -855,5 +910,11 @@ module.exports = {
   applyGoogleAdminMigration,
   applySecurityIntegrityMigration,
   applyAnalyticsMigration,
+  applyReturnsWorkflowMigration,
+  applyReturnItemCommentsMigration,
+  applyTransactionalSmsMigration,
+  applySizeInventoryMigration,
+  applyCodRefundDestinationMigration,
+  applyFinancialEventActorMigration,
   runMigration
 };

@@ -1,3 +1,4 @@
+import { ElementRef } from '@angular/core';
 import { fakeAsync, tick } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { CategoryService } from '../../services/category.service';
@@ -60,5 +61,27 @@ describe('HomeComponent banner carousel', () => {
     home.ngOnDestroy();
     tick(12000);
     expect(home.heroPosition).toBe(0);
+  }));
+
+  it('auto-scrolls founder quotes every two seconds on mobile and tablet', fakeAsync(() => {
+    const home = createHome();
+    spyOn(window, 'matchMedia').and.callFake((query: string) => ({
+      matches: query.includes('max-width'),
+      media: query
+    } as MediaQueryList));
+    const scrollTo = jasmine.createSpy('scrollTo');
+    const cards = [0, 260, 520].map(offsetLeft => ({ offsetLeft } as HTMLElement));
+    const track = {
+      offsetLeft: 0,
+      querySelectorAll: () => cards,
+      scrollTo
+    } as unknown as HTMLElement;
+    home.testimonialTrack = { nativeElement: track } as ElementRef<HTMLElement>;
+    home.ngAfterViewInit();
+    tick(2000);
+    expect(scrollTo).toHaveBeenCalledWith({ left: 260, behavior: 'smooth' });
+    tick(4000);
+    expect(scrollTo).toHaveBeenCalledWith({ left: 0, behavior: 'smooth' });
+    home.ngOnDestroy();
   }));
 });

@@ -7,12 +7,15 @@ export interface ProductVariant {
   sku: string | null;
   price: number | null;
   stock: number;
+  available?: boolean;
+  lowStock?: boolean;
   isActive: boolean;
 }
 
 export interface ProductImage {
   id: string;
   url: string;
+  zoomUrl: string | null;
   cloudinaryPublicId: string | null;
   displayOrder: number;
   isPrimary: boolean;
@@ -35,8 +38,13 @@ export interface Product {
   sizeIds: string[];
   colorIds: string[];
   images: string[];
+  zoomImages?: Array<string | null>;
   imageObjects?: ProductImage[];
   variants?: ProductVariant[];
+  sizeAvailability?: Array<{ size: string; sizeId: string; available: boolean; lowStock: boolean }>;
+  sizeInventory?: Array<{ id: string; size: string; sizeId: string; stockQuantity: number;
+    initialStockQuantity: number; lowStockThresholdQuantity: number; configured: boolean; active: boolean; updatedAt: string | null }>;
+  inventorySetupRequired?: boolean;
   rating: number;
   stock: number;
   featured: boolean;

@@ -7,6 +7,8 @@
 
   <div *ngIf="loading" class="mh-orders-empty">Loading your orders...</div>
   <div *ngIf="!loading && loadError" class="mh-orders-empty mh-orders-empty--error">{{ loadError }}</div>
+  <p class="mh-orders-empty mh-orders-empty--error" role="alert" *ngIf="invoiceError">{{ invoiceError }}</p>
+  <p class="mh-orders-empty mh-orders-empty--success" role="status" *ngIf="returnMessage">{{ returnMessage }}</p>
   <div *ngIf="!loading && !loadError && orders.length === 0" class="mh-orders-empty">
     <strong>No confirmed orders yet</strong>
     <span>Your confirmed orders will appear here.</span>
@@ -56,6 +58,7 @@
       <footer class="mh-customer-order__foot">
         <span class="mh-delivery-state"><i></i>{{ deliveryLabel(order) }}</span>
         <div>
+          <button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button>
           <button type="button" class="mh-order-action mh-order-action--quiet" (click)="openDetails(order)">View details</button>
           <button type="button" class="mh-order-action mh-order-action--primary" (click)="openTracking(order)">Track order <span aria-hidden="true">&#8594;</span></button>
         </div>
@@ -99,13 +102,42 @@
             <div><dt>Payment status</dt><dd>{{ isPendingCod(order) ? 'Pending / COD' : statusLabel(order.paymentStatus) }}</dd></div>
             <div><dt>Subtotal</dt><dd>&#8377;{{ order.subtotal | number }}</dd></div>
             <div *ngIf="order.discountAmount"><dt>Discount</dt><dd>&minus;&#8377;{{ order.discountAmount | number }}</dd></div>
-            <div><dt>Delivery</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Complimentary' }}</dd></div>
+            <div><dt>{{ order.paymentMethod === 'cod' && order.shippingAmount ? 'COD charge' : 'Delivery' }}</dt><dd>{{ order.shippingAmount ? ('₹' + (order.shippingAmount | number)) : 'Complimentary' }}</dd></div>
             <div><dt>{{ isPendingCod(order) ? 'Amount due on delivery' : 'Total paid' }}</dt><dd>&#8377;{{ order.totalAmount | number }}</dd></div>
           </dl>
         </section>
       </div>
+      <section class="mh-return-availability">
+        <span *ngIf="returnEligibilityLoading">Checking return availability...</span>
+        <ng-container *ngIf="!returnEligibilityLoading && returnEligibility as eligibility">
+          <strong *ngIf="eligibility.eligible">Return available until {{ eligibility.returnUntil | date: 'dd MMM y, h:mm a' }}</strong>
+          <span *ngIf="!eligibility.eligible">{{ eligibility.reason === 'WINDOW_CLOSED' ? 'Return window closed' : eligibility.message }}</span>
+        </ng-container>
+      </section>
     </div>
-    <footer class="mh-customer-dialog__foot"><small>{{ isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order)) }}</small><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
+    <footer class="mh-customer-dialog__foot"><small>{{ isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order)) }}</small><div><button *ngIf="returnEligibility?.eligible" type="button" class="mh-order-action mh-order-action--quiet" (click)="openReturn(order)">Return item</button><button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
+  </ng-container>
+</dialog>
+
+<dialog #returnDialog class="mh-customer-dialog mh-return-dialog" aria-labelledby="return-title" (close)="clearReturn()">
+  <ng-container *ngIf="returnOrder as order">
+    <header class="mh-customer-dialog__head">
+      <div><span class="mh-eyebrow">7-day returns</span><h2 id="return-title">Return item</h2><p>#{{ order.orderNumber }}</p></div>
+      <button type="button" class="mh-customer-dialog__close" aria-label="Close return form" (click)="closeReturn()">&times;</button>
+    </header>
+    <div class="mh-customer-dialog__body">
+      <p class="mh-tracking-error" role="alert" *ngIf="returnError">{{ returnError }}</p>
+      <div class="mh-return-row" *ngFor="let row of returnRows">
+        <label class="mh-return-row__select"><input type="checkbox" [(ngModel)]="row.selected" /> <strong>{{ row.productName }}</strong></label>
+        <div *ngIf="row.selected" class="mh-return-row__fields">
+          <label>Quantity<select [(ngModel)]="row.quantity"><option *ngFor="let quantity of quantityOptions(row.max)" [ngValue]="quantity">{{ quantity }}</option></select></label>
+          <label>Reason<select [(ngModel)]="row.reason"><option value="" disabled>Select reason</option><option *ngFor="let reason of returnReasons" [value]="reason.code">{{ reason.label }}</option></select></label>
+          <label *ngIf="row.reason === 'other'" class="mh-return-row__explanation">Explanation<textarea maxlength="250" [(ngModel)]="row.comments" placeholder="Tell us what happened"></textarea></label>
+        </div>
+      </div>
+      <p class="mh-return-note">Refunds are reviewed after the returned item reaches our warehouse. Original delivery and COD charges are not refundable.</p>
+    </div>
+    <footer class="mh-customer-dialog__foot"><small>Pickup uses the original delivery address.</small><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeReturn()">Cancel</button><button type="button" class="mh-order-action mh-order-action--primary" [disabled]="returnSubmitting" (click)="submitReturn()">{{ returnSubmitting ? 'Submitting...' : 'Confirm return' }}</button></div></footer>
   </ng-container>
 </dialog>
 

@@ -27,6 +27,7 @@ export interface PrepaidOffer {
   code: string;
   discountPercent: number;
   eligible: boolean;
+  eligibilityVerified: boolean;
   discountAmount: number;
   totalAmount: number;
 }

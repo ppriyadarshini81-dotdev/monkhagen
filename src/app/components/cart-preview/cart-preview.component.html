@@ -5,18 +5,19 @@
         <span>Added to your bag</span>
         <h2 id="cart-preview-title">Cart &bull; {{ cart.count }} {{ cart.count === 1 ? 'item' : 'items' }}</h2>
       </div>
-      <button type="button" class="mh-cart-preview__close" (click)="close()" aria-label="Close cart preview">&times;</button>
+      <button #cartClose type="button" class="mh-cart-preview__close" (click)="close()" aria-label="Close cart preview">&times;</button>
     </header>
 
     <div class="mh-cart-preview__offer" *ngIf="cart.prepaidOffer.eligible">
       {{ cart.prepaidOffer.discountPercent }}% off your first prepaid order
       <strong>{{ cart.prepaidOffer.code }}</strong>
+      <small *ngIf="!cart.prepaidOffer.eligibilityVerified">Sign in to validate</small>
     </div>
 
     <div class="mh-cart-preview__items" *ngIf="cart.items.length; else emptyCart">
       <article class="mh-cart-preview__item" *ngFor="let item of cart.items">
         <a class="mh-cart-preview__image" [routerLink]="['/product', item.productSlug || item.productId]" (click)="close()">
-          <img *ngIf="item.imageUrl" [src]="cachedMediaUrl(item.imageUrl)" [alt]="item.productName || 'Product image'" />
+          <img *ngIf="item.imageUrl" [src]="cachedMediaUrl(item.imageUrl)" [alt]="item.productName || 'Product image'" loading="lazy" />
           <span *ngIf="!item.imageUrl" aria-hidden="true">MH</span>
         </a>
         <div class="mh-cart-preview__details">
@@ -26,8 +27,12 @@
           </div>
           <p><span *ngIf="item.size">Size: {{ item.size }}</span><span *ngIf="item.color">Color: {{ item.color }}</span></p>
           <div class="mh-cart-preview__line">
-            <div class="mh-cart-preview__qty" aria-label="Quantity controls">
-              <button type="button" (click)="changeQuantity(item, -1)" [disabled]="item.quantity <= 1 || isUpdating(item)" aria-label="Decrease quantity">&minus;</button>
+            <div class="mh-cart-preview__qty" [class.mh-cart-preview__qty--remove]="item.quantity === 1" aria-label="Quantity controls">
+              <button type="button" (click)="decreaseOrRemove(item)" [disabled]="isUpdating(item)"
+                [attr.aria-label]="item.quantity === 1 ? 'Remove ' + item.productName : 'Decrease quantity'">
+                <ng-container *ngIf="item.quantity === 1; else decreaseSymbol">Remove</ng-container>
+                <ng-template #decreaseSymbol>&minus;</ng-template>
+              </button>
               <span>{{ item.quantity }}</span>
               <button type="button" (click)="changeQuantity(item, 1)" [disabled]="isUpdating(item) || (item.stock !== null && item.quantity >= item.stock)" aria-label="Increase quantity">+</button>
             </div>

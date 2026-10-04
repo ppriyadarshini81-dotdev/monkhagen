@@ -1,15 +1,16 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { Observable } from 'rxjs';
+import { Observable, shareReplay } from 'rxjs';
 import { User } from '../models/user.model';
 import {
-  Address, AddressPayload, Order, TrackingInfo,
-  ReturnRequest, ReturnPayload, CreditTransaction
+  Address, AddressPayload, IndiaLocations, Order, TrackingInfo,
+  ReturnRequest, ReturnPayload, ReturnEligibility, CreditTransaction, CodRefundDestination, CodRefundDestinationPayload
 } from '../models/account.model';
 
 @Injectable({ providedIn: 'root' })
 export class AccountService {
   private readonly api = '/api/account';
+  private addressLocations$?: Observable<IndiaLocations>;
 
   constructor(private http: HttpClient) {}
 
@@ -47,6 +48,12 @@ export class AccountService {
     return this.http.patch<Address>(`${this.api}/addresses/${id}/default`, {});
   }
 
+  getAddressLocations(): Observable<IndiaLocations> {
+    return this.addressLocations$ ||= this.http.get<IndiaLocations>(`${this.api}/addresses/locations`).pipe(
+      shareReplay({ bufferSize: 1, refCount: false })
+    );
+  }
+
   // ── Orders ─────────────────────────────────────────────────
   getOrders(): Observable<Order[]> {
     return this.http.get<Order[]>(`${this.api}/orders`);
@@ -60,6 +67,13 @@ export class AccountService {
     return this.http.get<TrackingInfo>(`${this.api}/orders/${orderId}/tracking`);
   }
 
+  getInvoice(orderId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.api}/orders/${orderId}/invoice`, {
+      observe: 'response',
+      responseType: 'blob'
+    });
+  }
+
   // ── Returns ────────────────────────────────────────────────
   getReturns(): Observable<ReturnRequest[]> {
     return this.http.get<ReturnRequest[]>(`${this.api}/returns`);
@@ -67,6 +81,14 @@ export class AccountService {
 
   createReturn(payload: ReturnPayload): Observable<ReturnRequest> {
     return this.http.post<ReturnRequest>(`${this.api}/returns`, payload);
+  }
+
+  getReturnEligibility(orderId: string): Observable<ReturnEligibility> {
+    return this.http.get<ReturnEligibility>(`${this.api}/orders/${orderId}/return-eligibility`);
+  }
+
+  saveCodRefundDestination(returnId: string, payload: CodRefundDestinationPayload): Observable<CodRefundDestination> {
+    return this.http.put<CodRefundDestination>(`${this.api}/returns/${returnId}/refund-destination`, payload);
   }
 
   // ── Credits ────────────────────────────────────────────────

@@ -2,8 +2,10 @@ const { pool } = require('../config/db');
 const User = require('../models/User');
 const asyncHandler = require('../middleware/asyncHandler');
 const addressValidationError = require('../services/addressValidation');
+const { loadIndiaLocations, resolveIndiaLocation } = require('../services/indiaLocations');
 const shipping = require('../services/shippingService');
 const returns = require('../services/returnService');
+const codRefunds = require('../services/codRefundService');
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
@@ -65,13 +67,19 @@ exports.getDefaultAddress = asyncHandler(async (req, res) => {
   res.json(rows[0] ? fmtAddr(rows[0]) : null);
 });
 
+exports.getAddressLocations = asyncHandler(async (_req, res) => {
+  res.set('Cache-Control', 'private, max-age=86400');
+  res.json(await loadIndiaLocations());
+});
+
 exports.addAddress = asyncHandler(async (req, res) => {
-  const validationError = addressValidationError(req.body);
+  const validationError = await addressValidationError(req.body, { validateLocation: true });
   if (validationError) return res.status(400).json({ message: validationError });
   const { fullName, phone, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
   if (!fullName || !phone || !addressLine1 || !city || !state || !postalCode) {
     return res.status(400).json({ message: 'fullName, phone, addressLine1, city, state and postalCode are required.' });
   }
+  const location = await resolveIndiaLocation(state, city);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -86,7 +94,8 @@ exports.addAddress = asyncHandler(async (req, res) => {
     const { rows } = await client.query(
       `INSERT INTO customer_addresses (user_id, full_name, phone, address_line1, address_line2, landmark, city, state, postal_code, country, address_type, is_default)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [req.user.id, fullName, phone, addressLine1, addressLine2 || null, landmark || null, city, state, postalCode, country, addressType, makeDefault]
+      [req.user.id, fullName, phone, addressLine1, addressLine2 || null, landmark || null,
+        location.city, location.state, postalCode, 'India', addressType, makeDefault]
     );
     await client.query('COMMIT');
     res.status(201).json(fmtAddr(rows[0]));
@@ -99,21 +108,26 @@ exports.addAddress = asyncHandler(async (req, res) => {
 });
 
 exports.updateAddress = asyncHandler(async (req, res) => {
-  const validationError = addressValidationError(req.body);
-  if (validationError) return res.status(400).json({ message: validationError });
   const { id } = req.params;
   const { rows: owned } = await pool.query(
-    'SELECT id FROM customer_addresses WHERE id = $1 AND user_id = $2', [id, req.user.id]
+    'SELECT id, city, state FROM customer_addresses WHERE id = $1 AND user_id = $2', [id, req.user.id]
   );
   if (!owned[0]) return res.status(404).json({ message: 'Address not found.' });
 
+  const validationError = await addressValidationError(req.body, {
+    validateLocation: true,
+    legacyLocation: { city: owned[0].city, state: owned[0].state }
+  });
+  if (validationError) return res.status(400).json({ message: validationError });
   const { fullName, phone, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
+  const location = await resolveIndiaLocation(state, city);
   const { rows } = await pool.query(
     `UPDATE customer_addresses
      SET full_name=$1, phone=$2, address_line1=$3, address_line2=$4, landmark=$5,
          city=$6, state=$7, postal_code=$8, country=$9, address_type=$10, updated_at=NOW()
      WHERE id=$11 AND user_id=$12 RETURNING *`,
-    [fullName, phone, addressLine1, addressLine2 || null, landmark || null, city, state, postalCode, country, addressType, id, req.user.id]
+    [fullName, phone, addressLine1, addressLine2 || null, landmark || null,
+      location?.city || city.trim(), location?.state || state.trim(), postalCode, 'India', addressType, id, req.user.id]
   );
   res.json(fmtAddr(rows[0]));
 });
@@ -218,6 +232,7 @@ function fmtOrder(o, items, addr) {
     trackingStatus: o.shipment_tracking_status || null,
     pickupStatus: o.shipment_pickup_status || null,
     estimatedDelivery: o.shipment_estimated_delivery || null,
+    invoiceAvailable: Boolean(o.invoice_available),
     shippedAt: o.shipped_at || null,
     deliveredAt: o.delivered_at || null,
     createdAt: o.created_at,
@@ -251,10 +266,12 @@ exports.getOrders = asyncHandler(async (req, res) => {
        s.shipping_status AS shipment_shipping_status,
        s.tracking_status AS shipment_tracking_status,
        s.pickup_status AS shipment_pickup_status,
-       s.estimated_delivery AS shipment_estimated_delivery
+       s.estimated_delivery AS shipment_estimated_delivery,
+       (s.shiprocket_order_id IS NOT NULL) AS invoice_available
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      WHERE o.user_id = $1
-       AND (o.payment_status = 'paid' OR (o.payment_method = 'cod' AND o.payment_status = 'pending'))
+       AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
+         OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))
      ORDER BY o.created_at DESC LIMIT $2 OFFSET $3`,
     [req.user.id, limit, offset]
   );
@@ -271,14 +288,25 @@ exports.getOrder = asyncHandler(async (req, res) => {
        s.shipping_status AS shipment_shipping_status,
        s.tracking_status AS shipment_tracking_status,
        s.pickup_status AS shipment_pickup_status,
-       s.estimated_delivery AS shipment_estimated_delivery
+       s.estimated_delivery AS shipment_estimated_delivery,
+       (s.shiprocket_order_id IS NOT NULL) AS invoice_available
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      WHERE o.id = $1 AND o.user_id = $2
-       AND (o.payment_status = 'paid' OR (o.payment_method = 'cod' AND o.payment_status = 'pending'))`,
+       AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
+         OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))`,
     [req.params.orderId, req.user.id]
   );
   if (!rows[0]) return res.status(404).json({ message: 'Order not found.' });
   res.json(await enrichOrder(rows[0]));
+});
+
+exports.getInvoice = asyncHandler(async (req, res) => {
+  const invoice = await shipping.invoice(req.params.orderId, req.user);
+  res.set('Cache-Control', 'no-store');
+  res.set('Content-Type', 'application/pdf');
+  res.set('Content-Disposition', `attachment; filename="${invoice.filename}"`);
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.send(invoice.document);
 });
 
 exports.getTracking = asyncHandler(async (req, res) => {
@@ -287,44 +315,33 @@ exports.getTracking = asyncHandler(async (req, res) => {
 
 // ── Returns ───────────────────────────────────────────────────────────────────
 
-function fmtReturn(rr) {
-  return {
-    id: rr.id,
-    orderId: rr.order_id,
-    returnNumber: rr.return_number,
-    reason: rr.reason,
-    comments: rr.comments || null,
-    status: rr.status,
-    refundAmount: Number(rr.refund_amount),
-    refundStatus: rr.refund_status,
-    items: rr.items || [],
-    requestedAt: rr.requested_at,
-    approvedAt: rr.approved_at || null,
-    completedAt: rr.completed_at || null,
-    createdAt: rr.created_at
-  };
-}
-
 exports.getReturns = asyncHandler(async (req, res) => {
   const { limit, offset } = require('../middleware/validation').pagination(req.query);
-  const { rows } = await pool.query(
-    `SELECT rr.*,
-            COALESCE(json_agg(json_build_object(
-              'id', ri.id, 'orderItemId', ri.order_item_id,
-              'quantity', ri.quantity, 'reason', ri.reason
-            )) FILTER (WHERE ri.id IS NOT NULL), '[]') AS items
-     FROM return_requests rr
-     LEFT JOIN return_items ri ON ri.return_request_id = rr.id
-     WHERE rr.user_id = $1
-     GROUP BY rr.id
-     ORDER BY rr.created_at DESC LIMIT $2 OFFSET $3`,
-    [req.user.id, limit, offset]
-  );
-  res.json(rows.map(fmtReturn));
+  res.json(await returns.listCustomerReturns(req.user.id, pool, { limit, offset }));
 });
 
 exports.createReturn = asyncHandler(async (req, res) => {
-  res.status(201).json(fmtReturn(await returns.createReturn(req.user.id, req.body)));
+  res.status(201).json(await returns.createReturn(req.user.id, req.body));
+});
+
+exports.getReturnEligibility = asyncHandler(async (req, res) => {
+  res.json(await returns.getEligibility(req.user.id, req.params.orderId));
+});
+
+exports.getReturn = asyncHandler(async (req, res) => {
+  const row = await returns.findReturn(pool, req.params.returnId, req.user.id);
+  if (!row) return res.status(404).json({ message: 'Return request not found.' });
+  res.json(returns.formatReturn(row));
+});
+
+exports.getCodRefundDestination = asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await codRefunds.getCustomer(req.user.id, req.params.returnId));
+});
+
+exports.saveCodRefundDestination = asyncHandler(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json(await codRefunds.submit(req.user.id, req.params.returnId, req.body));
 });
 
 // ── Credits ───────────────────────────────────────────────────────────────────
