@@ -12,6 +12,7 @@ import { PaymentOrder, PaymentService, RazorpaySuccess } from '../../services/pa
 import { AnalyticsService } from '../../services/analytics.service';
 import { OrderService } from '../../services/order.service';
 import { canonicalLocation, stateFor } from '../../utils/india-locations';
+import { FEATURE_FLAGS } from '../../config/feature-flags';
 
 type CheckoutStep = 'address' | 'payment';
 type PaymentMethod = 'razorpay' | 'cod';
@@ -24,6 +25,7 @@ type PaymentMethod = 'razorpay' | 'cod';
   styleUrl: './cart.component.css'
 })
 export class CartComponent implements OnInit, AfterViewInit {
+  readonly codEnabled = FEATURE_FLAGS.cashOnDelivery;
   @ViewChild('addressDialog') addressDialog!: ElementRef<HTMLDialogElement>;
   addingAddress = false;
   loadingAddresses = false;
@@ -130,7 +132,7 @@ export class CartComponent implements OnInit, AfterViewInit {
   }
 
   get codFee(): number {
-    return this.paymentMethod === 'cod' ? 100 : 0;
+    return this.codEnabled && this.paymentMethod === 'cod' ? 100 : 0;
   }
 
   get grandTotal(): number {
@@ -188,7 +190,7 @@ export class CartComponent implements OnInit, AfterViewInit {
     this.checkoutError = '';
     this.placing = true;
 
-    if (this.paymentMethod === 'cod') {
+    if (this.codEnabled && this.paymentMethod === 'cod') {
       this.orders.checkout(this.selectedAddressId, this.checkoutToken).subscribe({
         next: (order) => {
           this.orderId = order.orderNumber || order.id;

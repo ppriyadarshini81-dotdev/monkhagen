@@ -96,7 +96,7 @@
 
 <dialog #addressDialog class="mh-address-dialog" aria-labelledby="address-title" (cancel)="placing && $event.preventDefault()">
   <div class="mh-address-dialog__head">
-    <div><span class="mh-eyebrow">MONK HAGEN / SECURE CHECKOUT</span><h2 id="address-title">{{ checkoutStep === 'address' ? 'Choose your delivery address' : 'Choose how you would like to pay' }}</h2><p class="mh-address-intro">{{ checkoutStep === 'address' ? 'Select a saved address or add a new one to continue.' : 'Pay securely online or when your order arrives.' }}</p></div>
+    <div><span class="mh-eyebrow">MONK HAGEN / SECURE CHECKOUT</span><h2 id="address-title">{{ checkoutStep === 'address' ? 'Choose your delivery address' : 'Choose how you would like to pay' }}</h2><p class="mh-address-intro">{{ checkoutStep === 'address' ? 'Select a saved address or add a new one to continue.' : (codEnabled ? 'Pay securely online or when your order arrives.' : 'Pay securely online with Razorpay.') }}</p></div>
     <button type="button" class="mh-address-close" aria-label="Close checkout" [disabled]="placing" (click)="closeAddressDialog()">&#215;</button>
   </div>
   <ol class="mh-checkout-steps" aria-label="Checkout progress"><li class="is-complete"><span>&#10003;</span> Bag</li><li [class.is-complete]="checkoutStep === 'payment'" [attr.aria-current]="checkoutStep === 'address' ? 'step' : null"><span><ng-container *ngIf="checkoutStep === 'payment'; else addressStepNumber">&#10003;</ng-container><ng-template #addressStepNumber>02</ng-template></span> Address</li><li [attr.aria-current]="checkoutStep === 'payment' ? 'step' : null"><span>03</span> Payment</li></ol>
@@ -159,13 +159,13 @@
         <span class="mh-payment-option__copy"><strong>Pay Online</strong><small>UPI, cards, net banking and wallets via Razorpay</small></span>
         <span class="mh-payment-option__tag">Secure</span>
       </label>
-      <label class="mh-payment-option">
+      <label class="mh-payment-option" *ngIf="codEnabled">
         <input type="radio" name="paymentMethod" value="cod" [(ngModel)]="paymentMethod" />
         <span class="mh-payment-option__icon" aria-hidden="true">&#8377;</span>
         <span class="mh-payment-option__copy"><strong>Cash on Delivery</strong><small>Pay the order total when your delivery arrives</small></span>
         <span class="mh-payment-option__tag mh-payment-option__tag--cod">&#8377;100 COD fee</span>
       </label>
-      <div class="mh-payment-note" *ngIf="paymentMethod === 'cod'">
+      <div class="mh-payment-note" *ngIf="codEnabled && paymentMethod === 'cod'">
         A &#8377;100 COD charge has been added. Your order will be confirmed now and payment will be collected on delivery.
       </div>
     </fieldset>
@@ -174,9 +174,9 @@
     <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small *ngIf="checkoutDiscount">{{ cart.prepaidOffer.code }} Welcome Offer: &minus;&#8377;{{ checkoutDiscount | number: '1.2-2' }}</small><small *ngIf="codFee">COD charge: +&#8377;{{ codFee | number: '1.2-2' }}</small><small *ngIf="!checkoutDiscount && !codFee">Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number: '1.2-2' }}</strong></div>
     <div class="mh-payment-actions" *ngIf="checkoutStep === 'payment'">
       <button type="button" class="mh-btn mh-btn--ghost" [disabled]="placing" (click)="backToAddress()">&#8592; Back</button>
-      <button type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing">{{ placing ? 'Placing order...' : (paymentMethod === 'cod' ? 'Place COD order' : 'Pay securely') }} <span aria-hidden="true">&#8594;</span></button>
+      <button type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing">{{ placing ? 'Placing order...' : (codEnabled && paymentMethod === 'cod' ? 'Place COD order' : 'Pay securely') }} <span aria-hidden="true">&#8594;</span></button>
     </div>
     <button *ngIf="checkoutStep === 'address'" type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing || loadingAddresses || (!selectedAddressId && !addingAddress)">{{ placing ? 'Saving address...' : 'Continue to payment' }} <span aria-hidden="true">&#8594;</span></button>
-    <p class="mh-address-payment">{{ checkoutStep === 'payment' && paymentMethod === 'cod' ? 'Pay only when your order arrives' : 'Secure payment powered by Razorpay' }}</p></footer>
+    <p class="mh-address-payment">{{ checkoutStep === 'payment' && codEnabled && paymentMethod === 'cod' ? 'Pay only when your order arrives' : 'Secure payment powered by Razorpay' }}</p></footer>
   </form>
 </dialog>

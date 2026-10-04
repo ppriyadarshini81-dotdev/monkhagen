@@ -3,6 +3,7 @@ import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AccountService } from '../../../services/account.service';
 import { ReturnRequest } from '../../../models/account.model';
+import { FEATURE_FLAGS } from '../../../config/feature-flags';
 
 @Component({
   selector: 'app-account-returns',
@@ -12,6 +13,7 @@ import { ReturnRequest } from '../../../models/account.model';
   styleUrl: './returns.component.css'
 })
 export class AccountReturnsComponent implements OnInit {
+  readonly codEnabled = FEATURE_FLAGS.cashOnDelivery;
   returns: ReturnRequest[] = [];
   loading = true;
   refundFormReturnId = '';

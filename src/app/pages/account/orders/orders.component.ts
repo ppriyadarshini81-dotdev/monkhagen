@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { AccountService } from '../../../services/account.service';
 import { Order, ReturnEligibility, TrackingInfo } from '../../../models/account.model';
 import { saveInvoice } from '../../../utils/invoice-download';
+import { FEATURE_FLAGS } from '../../../config/feature-flags';
 
 @Component({
   selector: 'app-account-orders',
@@ -13,6 +14,7 @@ import { saveInvoice } from '../../../utils/invoice-download';
   styleUrl: './orders.component.css'
 })
 export class AccountOrdersComponent implements OnInit {
+  readonly codEnabled = FEATURE_FLAGS.cashOnDelivery;
   @ViewChild('detailsDialog') detailsDialog?: ElementRef<HTMLDialogElement>;
   @ViewChild('trackingDialog') trackingDialog?: ElementRef<HTMLDialogElement>;
   @ViewChild('returnDialog') returnDialog?: ElementRef<HTMLDialogElement>;

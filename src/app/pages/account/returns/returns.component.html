@@ -27,7 +27,7 @@
         Refund: &#8377;{{ r.refundAmount }} ·
         <span [class]="'mh-status mh-status--' + (r.refundStatus === 'refunded' ? 'green' : 'grey')">{{ statusLabel(r.refundStatus) }}</span>
       </div>
-      <section class="mh-cod-refund" *ngIf="r.paymentMethod === 'cod' && (r.refundDestination.required || r.refundDestination.provided)">
+      <section class="mh-cod-refund" *ngIf="codEnabled && r.paymentMethod === 'cod' && (r.refundDestination.required || r.refundDestination.provided)">
         <div class="mh-cod-refund__summary">
           <div><small>{{ r.refundDestination.required ? 'Refund details required' : 'Refund destination' }}</small>
             <strong *ngIf="r.refundDestination.provided">{{ r.refundDestination.method === 'UPI' ? 'UPI' : 'Bank Transfer' }}</strong>
