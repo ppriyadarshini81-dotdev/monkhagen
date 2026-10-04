@@ -9,7 +9,7 @@
     <!-- Gallery -->
     <div class="mh-pd__gallery" (wheel)="imageTrackpadSlide($event)">
       <div class="mh-pd__main" (touchstart)="imageTouchStart($event)" (touchmove)="imageTouchMove($event)" (touchend)="imageTouchEnd($event)">
-        <img [src]="cachedMediaUrl(product.images[activeImage])" [alt]="product.name" />
+        <img [src]="cachedMediaUrl(product.images[activeImage])" [alt]="product.name" decoding="async" />
         <button class="mh-pd__open-image" type="button" (click)="openImageViewer()" aria-label="Open enlarged product image"></button>
         <span class="mh-pd__badge" *ngIf="product.badge">{{ product.badge }}</span>
         <button class="mh-pd__zoom-trigger" type="button" (click)="openImageViewer()" aria-label="Open enlarged product image" aria-haspopup="dialog">
@@ -34,7 +34,7 @@
           (click)="selectImage(i)"
           [attr.aria-label]="'Show product image ' + (i + 1)"
         >
-          <img [src]="cachedMediaUrl(img)" [alt]="product.name + ' ' + (i + 1)" />
+          <img [src]="cachedMediaUrl(img)" [alt]="product.name + ' ' + (i + 1)" loading="lazy" />
         </button>
       </div>
     </div>
@@ -286,6 +286,8 @@
         [attr.data-viewer-index]="i" [class.is-active]="i === activeImage">
         <img [src]="cachedMediaUrl(viewerImageUrl(i))" (error)="viewerImageFailed($event, i)"
           (dblclick)="toggleViewerZoom(i)"
+          (pointerdown)="viewerImagePointerDown($event, i)"
+          (pointerup)="viewerImagePointerUp($event, i)"
           [alt]="product.name + ' enlarged image ' + (i + 1)"
           [style.transform]="i === activeImage ? 'scale(' + imageZoom + ')' : 'scale(1)'" />
       </figure>
@@ -297,7 +299,7 @@
     <div class="mh-pd__viewer-thumbs" *ngIf="product.images.length > 1">
       <button *ngFor="let img of product.images; let i = index" type="button" [class.active]="i === activeImage"
         (click)="selectImage(i)" [attr.aria-label]="'Open product image ' + (i + 1)">
-        <img [src]="cachedMediaUrl(img)" [alt]="product.name + ' thumbnail ' + (i + 1)" />
+        <img [src]="cachedMediaUrl(img)" [alt]="product.name + ' thumbnail ' + (i + 1)" loading="lazy" />
       </button>
     </div>
   </div>

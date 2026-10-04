@@ -107,11 +107,19 @@
 .mh-auth__terms { margin: 18px 0 0; color: #8990a2; font-size: 10px; line-height: 1.5; }
 
 @media (max-width: 520px) {
-  .mh-auth { align-items: flex-start; padding: 28px 16px; }
+  .mh-auth { align-items: flex-start; min-height: calc(100dvh - var(--mh-header-h)); padding: 24px 16px; }
   .mh-auth__card { padding: 30px 22px; border-radius: 16px; }
   .mh-auth__card h1 { font-size: 24px; }
   .mh-otp { gap: 6px; }
   .mh-otp input { height: 48px; font-size: 19px; }
+}
+
+@media (max-width: 359px) {
+  .mh-auth { padding-inline: 12px; }
+  .mh-auth__card { padding: 24px 16px; }
+  .mh-otp { gap: 4px; }
+  .mh-otp input { height: 44px; font-size: 17px; }
+  .mh-otp__actions { gap: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) { .mh-auth__background { transform: none; } }

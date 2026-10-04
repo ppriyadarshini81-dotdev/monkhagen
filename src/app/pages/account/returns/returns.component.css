@@ -24,3 +24,10 @@
 .mh-cod-refund__actions button:last-child { background: #2446ea; color: #fff; border-color: #2446ea; }
 .mh-cod-refund__error { color: #b42318; margin: 0; }
 @media (max-width: 680px) { .mh-cod-refund__form { grid-template-columns: 1fr; } .mh-cod-refund__summary { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 480px) {
+  .mh-return-card { padding: 16px 12px; }
+  .mh-return-card__head { gap: 10px; }
+  .mh-return-items div { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .mh-return-progress { overflow-x: auto; grid-template-columns: repeat(5, minmax(76px, 1fr)); padding-bottom: 5px; }
+  .mh-cod-refund__actions { align-items: stretch; flex-direction: column; }
+}

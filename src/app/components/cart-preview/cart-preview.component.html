@@ -5,7 +5,7 @@
         <span>Added to your bag</span>
         <h2 id="cart-preview-title">Cart &bull; {{ cart.count }} {{ cart.count === 1 ? 'item' : 'items' }}</h2>
       </div>
-      <button type="button" class="mh-cart-preview__close" (click)="close()" aria-label="Close cart preview">&times;</button>
+      <button #cartClose type="button" class="mh-cart-preview__close" (click)="close()" aria-label="Close cart preview">&times;</button>
     </header>
 
     <div class="mh-cart-preview__offer" *ngIf="cart.prepaidOffer.eligible">
@@ -17,7 +17,7 @@
     <div class="mh-cart-preview__items" *ngIf="cart.items.length; else emptyCart">
       <article class="mh-cart-preview__item" *ngFor="let item of cart.items">
         <a class="mh-cart-preview__image" [routerLink]="['/product', item.productSlug || item.productId]" (click)="close()">
-          <img *ngIf="item.imageUrl" [src]="cachedMediaUrl(item.imageUrl)" [alt]="item.productName || 'Product image'" />
+          <img *ngIf="item.imageUrl" [src]="cachedMediaUrl(item.imageUrl)" [alt]="item.productName || 'Product image'" loading="lazy" />
           <span *ngIf="!item.imageUrl" aria-hidden="true">MH</span>
         </a>
         <div class="mh-cart-preview__details">

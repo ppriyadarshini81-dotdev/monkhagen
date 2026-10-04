@@ -227,4 +227,26 @@ describe('Product details shared content', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.imageZoom).toBe(2);
   });
+
+  it('toggles viewer zoom when a touch pointer double-taps an image', () => {
+    fixture.detectChanges();
+    fixture.componentInstance.openImageViewer();
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    const image = root.querySelector<HTMLImageElement>('.mh-pd__viewer-frame img')!;
+    const tap = (type: string) => image.dispatchEvent(new PointerEvent(type, {
+      bubbles: true,
+      pointerType: 'touch',
+      clientX: 100,
+      clientY: 100
+    }));
+
+    tap('pointerdown');
+    tap('pointerup');
+    tap('pointerdown');
+    tap('pointerup');
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.imageZoom).toBe(2);
+  });
 });

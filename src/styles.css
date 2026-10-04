@@ -33,6 +33,13 @@ body {
   scroll-behavior: smooth;
 }
 
+html { max-width: 100%; }
+body { min-width: 0; max-width: 100%; }
+
+body.mh-scroll-locked { overflow: hidden; }
+
+:focus-visible { outline: 2px solid var(--mh-accent); outline-offset: 3px; }
+
 /* Admin COD refund modal is global to keep the already-large Admin component within its CSS budget. */
 .mh-cod-refund-summary { display: flex; margin: 0 0 18px; padding: 14px 16px; border: 1px solid #e5e2dc; border-radius: 9px; background: #faf9f7; }
 .mh-cod-refund-summary > div { display: grid; gap: 4px; }
@@ -303,4 +310,54 @@ app-admin-analytics .refresh:active:not(:disabled) { transform: translateY(0); }
 ::-webkit-scrollbar-thumb {
   background: var(--mh-line);
   border-radius: 999px;
+}
+
+@media (max-width: 1023px) {
+  .mh-container { padding-inline: 24px; }
+  .mh-section { padding-block: 52px; }
+}
+
+@media (max-width: 767px) {
+  :root { --mh-header-h: 64px; }
+  .mh-container { padding-inline: 16px; }
+  .mh-section { padding-block: 42px; }
+  .mh-input, .mh-select, .mh-textarea { min-height: 46px; font-size: 16px; }
+  .mh-btn { min-height: 44px; }
+  app-product-details .mh-pd { padding: 22px 16px 18px; }
+  app-product-details .mh-crumbs { margin-bottom: 18px; font-size: 12px; }
+  app-product-details .mh-pd__grid { gap: 24px; }
+  app-product-details .mh-pd__main { aspect-ratio: 3 / 4; border-radius: 9px; box-shadow: 0 5px 16px rgb(0 0 0 / 6%); }
+  app-product-details .mh-pd__main:hover { transform: none; filter: none; box-shadow: 0 5px 16px rgb(0 0 0 / 6%); }
+  app-product-details .mh-pd__arrow { width: 42px; height: 42px; }
+  app-product-details .mh-pd__arrow--prev { left: 8px; }
+  app-product-details .mh-pd__arrow--next { right: 8px; }
+  app-product-details .mh-pd__badge { top: 10px; left: 10px; padding: 5px 9px; font-size: 9px; }
+  app-product-details .mh-pd__zoom-trigger { top: 10px; right: 10px; width: 40px; height: 40px; }
+  app-product-details .mh-pd__thumbs { gap: 8px; margin-top: 10px; scroll-snap-type: x proximity; }
+  app-product-details .mh-pd__thumbs button { width: 62px; height: 76px; scroll-snap-align: start; }
+  app-product-details .mh-pd__info h1 { margin: 8px 0 14px; font-size: clamp(19px, 5.7vw, 24px); overflow-wrap: anywhere; }
+  app-product-details .mh-pd__meta { margin-bottom: 16px; }
+  app-product-details .mh-pd__mrp > span { font-size: 15px; }
+  app-product-details .mh-pd__mrp strong { font-size: 23px; }
+  app-product-details .mh-pd__mrp small { font-size: 11px; }
+  app-product-details .mh-pd__offers { padding-block: 15px 18px; margin-bottom: 18px; }
+  app-product-details .mh-pd__offer-card { padding: 13px; }
+  app-product-details .mh-pd__opt { margin-bottom: 18px; }
+  app-product-details .mh-pd__choices { gap: 8px; }
+  app-product-details .mh-pd__choices button { min-width: 46px; min-height: 44px; padding: 9px 12px; }
+  app-product-details .mh-pd__buy { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; margin-block: 22px 20px; }
+  app-product-details .mh-pd__add { min-width: 0; min-height: 48px; padding-inline: 14px; }
+  app-product-details .mh-pd__delivery { padding: 14px; margin-block: 20px; }
+  app-product-details .mh-pd__delivery strong { font-size: 15px; }
+  app-product-details .mh-pd__details summary { min-height: 52px; padding-block: 14px; }
+  app-product-details .mh-reviews { padding: 40px 16px 60px; }
+  app-product-details .mh-reviews__head h2 { font-size: clamp(25px, 8vw, 34px); }
+  app-product-details .mh-review-dialog__panel footer { align-items: stretch; flex-direction: column-reverse; }
+  app-product-details .mh-review-dialog__panel footer .mh-btn { width: 100%; }
+}
+
+@media (max-width: 359px) {
+  app-product-details .mh-pd { padding-inline: 12px; }
+  app-product-details .mh-pd__buy { grid-template-columns: 1fr; }
+  app-product-details .mh-qty { justify-self: start; }
 }

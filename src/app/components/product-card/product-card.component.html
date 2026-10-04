@@ -6,7 +6,9 @@
   (mouseenter)="onMouseEnter()"
   (mouseleave)="onMouseLeave()"
 >
-  <div class="mh-pcard__media">
+  <div class="mh-pcard__media"
+       (touchstart)="onImageTouchStart($event)"
+       (touchend)="onImageTouchEnd($event)">
     <div class="mh-pcard__image-track"
          [class.mh-pcard__image-track--instant]="!imageAnimating"
          [style.transform]="'translate3d(-' + currentImageIndex * 100 + '%, 0, 0)'"
@@ -14,10 +16,13 @@
       <img *ngFor="let image of imageSlides; let i = index"
            [attr.src]="i === 0 || imagesActivated ? image : null"
            [alt]="i === 0 ? product.name : ''"
-           [attr.aria-hidden]="i !== 0"
-           [attr.loading]="i === 0 ? 'lazy' : 'eager'"
+           [attr.aria-hidden]="i !== currentImageIndex"
+           loading="lazy"
            decoding="async"
            (load)="onImageLoaded(i)" />
+    </div>
+    <div class="mh-pcard__image-dots" *ngIf="cycleImages && product.images.length > 1" aria-hidden="true">
+      <span *ngFor="let image of product.images; let i = index" [class.active]="i === visibleImageIndex"></span>
     </div>
     <span class="mh-pcard__badge" *ngIf="product.badge">{{ product.badge }}</span>
 

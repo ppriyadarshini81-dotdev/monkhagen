@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit, Optional } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnDestroy, OnInit, Optional, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
@@ -17,7 +17,7 @@ import { ProductScrollRestorationService } from '../../services/product-scroll-r
   templateUrl: './home.component.html',
   styleUrl: './home.component.css'
 })
-export class HomeComponent implements OnInit, OnDestroy {
+export class HomeComponent implements AfterViewInit, OnInit, OnDestroy {
   featured: Product[] = [];
   newArrivals: Product[] = [];
   categories: Category[] = [];
@@ -53,6 +53,9 @@ export class HomeComponent implements OnInit, OnDestroy {
   }
   private heroTimer?: ReturnType<typeof setInterval>;
   private instagramTimer?: ReturnType<typeof setInterval>;
+  private testimonialTimer?: ReturnType<typeof setInterval>;
+  private testimonialIndex = 0;
+  @ViewChild('testimonialTrack') testimonialTrack?: ElementRef<HTMLElement>;
 
   marquee = [
     'NEW DROP — MONK HEAVY HOODIE',
@@ -118,6 +121,10 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.startInstagramTimer();
   }
 
+  ngAfterViewInit(): void {
+    this.startTestimonialTimer();
+  }
+
   selectSlide(index: number): void {
     if (index < 0 || index >= this.posters.length) return;
     this.heroAnimating = true;
@@ -161,12 +168,37 @@ export class HomeComponent implements OnInit, OnDestroy {
     this.instagramTimer = setInterval(() => this.advanceInstagram(1), 2000);
   }
 
+  restartTestimonialTimer(): void {
+    this.startTestimonialTimer();
+  }
+
+  private startTestimonialTimer(): void {
+    if (this.testimonialTimer) clearInterval(this.testimonialTimer);
+    this.testimonialTimer = undefined;
+    if (this.testimonials.length < 2) return;
+    this.testimonialTimer = setInterval(() => this.advanceTestimonial(), 2000);
+  }
+
+  private advanceTestimonial(): void {
+    if (typeof window.matchMedia !== 'function' || !window.matchMedia('(max-width: 1023px)').matches) return;
+    const track = this.testimonialTrack?.nativeElement;
+    const cards = track ? Array.from(track.querySelectorAll<HTMLElement>('.mh-testimonial')) : [];
+    if (!track || cards.length < 2) return;
+    this.testimonialIndex = (this.testimonialIndex + 1) % cards.length;
+    const target = this.testimonialIndex === 0 ? 0 : cards[this.testimonialIndex].offsetLeft - track.offsetLeft;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    track.scrollTo({ left: Math.max(0, target), behavior: reduceMotion ? 'auto' : 'smooth' });
+  }
+
   ngOnDestroy(): void {
     if (this.heroTimer) {
       clearInterval(this.heroTimer);
     }
     if (this.instagramTimer) {
       clearInterval(this.instagramTimer);
+    }
+    if (this.testimonialTimer) {
+      clearInterval(this.testimonialTimer);
     }
   }
 }

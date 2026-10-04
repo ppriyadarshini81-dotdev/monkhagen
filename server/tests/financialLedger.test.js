@@ -167,6 +167,12 @@ test('migration is additive, duplicate-safe and backfills only authoritative fin
   assert.match(sql, /payment_refunds/); assert.match(sql, /ON CONFLICT DO NOTHING/g);
 });
 
+test('follow-up migration safely repairs missing financial event actor attribution', () => {
+  const sql = readFileSync(path.join(__dirname, '..', 'migrations', '019_financial_event_actor.sql'), 'utf8');
+  assert.match(sql, /ALTER TABLE financial_transaction_events/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users\(id\) ON DELETE SET NULL/);
+});
+
 describe('ledger route authorization', () => {
   const User = require('../models/User');
   const originalFind = User.findById;

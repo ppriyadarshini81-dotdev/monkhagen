@@ -29,14 +29,14 @@ describe('Product card hover slideshow', () => {
     expect(card.currentImageIndex).toBe(0);
     [0, 1, 2, 3].forEach(index => card.onImageLoaded(index));
     expect(card.currentImageIndex).toBe(1);
-    tick(2000);
+    tick(1200);
     expect(card.currentImageIndex).toBe(2);
-    tick(2000);
+    tick(1200);
     expect(card.currentImageIndex).toBe(3);
     card.onImageTransitionEnd({ propertyName: 'transform' } as TransitionEvent);
     expect(card.currentImageIndex).toBe(0);
     expect(card.imageAnimating).toBeFalse();
-    tick(2000);
+    tick(1200);
     expect(card.currentImageIndex).toBe(1);
     card.ngOnDestroy();
   }));
@@ -69,10 +69,10 @@ describe('Product card hover slideshow', () => {
     const card = createCard();
     card.onMouseEnter();
     card.onImageLoaded(1);
-    tick(2000);
+    tick(1200);
     expect(card.currentImageIndex).toBe(1);
     card.onImageLoaded(2);
-    tick(2000);
+    tick(1200);
     expect(card.currentImageIndex).toBe(2);
     card.ngOnDestroy();
   }));
@@ -83,6 +83,55 @@ describe('Product card hover slideshow', () => {
     tick(6000);
     expect(card.imagesActivated).toBeFalse();
     expect(card.imageSlides.length).toBe(1);
+    expect(card.currentImageIndex).toBe(0);
+    card.ngOnDestroy();
+  }));
+
+  it('does not treat a synthetic mouse hover as touch interaction on touch-only devices', fakeAsync(() => {
+    spyOn(window, 'matchMedia').and.returnValue({ matches: false } as MediaQueryList);
+    const card = createCard();
+    card.onMouseEnter();
+    card.onImageLoaded(1);
+    tick(5000);
+    expect(card.imagesActivated).toBeFalse();
+    expect(card.currentImageIndex).toBe(0);
+    card.ngOnDestroy();
+  }));
+
+  it('lets touch users swipe through every product image without opening the product', () => {
+    const card = createCard();
+    const start = {
+      touches: [{ clientX: 180, clientY: 100 }]
+    } as unknown as TouchEvent;
+    const end = {
+      changedTouches: [{ clientX: 100, clientY: 104 }],
+      preventDefault: jasmine.createSpy('preventDefault'),
+      stopPropagation: jasmine.createSpy('stopPropagation')
+    } as unknown as TouchEvent;
+
+    card.onImageTouchStart(start);
+    card.onImageTouchEnd(end);
+    expect(card.imagesActivated).toBeTrue();
+    expect(card.currentImageIndex).toBe(1);
+    expect(end.preventDefault).toHaveBeenCalled();
+    expect(end.stopPropagation).toHaveBeenCalled();
+
+    card.onImageTouchStart(start);
+    card.onImageTouchEnd(end);
+    expect(card.currentImageIndex).toBe(2);
+    card.ngOnDestroy();
+  });
+
+  it('automatically cycles visible product images every two seconds on compact viewports', fakeAsync(() => {
+    const card = createCard();
+    card.updateViewportPreview(true);
+    expect(card.imagesActivated).toBeTrue();
+    [0, 1, 2, 3].forEach(index => card.onImageLoaded(index));
+    expect(card.currentImageIndex).toBe(1);
+    tick(2000);
+    expect(card.currentImageIndex).toBe(2);
+    card.updateViewportPreview(false);
+    tick(4000);
     expect(card.currentImageIndex).toBe(0);
     card.ngOnDestroy();
   }));

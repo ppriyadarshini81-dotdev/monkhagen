@@ -540,7 +540,41 @@
   }
 }
 
+@media (max-width: 1023px) {
+  .mh-hero {
+    height: clamp(320px, 48vw, 500px);
+    background: #f3f3f1;
+  }
+  .mh-hero__slide { object-fit: contain; }
+  .mh-hero__content { padding-bottom: 0; }
+  .mh-insta__track { overflow: hidden; }
+  .mh-insta__post { flex: 0 0 33.333%; }
+  .mh-testimonials {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    padding: 2px 2px 12px;
+    scroll-padding-inline: 2px;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mh-testimonials::-webkit-scrollbar { display: none; }
+  .mh-testimonial {
+    flex: 0 0 min(360px, 72vw);
+    scroll-snap-align: start;
+  }
+}
+
 @media (max-width: 640px) {
+  .mh-hero { height: auto; aspect-ratio: 16 / 9; min-height: 0; }
+  .mh-hero__dots { bottom: 12px; gap: 6px; }
+  .mh-hero__dots button { width: 22px; min-height: 12px; background-clip: content-box; padding-block: 4px; }
+  .mh-section { padding-block: 42px; }
+  .mh-sec-head { align-items: center; gap: 12px; margin-bottom: 22px; }
+  .mh-sec-head h2 { font-size: clamp(25px, 8vw, 32px); }
+  .mh-link { flex: 0 0 auto; font-size: 12px; }
   .mh-split {
     grid-template-columns: 1fr;
   }
@@ -554,14 +588,24 @@
     min-width: 0;
     width: 100%;
   }
+  .mh-insta { padding-block: 40px 32px; }
+  .mh-insta__post { flex-basis: 50%; }
+  .mh-insta__arrow { width: 40px; height: 40px; }
+  .mh-editorial { height: auto; aspect-ratio: 4 / 3; margin-block: 42px; }
+  .mh-newsletter { padding-block: 48px; }
+  .mh-newsletter__form { flex-direction: column; }
+  .mh-newsletter__form .mh-btn { min-height: 48px; }
+  .mh-testimonial { flex-basis: 82vw; padding: 20px; }
+  .mh-testimonial blockquote { margin-bottom: 0; font-size: 14px; }
 }
 
 @media (max-width: 440px) {
-  .mh-grid,
-  .mh-skeleton-grid {
-    grid-template-columns: 1fr;
-  }
+  .mh-grid, .mh-skeleton-grid { gap: 12px; }
   .mh-perks {
     grid-template-columns: 1fr;
   }
+}
+
+@media (max-width: 359px) {
+  .mh-grid, .mh-skeleton-grid { grid-template-columns: 1fr; }
 }

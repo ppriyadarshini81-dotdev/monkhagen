@@ -25,18 +25,25 @@ class PostgresRateLimitStore {
   async resetKey(key) { await this.database.query('DELETE FROM security_rate_limits WHERE key_hash = $1', [this.key(key)]); }
 }
 
-function createLimiter(scope, { limit, windowMs, authenticated = false, keyGenerator = null }) {
+function createLimiter(scope, { limit, windowMs, authenticated = false, keyGenerator = null, countServerErrors = true }) {
   return rateLimit({
     windowMs, limit, store: new PostgresRateLimitStore(scope),
     keyGenerator: req => keyGenerator ? keyGenerator(req) :
       (authenticated && req.user ? `user:${req.user.id}` : ipKeyGenerator(req.ip)),
     standardHeaders: 'draft-8', legacyHeaders: false, passOnStoreError: false,
+    skipFailedRequests: !countServerErrors,
+    requestWasSuccessful: (_req, res) => res.statusCode < 500,
     message: { message: 'Too many requests. Please try again later.' }
   });
 }
 
 const adminLimiter = createLimiter('admin', { limit: 120, windowMs: 60000, authenticated: true });
-const checkoutLimiter = createLimiter('checkout', { limit: 5, windowMs: 15 * 60000, authenticated: true });
+const checkoutLimiter = createLimiter('checkout', {
+  limit: 20,
+  windowMs: 15 * 60000,
+  authenticated: true,
+  countServerErrors: false
+});
 const verifyLimiter = createLimiter('payment-verify', { limit: 30, windowMs: 5 * 60000, authenticated: true });
 const returnLimiter = createLimiter('returns', { limit: 10, windowMs: 15 * 60000, authenticated: true });
 const analyticsLimiter = createLimiter('analytics', { limit: 180, windowMs: 60000 });

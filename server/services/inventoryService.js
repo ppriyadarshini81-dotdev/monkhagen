@@ -33,7 +33,7 @@ async function checkoutSnapshot(client, userId, addressId) {
     JOIN categories c ON c.id = p.category_id
     JOIN product_variants pv ON pv.id = ci.variant_id AND pv.product_id = ci.product_id
     LEFT JOIN product_size_details psd ON psd.product_id = p.id AND psd.size_id = pv.size_id
-    WHERE ci.cart_id = $1 ORDER BY ci.variant_id FOR UPDATE OF ci, p, pv, psd`, [cart.id]);
+    WHERE ci.cart_id = $1 ORDER BY ci.variant_id FOR UPDATE OF ci, p, pv`, [cart.id]);
   const items = result.rows;
   if (!items.length || items.length > 50) throw error(400, 'Cart must contain between 1 and 50 items.');
   let amount = 0;

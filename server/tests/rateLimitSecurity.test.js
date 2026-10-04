@@ -42,3 +42,32 @@ test('authenticated limiter keys by verified user and rejects requests above the
     assert.deepEqual([...counters.keys()], ['user:verified-user']);
   } finally { PostgresRateLimitStore.prototype.increment = original; await new Promise(resolve => server.close(resolve)); }
 });
+
+test('checkout-style limiter returns server failures to the allowance but still limits completed requests', async () => {
+  const originalIncrement = PostgresRateLimitStore.prototype.increment;
+  const originalDecrement = PostgresRateLimitStore.prototype.decrement;
+  let hits = 0;
+  PostgresRateLimitStore.prototype.increment = async () => ({
+    totalHits: ++hits,
+    resetTime: new Date(Date.now() + 60000)
+  });
+  PostgresRateLimitStore.prototype.decrement = async () => { hits = Math.max(0, hits - 1); };
+  const app = express();
+  app.use((req, _res, next) => { req.user = { id: 'checkout-user' }; next(); });
+  app.get('/', createLimiter('test-checkout-limit', {
+    limit: 2, windowMs: 60000, authenticated: true, countServerErrors: false
+  }), (req, res) => res.status(req.query.fail === '1' ? 500 : 200).end());
+  const server = await new Promise(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/`;
+    assert.equal((await fetch(`${url}?fail=1`)).status, 500);
+    assert.equal((await fetch(`${url}?fail=1`)).status, 500);
+    assert.equal((await fetch(url)).status, 200);
+    assert.equal((await fetch(url)).status, 200);
+    assert.equal((await fetch(url)).status, 429);
+  } finally {
+    PostgresRateLimitStore.prototype.increment = originalIncrement;
+    PostgresRateLimitStore.prototype.decrement = originalDecrement;
+    await new Promise(resolve => server.close(resolve));
+  }
+});

@@ -71,6 +71,9 @@ export class ProductDetailsComponent implements OnInit {
   private wheelDistance = 0;
   private wheelGestureActive = false;
   private lastWheelEventAt = 0;
+  private viewerPointerStart: { x: number; y: number; index: number } | null = null;
+  private lastViewerTapAt = 0;
+  private lastViewerTapIndex = -1;
 
   openSizeChart(): void {
     if (this.pageContent?.sizeChartImageUrl) this.sizeChartDialog?.nativeElement.showModal();
@@ -159,6 +162,35 @@ export class ProductDetailsComponent implements OnInit {
     this.activeImage = index;
     this.loadedViewerImages.add(index);
     this.imageZoom = this.imageZoom > 1 ? 1 : 2;
+  }
+
+  viewerImagePointerDown(event: PointerEvent, index: number): void {
+    if (event.pointerType !== 'touch') return;
+    this.viewerPointerStart = { x: event.clientX, y: event.clientY, index };
+  }
+
+  viewerImagePointerUp(event: PointerEvent, index: number): void {
+    if (event.pointerType !== 'touch') return;
+    const start = this.viewerPointerStart;
+    this.viewerPointerStart = null;
+    if (!start || start.index !== index || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 14) {
+      this.lastViewerTapAt = 0;
+      this.lastViewerTapIndex = -1;
+      return;
+    }
+
+    const now = event.timeStamp || performance.now();
+    if (this.lastViewerTapIndex === index && now - this.lastViewerTapAt <= 350) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.lastViewerTapAt = 0;
+      this.lastViewerTapIndex = -1;
+      this.toggleViewerZoom(index);
+      return;
+    }
+
+    this.lastViewerTapAt = now;
+    this.lastViewerTapIndex = index;
   }
 
   private scrollViewerTo(index: number, smooth = true): void {

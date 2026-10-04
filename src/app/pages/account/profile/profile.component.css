@@ -12,3 +12,9 @@
 .mh-profile__email-prompt { display: grid; gap: 10px; max-width: 480px; margin-top: 24px; padding: 18px; background: #f5f7ff; border: 1px solid #dce3ff; border-radius: 12px; }
 .mh-profile__email-prompt p { margin: 0; color: #68718a; font-size: 13px; line-height: 1.55; }
 .mh-profile__email-prompt .mh-btn { justify-self: start; }
+@media (max-width: 420px) {
+  .mh-profile__actions { align-items: stretch; flex-direction: column; }
+  .mh-profile__actions .mh-btn,
+  .mh-profile__email-link .mh-btn,
+  .mh-profile__email-prompt .mh-btn { width: 100%; justify-self: stretch; }
+}

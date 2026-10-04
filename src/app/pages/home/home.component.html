@@ -10,7 +10,7 @@
            [src]="slide"
            [alt]="i < posters.length ? 'Monk Hagen collection banner ' + (i + 1) : ''"
            [attr.aria-hidden]="i !== heroPosition"
-           loading="eager"
+           [attr.loading]="i === 0 ? 'eager' : 'lazy'"
            [attr.fetchpriority]="i === 0 ? 'high' : 'low'"
            decoding="async" />
     </div>
@@ -160,7 +160,7 @@
       <h2>What the founder says</h2>
     </div>
   </div>
-  <div class="mh-testimonials">
+  <div #testimonialTrack class="mh-testimonials" (pointerdown)="restartTestimonialTimer()">
     <figure class="mh-testimonial mh-card" *ngFor="let t of testimonials">
       <blockquote>"{{ t.quote }}"</blockquote>
     </figure>

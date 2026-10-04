@@ -259,6 +259,9 @@ test('COD is server-priced, allocates stock and converts its cart atomically; du
   assert.equal(fixture.state.converted.has(USER), true);
   assert.equal(fixture.state.shipments.size, 1);
   assert.ok(fixture.state.orders[0].inventory_deducted_at);
+  const snapshotQuery = fixture.statements.find(({ sql }) => sql.startsWith('SELECT ci.product_id'))?.sql || '';
+  assert.match(snapshotQuery, /FOR UPDATE OF ci, p, pv$/);
+  assert.doesNotMatch(snapshotQuery, /FOR UPDATE OF[^\n]*psd/);
   assert.equal(remoteCreates, 0);
 });
 test('legacy COD retries without tokens cannot process a converted cart again', async () => {

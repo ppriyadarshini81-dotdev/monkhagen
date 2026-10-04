@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnChanges, OnDestroy, Optional } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, Input, OnChanges, OnDestroy, Optional } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
 import { CartService } from '../../services/cart.service';
@@ -15,7 +15,7 @@ import { ProductScrollRestorationService } from '../../services/product-scroll-r
   templateUrl: './product-card.component.html',
   styleUrl: './product-card.component.css'
 })
-export class ProductCardComponent implements OnChanges, OnDestroy {
+export class ProductCardComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input({ required: true }) product!: Product;
   @Input() cycleImages = false;
   added = false;
@@ -29,16 +29,44 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
   imagesActivated = false;
   imageAnimating = false;
   private hovered = false;
+  private autoCycling = false;
   private loadedImages = new Set<number>();
   private imageTimer?: ReturnType<typeof setInterval>;
+  private visibilityObserver?: IntersectionObserver;
+  private touchStartX: number | null = null;
+  private touchStartY: number | null = null;
+  private suppressNavigation = false;
+  private navigationResetTimer?: ReturnType<typeof setTimeout>;
 
   constructor(
     private cart: CartService,
     private productService: ProductService,
-    @Optional() private productScroll?: ProductScrollRestorationService
+    @Optional() private productScroll?: ProductScrollRestorationService,
+    @Optional() private host?: ElementRef<HTMLElement>
   ) {}
 
+  ngAfterViewInit(): void {
+    if (!this.cycleImages || this.product.images.length < 2 ||
+        typeof window.matchMedia !== 'function' || !window.matchMedia('(max-width: 1023px)').matches) return;
+    if (!this.host?.nativeElement || typeof IntersectionObserver === 'undefined') {
+      this.updateViewportPreview(true);
+      return;
+    }
+    this.visibilityObserver = new IntersectionObserver(entries => {
+      this.updateViewportPreview(entries.some(entry => entry.isIntersecting && entry.intersectionRatio >= 0.35));
+    }, { threshold: [0.35] });
+    this.visibilityObserver.observe(this.host.nativeElement);
+  }
+
   rememberPosition(event: MouseEvent): void {
+    if (this.suppressNavigation) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.suppressNavigation = false;
+      if (this.navigationResetTimer) clearTimeout(this.navigationResetTimer);
+      this.navigationResetTimer = undefined;
+      return;
+    }
     if (event.defaultPrevented) return;
     this.productScroll?.remember(this.product.id, event.currentTarget as HTMLElement);
   }
@@ -46,6 +74,7 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
   ngOnChanges(): void {
     this.stopImageTimer();
     this.hovered = false;
+    this.autoCycling = false;
     this.imagesActivated = false;
     this.imageAnimating = false;
     this.currentImageIndex = 0;
@@ -57,15 +86,16 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
   }
 
   onMouseEnter(): void {
-    if (!this.cycleImages || this.product.images.length < 2) return;
+    if (!this.cycleImages || this.product.images.length < 2 || !this.isHoverCapable()) return;
     this.hovered = true;
     this.imagesActivated = true;
     this.startImagePreview();
   }
 
   onMouseLeave(): void {
-    this.stopImageTimer();
     this.hovered = false;
+    if (this.autoCycling) return;
+    this.stopImageTimer();
     this.imageAnimating = false;
     this.currentImageIndex = 0;
     if (!this.adding) this.showSizePicker = false;
@@ -76,10 +106,62 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
     if (index === 1) this.startImagePreview();
   }
 
+  updateViewportPreview(visible: boolean): void {
+    this.autoCycling = visible;
+    if (visible) {
+      this.imagesActivated = true;
+      this.startImagePreview();
+      return;
+    }
+    if (this.hovered) return;
+    this.stopImageTimer();
+    this.imageAnimating = false;
+    this.currentImageIndex = 0;
+  }
+
   onImageTransitionEnd(event: TransitionEvent): void {
     if (event.propertyName !== 'transform' || this.currentImageIndex !== this.product.images.length) return;
     this.imageAnimating = false;
     this.currentImageIndex = 0;
+  }
+
+  onImageTouchStart(event: TouchEvent): void {
+    if (!this.cycleImages || this.product.images.length < 2 || event.touches.length !== 1) return;
+    this.imagesActivated = true;
+    this.touchStartX = event.touches[0].clientX;
+    this.touchStartY = event.touches[0].clientY;
+  }
+
+  onImageTouchEnd(event: TouchEvent): void {
+    if (this.touchStartX === null || this.touchStartY === null || event.changedTouches.length !== 1) return;
+    const deltaX = event.changedTouches[0].clientX - this.touchStartX;
+    const deltaY = event.changedTouches[0].clientY - this.touchStartY;
+    this.touchStartX = null;
+    this.touchStartY = null;
+    if (Math.abs(deltaX) < 36 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    this.suppressNavigation = true;
+    if (this.navigationResetTimer) clearTimeout(this.navigationResetTimer);
+    this.navigationResetTimer = setTimeout(() => {
+      this.suppressNavigation = false;
+      this.navigationResetTimer = undefined;
+    }, 400);
+    this.imageAnimating = true;
+    if (deltaX < 0) {
+      this.currentImageIndex = this.currentImageIndex >= this.product.images.length - 1
+        ? this.product.images.length
+        : this.currentImageIndex + 1;
+    } else {
+      this.currentImageIndex = this.currentImageIndex <= 0
+        ? this.product.images.length - 1
+        : this.currentImageIndex - 1;
+    }
+  }
+
+  get visibleImageIndex(): number {
+    return this.currentImageIndex === this.product.images.length ? 0 : this.currentImageIndex;
   }
 
   get availableSizes(): string[] {
@@ -92,7 +174,7 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
   }
 
   private startImagePreview(): void {
-    if (!this.hovered || this.imageTimer || !this.loadedImages.has(1)) return;
+    if ((!this.hovered && !this.autoCycling) || this.imageTimer || !this.loadedImages.has(1)) return;
     // Keep the primary photo visible until the first alternate is loaded.
     this.imageAnimating = true;
     this.currentImageIndex = 1;
@@ -101,7 +183,11 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
       if (!this.loadedImages.has(next)) return;
       this.imageAnimating = true;
       this.currentImageIndex = next;
-    }, 2000);
+    }, this.autoCycling ? 2000 : 1200);
+  }
+
+  private isHoverCapable(): boolean {
+    return typeof window.matchMedia !== 'function' || window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   }
 
   private stopImageTimer(): void {
@@ -112,6 +198,8 @@ export class ProductCardComponent implements OnChanges, OnDestroy {
 
   ngOnDestroy(): void {
     this.stopImageTimer();
+    this.visibilityObserver?.disconnect();
+    if (this.navigationResetTimer) clearTimeout(this.navigationResetTimer);
     this.hovered = false;
   }
 
