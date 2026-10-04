@@ -115,7 +115,7 @@
         </ng-container>
       </section>
     </div>
-    <footer class="mh-customer-dialog__foot"><small>{{ isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order)) }}</small><div><button *ngIf="returnEligibility?.eligible" type="button" class="mh-order-action mh-order-action--quiet" (click)="openReturn(order)">Return item</button><button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
+    <footer class="mh-customer-dialog__foot"><small>{{ isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order)) }}</small><div><button *ngIf="returnEligibility?.eligible && (codEnabled || order.paymentMethod !== 'cod')" type="button" class="mh-order-action mh-order-action--quiet" (click)="openReturn(order)">Return item</button><button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
   </ng-container>
 </dialog>
 
@@ -135,7 +135,7 @@
           <label *ngIf="row.reason === 'other'" class="mh-return-row__explanation">Explanation<textarea maxlength="250" [(ngModel)]="row.comments" placeholder="Tell us what happened"></textarea></label>
         </div>
       </div>
-      <p class="mh-return-note">Refunds are reviewed after the returned item reaches our warehouse. Original delivery and COD charges are not refundable.</p>
+      <p class="mh-return-note">Refunds are reviewed after the returned item reaches our warehouse. Original delivery<span *ngIf="codEnabled"> and COD</span> charges are not refundable.</p>
     </div>
     <footer class="mh-customer-dialog__foot"><small>Pickup uses the original delivery address.</small><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeReturn()">Cancel</button><button type="button" class="mh-order-action mh-order-action--primary" [disabled]="returnSubmitting" (click)="submitReturn()">{{ returnSubmitting ? 'Submitting...' : 'Confirm return' }}</button></div></footer>
   </ng-container>
