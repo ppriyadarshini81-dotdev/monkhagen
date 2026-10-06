@@ -249,7 +249,7 @@ function fmtOrder(o, items, addr) {
     trackingStatus: o.shipment_tracking_status || null,
     pickupStatus: o.shipment_pickup_status || null,
     estimatedDelivery: o.shipment_estimated_delivery || null,
-    invoiceAvailable: Boolean(o.invoice_available),
+    invoiceAvailable: Boolean(o.invoice_available) && o.order_status !== 'cancelled',
     shippedAt: o.shipped_at || null,
     deliveredAt: o.delivered_at || null,
     createdAt: o.created_at,

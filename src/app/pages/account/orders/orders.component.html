@@ -64,7 +64,7 @@
       <footer class="mh-customer-order__foot">
         <span class="mh-delivery-state"><i></i>{{ isCancelled(order) ? 'Cancelled' : deliveryLabel(order) }}</span>
         <div>
-          <button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button>
+          <button *ngIf="order.invoiceAvailable && !isCancelled(order)" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button>
           <button type="button" class="mh-order-action mh-order-action--quiet" (click)="openDetails(order)">View details</button>
           <button *ngIf="!isCancelled(order)" type="button" class="mh-order-action mh-order-action--primary" (click)="openTracking(order)">Track order <span aria-hidden="true">&#8594;</span></button>
         </div>

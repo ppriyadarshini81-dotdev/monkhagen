@@ -271,6 +271,9 @@ function createShippingService({ repository = Shipment, api = shiprocket, notifi
     if (!source || (source.user_id !== user.id && !['admin', 'super_admin'].includes(user.role))) {
       throw shippingError(404, 'ORDER_NOT_FOUND', 'Order not found.');
     }
+    if (source.order_status === 'cancelled') {
+      throw shippingError(409, 'INVOICE_NOT_AVAILABLE', 'Invoice is unavailable for a cancelled order.');
+    }
     let shiprocketOrderId;
     try { shiprocketOrderId = providerId(source.shiprocket_order_id, 'shiprocket_order_id'); }
     catch { throw shippingError(404, 'INVOICE_NOT_AVAILABLE', 'Invoice is not available yet. Please try again later.'); }
