@@ -60,5 +60,6 @@
         </form>
       </section>
     </div>
+    <nav class="mh-pagination" *ngIf="page > 0 || hasNextPage" aria-label="Returns pages"><button type="button" [disabled]="page === 0" (click)="changePage(-1)">← Previous</button><span>Page {{ page + 1 }}</span><button type="button" [disabled]="!hasNextPage" (click)="changePage(1)">Next →</button></nav>
   </div>
 </section>

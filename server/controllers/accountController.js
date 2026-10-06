@@ -7,6 +7,7 @@ const { assertPincodeMatchesLocation, lookupPincode } = require('../services/ind
 const shipping = require('../services/shippingService');
 const returns = require('../services/returnService');
 const codRefunds = require('../services/codRefundService');
+const cancellations = require('../services/orderCancellationService');
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
@@ -232,6 +233,8 @@ function fmtOrder(o, items, addr) {
     paymentStatus: o.payment_status,
     fulfillmentHoldReason: o.fulfillment_hold_reason || null,
     refundedAmount: Number(o.refunded_amount || 0),
+    cancellation: o.cancellation_status ? { status: o.cancellation_status, reason: o.cancellation_reason || null,
+      cancelledAt: o.cancelled_at || null, refundStatus: o.cancellation_refund_status || 'not_applicable' } : null,
     paymentMethod: o.payment_method,
     subtotal: Number(o.subtotal),
     discountAmount: Number(o.discount_amount),
@@ -281,8 +284,10 @@ exports.getOrders = asyncHandler(async (req, res) => {
        s.tracking_status AS shipment_tracking_status,
        s.pickup_status AS shipment_pickup_status,
        s.estimated_delivery AS shipment_estimated_delivery,
-       (s.shiprocket_order_id IS NOT NULL) AS invoice_available
+       (s.shiprocket_order_id IS NOT NULL) AS invoice_available,
+       c.status AS cancellation_status, c.reason AS cancellation_reason, c.cancelled_at, c.refund_status AS cancellation_refund_status
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
+     LEFT JOIN order_cancellations c ON c.order_id = o.id
      WHERE o.user_id = $1
        AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
          OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))
@@ -303,8 +308,10 @@ exports.getOrder = asyncHandler(async (req, res) => {
        s.tracking_status AS shipment_tracking_status,
        s.pickup_status AS shipment_pickup_status,
        s.estimated_delivery AS shipment_estimated_delivery,
-       (s.shiprocket_order_id IS NOT NULL) AS invoice_available
+       (s.shiprocket_order_id IS NOT NULL) AS invoice_available,
+       c.status AS cancellation_status, c.reason AS cancellation_reason, c.cancelled_at, c.refund_status AS cancellation_refund_status
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
+     LEFT JOIN order_cancellations c ON c.order_id = o.id
      WHERE o.id = $1 AND o.user_id = $2
        AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
          OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))`,
@@ -325,6 +332,14 @@ exports.getInvoice = asyncHandler(async (req, res) => {
 
 exports.getTracking = asyncHandler(async (req, res) => {
   res.json(await shipping.tracking(req.params.orderId, req.user));
+});
+
+exports.getCancellationEligibility = asyncHandler(async (req, res) => {
+  res.json(await cancellations.getEligibility(req.user.id, req.params.orderId));
+});
+
+exports.cancelOrder = asyncHandler(async (req, res) => {
+  res.json(await cancellations.cancel(req.user.id, req.params.orderId, req.body?.reason));
 });
 
 // ── Returns ───────────────────────────────────────────────────────────────────

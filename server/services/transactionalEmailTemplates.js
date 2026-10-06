@@ -155,6 +155,23 @@ function shippingUpdate(type, order, environment) {
     cta('Rate Your Purchase', reviewPath ? link(`/product/${encodeURIComponent(reviewPath)}?review=write`, environment) : link('/account/orders', environment))) };
 }
 
+function orderCancelled(order, environment) {
+  const refundPending = order.payment_method === 'razorpay';
+  let content = paragraph(`Hi ${firstName(order.customer_name || order.full_name)},`) +
+    paragraph('Your order has been cancelled.');
+  content += card(detailRows([
+    ['Order ID', escapeHtml(order.order_number)], ['Cancelled on', escapeHtml(indiaDate(order.cancelled_at || new Date(), true))],
+    ['Cancellation reason', escapeHtml(order.cancellation_reason || 'Not provided')],
+    ['Payment method', escapeHtml(paymentLabel(order.payment_method))],
+    ['Refund status', escapeHtml(refundPending ? (order.cancellation_refund_status === 'refunded' ? 'Refund completed' : 'Refund initiated to your original payment method') : 'No payment was collected')],
+    ['Amount', escapeHtml(money(order.total_amount))]
+  ]));
+  content += heading('Cancelled items') + itemCards(order.items) +
+    cta('View order details', link('/account/orders', environment)) +
+    paragraph(refundPending ? 'Your bank or payment provider may take a few business days to reflect the refund.' : 'No payment is due for this cancelled order.');
+  return { subject: `Order cancelled – ${order.order_number}`, html: layout('Order cancelled', content) };
+}
+
 function returnDetails(record, includeCustomer = false) {
   return card(detailRows([
     ['Return ID', escapeHtml(record.return_number)], ['Order', escapeHtml(record.order_number)],
@@ -252,6 +269,7 @@ function buildEmail(eventType, data, environment = process.env) {
   if (eventType === 'ORDER_CONFIRMED_CUSTOMER') message = orderConfirmed(data, false, environment);
   else if (eventType === 'ORDER_CONFIRMED_ADMIN') message = orderConfirmed(data, true, environment);
   else if (['ORDER_SHIPPED_CUSTOMER','ORDER_OUT_FOR_DELIVERY_CUSTOMER','ORDER_DELIVERED_CUSTOMER'].includes(eventType)) message = shippingUpdate(eventType, data, environment);
+  else if (eventType === 'ORDER_CANCELLED_CUSTOMER') message = orderCancelled(data, environment);
   else if (eventType === 'RETURN_REQUESTED_CUSTOMER') message = returnRequested(data, false, environment);
   else if (eventType === 'RETURN_REQUESTED_ADMIN') message = returnRequested(data, true, environment);
   else if (['RETURN_PICKUP_SCHEDULED_CUSTOMER','RETURN_PICKED_UP_CUSTOMER','RETURN_RECEIVED_CUSTOMER','RETURN_APPROVED_CUSTOMER'].includes(eventType)) message = returnStatus(eventType, data, environment);

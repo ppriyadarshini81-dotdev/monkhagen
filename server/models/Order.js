@@ -135,9 +135,14 @@ const Order = {
       'courierName', COALESCE(s.courier_name, o.courier_name),
       'pickupStatus', COALESCE(s.pickup_status, 'pending'),
       'lastErrorCode', COALESCE(s.last_error_code, o.fulfillment_hold_reason)
-    ) AS shipment FROM orders o
-    LEFT JOIN shipments s ON s.order_id = o.id ORDER BY o.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]);
-    return Promise.all(rows.map(async row => ({ ...await enrichOrder(row), shipment: row.shipment })));
+    ) AS shipment, json_build_object(
+      'cancelledByCustomer', c.id IS NOT NULL, 'cancelledAt', c.cancelled_at, 'reason', c.reason,
+      'shiprocketStatus', c.shiprocket_status, 'refundStatus', c.refund_status, 'refundId', c.razorpay_refund_id
+    ) AS cancellation FROM orders o
+    LEFT JOIN shipments s ON s.order_id = o.id LEFT JOIN order_cancellations c ON c.order_id = o.id
+    ORDER BY o.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+    return Promise.all(rows.map(async row => ({ ...await enrichOrder(row), shipment: row.shipment,
+      cancellation: row.cancellation?.cancelledByCustomer ? row.cancellation : null })));
   },
 
   async findByIdAndUpdateStatus(id, status) {

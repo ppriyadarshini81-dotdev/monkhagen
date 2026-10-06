@@ -826,6 +826,9 @@ async function applyFinancialEventActorMigration(database = pool) {
 async function applyAddressEmailMigration(database = pool) {
   await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '020_address_tracking_email.sql'), 'utf8'));
 }
+async function applyOrderCancellationsMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '021_order_cancellations.sql'), 'utf8'));
+}
 
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
@@ -891,10 +894,11 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const codRefundDestinationApplied = await runMigration('018_cod_refund_destinations', applyCodRefundDestinationMigration);
     const financialEventActorApplied = await runMigration('019_financial_event_actor', applyFinancialEventActorMigration);
     const addressEmailApplied = await runMigration('020_address_tracking_email', applyAddressEmailMigration);
+    const orderCancellationsApplied = await runMigration('021_order_cancellations', applyOrderCancellationsMigration);
 
     console.log(
       baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied || financialLedgerApplied || analyticsDashboardApplied || sizeInventoryApplied || codRefundDestinationApplied || financialEventActorApplied || addressEmailApplied
-        ? 'Database migrations applied successfully'
+      || orderCancellationsApplied ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
   } catch (err) {
@@ -923,5 +927,6 @@ module.exports = {
   applySizeInventoryMigration,
   applyCodRefundDestinationMigration,
   applyFinancialEventActorMigration,
+  applyOrderCancellationsMigration,
   runMigration
 };

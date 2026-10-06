@@ -4,7 +4,7 @@ import { Observable, shareReplay } from 'rxjs';
 import { User } from '../models/user.model';
 import {
   Address, AddressPayload, IndiaLocations, PincodeLocation, Order, TrackingInfo,
-  ReturnRequest, ReturnPayload, ReturnEligibility, CreditTransaction, CodRefundDestination, CodRefundDestinationPayload
+  ReturnRequest, ReturnPayload, ReturnEligibility, CreditTransaction, CodRefundDestination, CodRefundDestinationPayload, CancellationEligibility
 } from '../models/account.model';
 
 @Injectable({ providedIn: 'root' })
@@ -59,8 +59,8 @@ export class AccountService {
   }
 
   // ── Orders ─────────────────────────────────────────────────
-  getOrders(): Observable<Order[]> {
-    return this.http.get<Order[]>(`${this.api}/orders`);
+  getOrders(limit = 10, offset = 0): Observable<Order[]> {
+    return this.http.get<Order[]>(`${this.api}/orders`, { params: { limit, offset } });
   }
 
   getOrder(orderId: string): Observable<Order> {
@@ -69,6 +69,12 @@ export class AccountService {
 
   getTracking(orderId: string): Observable<TrackingInfo> {
     return this.http.get<TrackingInfo>(`${this.api}/orders/${orderId}/tracking`);
+  }
+  getCancellationEligibility(orderId: string): Observable<CancellationEligibility> {
+    return this.http.get<CancellationEligibility>(`${this.api}/orders/${orderId}/cancellation-eligibility`);
+  }
+  cancelOrder(orderId: string, reason?: string): Observable<CancellationEligibility['cancellation']> {
+    return this.http.post<CancellationEligibility['cancellation']>(`${this.api}/orders/${orderId}/cancel`, reason ? { reason } : {});
   }
 
   getInvoice(orderId: string): Observable<HttpResponse<Blob>> {
@@ -79,8 +85,8 @@ export class AccountService {
   }
 
   // ── Returns ────────────────────────────────────────────────
-  getReturns(): Observable<ReturnRequest[]> {
-    return this.http.get<ReturnRequest[]>(`${this.api}/returns`);
+  getReturns(limit = 10, offset = 0): Observable<ReturnRequest[]> {
+    return this.http.get<ReturnRequest[]>(`${this.api}/returns`, { params: { limit, offset } });
   }
 
   createReturn(payload: ReturnPayload): Observable<ReturnRequest> {

@@ -78,6 +78,14 @@ export interface Order {
   deliveredAt: string | null;
   createdAt: string;
   updatedAt: string;
+  cancellation?: { status: string; reason: string | null; cancelledAt: string | null; refundStatus: string } | null;
+}
+export interface CancellationEligibility {
+  orderId: string;
+  eligible: boolean;
+  reason: string | null;
+  message: string | null;
+  cancellation: { status: string; reason: string | null; cancelledAt: string | null; refundStatus: string; refundId: string | null; shiprocketStatus: string } | null;
 }
 
 export interface TrackingInfo {
