@@ -77,7 +77,12 @@ export class AccountOrdersComponent implements OnInit {
       }
     });
   }
-  changePage(direction: number): void { const next = this.page + direction; if (next >= 0 && (direction < 0 || this.hasNextPage)) this.loadOrders(next); }
+  changePage(direction: number): void {
+    const next = this.page + direction;
+    if (next < 0 || (direction > 0 && !this.hasNextPage)) return;
+    this.loadOrders(next);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
   applyStatusFilter(): void { this.loadOrders(0); }
 
   openDetails(order: Order): void {

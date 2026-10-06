@@ -36,7 +36,12 @@ export class AccountReturnsComponent implements OnInit {
       error: () => { this.loading = false; }
     });
   }
-  changePage(direction: number): void { const next = this.page + direction; if (next >= 0 && (direction < 0 || this.hasNextPage)) this.loadReturns(next); }
+  changePage(direction: number): void {
+    const next = this.page + direction;
+    if (next < 0 || (direction > 0 && !this.hasNextPage)) return;
+    this.loadReturns(next);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
   applyStatusFilter(): void { this.loadReturns(0); }
 
   statusClass(s: string): string {

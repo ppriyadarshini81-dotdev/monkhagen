@@ -18,7 +18,10 @@ async function addressValidationError(address, { validateLocation = false, legac
   for (const [key, max] of [['addressLine2', 255], ['landmark', 255]]) {
     if (address[key] != null && (typeof address[key] !== 'string' || address[key].length > max)) return 'Additional address details must be text up to 255 characters.';
   }
-  if (address.addressType != null && (typeof address.addressType !== 'string' || !['Home','Work','Office','Other'].includes(address.addressType))) return 'Select a valid address type.';
+  if (address.addressType != null) {
+    const addressType = typeof address.addressType === 'string' ? address.addressType.trim() : '';
+    if (addressType.length < 2 || addressType.length > 30 || !/[\p{L}\p{N}]/u.test(addressType)) return 'Enter a valid address type.';
+  }
   if (address.country != null && (typeof address.country !== 'string' || address.country.length > 100)) return 'Select a valid country.';
   if (validateLocation) {
     const location = await resolveIndiaLocation(address.state, address.city);
