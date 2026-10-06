@@ -10,7 +10,7 @@
 
     <form class="mh-email__form mh-card" #contactForm="ngForm" (ngSubmit)="submit()">
       <div class="mh-field">
-        <label class="mh-label" for="contact-name">Name</label>
+        <label class="mh-label" for="contact-name">Name *</label>
         <input
           class="mh-input"
           id="contact-name"
@@ -20,11 +20,13 @@
           autocomplete="name"
           [(ngModel)]="form.name"
           required
+          [attr.aria-invalid]="submitted && !validName"
         />
+        <p class="mh-contact-field-error" *ngIf="submitted && !validName">Enter your name.</p>
       </div>
 
       <div class="mh-field">
-        <label class="mh-label" for="contact-email">Email</label>
+        <label class="mh-label" for="contact-email">Email *</label>
         <input
           class="mh-input"
           id="contact-email"
@@ -35,11 +37,13 @@
           [(ngModel)]="form.email"
           required
           email
+          [attr.aria-invalid]="submitted && !validEmail"
         />
+        <p class="mh-contact-field-error" *ngIf="submitted && !validEmail">Enter a valid email address.</p>
       </div>
 
       <div class="mh-field">
-        <label class="mh-label" for="contact-query">Your query</label>
+        <label class="mh-label" for="contact-query">Your query *</label>
         <textarea
           class="mh-textarea"
           id="contact-query"
@@ -50,14 +54,16 @@
           placeholder="Type your question here..."
           [(ngModel)]="form.query"
           required
+          [attr.aria-invalid]="submitted && !validQuery"
         ></textarea>
         <span class="mh-email__count">{{ form.query.length }} / 5,000</span>
+        <p class="mh-contact-field-error" *ngIf="submitted && !validQuery">Enter at least 10 meaningful characters.</p>
       </div>
 
       <p class="mh-success" role="status" *ngIf="success">{{ success }}</p>
       <p class="mh-error" role="alert" *ngIf="error">{{ error }}</p>
 
-      <button class="mh-btn mh-btn--gold" type="submit" [disabled]="contactForm.invalid || sending">
+      <button class="mh-btn mh-btn--gold" type="submit" [disabled]="sending">
         {{ sending ? 'Sendingâ€¦' : 'Send query' }}
       </button>
     </form>

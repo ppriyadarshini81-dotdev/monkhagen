@@ -6,6 +6,9 @@
 .mh-orders-empty { display: flex; min-height: 230px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--mh-line); border-radius: 14px; color: var(--mh-text-dim); font-size: 13px; text-align: center; }
 .mh-orders-empty strong { color: var(--mh-text); font-family: var(--mh-font-serif); font-size: 22px; }
 .mh-orders-empty--error { color: var(--mh-danger); }
+.mh-orders-notice { margin: 0 0 16px; padding: 11px 14px; border: 1px solid currentColor; border-radius: 10px; font-size: 13px; }
+.mh-orders-notice--success { border-color: #b8e4cf; background: #f1fbf5; color: #137447; }
+.mh-orders-notice--error { border-color: #f1c7c2; background: #fff6f5; color: var(--mh-danger); }
 .mh-orders-list { display: grid; gap: 16px; }
 
 .mh-customer-order { overflow: hidden; border: 1px solid var(--mh-line); border-radius: 16px; background: var(--mh-bg); transition: border-color .18s, box-shadow .18s; }

@@ -2,6 +2,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const { getTransporter } = require('../config/mailer');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MEANINGFUL_TEXT = /[\p{L}\p{N}]/u;
 
 exports.sendQuery = asyncHandler(async (req, res) => {
   const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
@@ -11,14 +12,14 @@ exports.sendQuery = asyncHandler(async (req, res) => {
   if (!name || !email || !query) {
     return res.status(400).json({ message: 'Name, email, and query are required.' });
   }
-  if (name.length > 120) {
-    return res.status(400).json({ message: 'Name must be 120 characters or fewer.' });
+  if (name.length > 120 || !MEANINGFUL_TEXT.test(name)) {
+    return res.status(400).json({ message: 'Enter a valid name.' });
   }
   if (email.length > 254 || !EMAIL_PATTERN.test(email)) {
     return res.status(400).json({ message: 'Enter a valid email address.' });
   }
-  if (query.length < 10 || query.length > 5000) {
-    return res.status(400).json({ message: 'Query must be between 10 and 5,000 characters.' });
+  if (query.length < 10 || query.length > 5000 || !MEANINGFUL_TEXT.test(query)) {
+    return res.status(400).json({ message: 'Enter a meaningful query between 10 and 5,000 characters.' });
   }
 
   const { transporter, config } = getTransporter();
