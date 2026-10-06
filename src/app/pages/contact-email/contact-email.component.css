@@ -61,6 +61,9 @@
   text-align: right;
 }
 
+.mh-contact-field-error { margin: 6px 0 0; color: var(--mh-danger); font-size: 12px; }
+.mh-email__form .mh-input[aria-invalid="true"], .mh-email__form .mh-textarea[aria-invalid="true"] { border-color: var(--mh-danger); }
+
 .mh-email__form .mh-btn {
   justify-self: start;
   min-width: 150px;

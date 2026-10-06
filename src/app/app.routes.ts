@@ -78,7 +78,7 @@ export const routes: Routes = [
     path: 'contact/email',
     loadComponent: () =>
       import('./pages/contact-email/contact-email.component').then((m) => m.ContactEmailComponent),
-    title: 'Email Us â€” Monk Hagen'
+    title: 'Email Us — Monk Hagen'
   },
   {
     path: 'contact',

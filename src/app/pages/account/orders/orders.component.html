@@ -12,8 +12,8 @@
 
   <div *ngIf="loading" class="mh-orders-empty">Loading your orders...</div>
   <div *ngIf="!loading && loadError" class="mh-orders-empty mh-orders-empty--error">{{ loadError }}</div>
-  <p class="mh-orders-empty mh-orders-empty--error" role="alert" *ngIf="invoiceError">{{ invoiceError }}</p>
-  <p class="mh-orders-empty mh-orders-empty--success" role="status" *ngIf="returnMessage">{{ returnMessage }}</p>
+  <p class="mh-orders-notice mh-orders-notice--error" role="alert" *ngIf="invoiceError">{{ invoiceError }}</p>
+  <p class="mh-orders-notice mh-orders-notice--success" role="status" *ngIf="returnMessage">{{ returnMessage }}</p>
   <div *ngIf="!loading && !loadError && orders.length === 0" class="mh-orders-empty">
     <strong>No orders found</strong>
     <span>{{ statusFilter ? 'No orders match this filter.' : 'Your confirmed orders will appear here.' }}</span>

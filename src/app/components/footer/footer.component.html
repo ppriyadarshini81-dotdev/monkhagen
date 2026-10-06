@@ -8,14 +8,14 @@
     <div class="mh-footer__col">
       <h4>Shop</h4>
       <a routerLink="/products">All Products</a>
-      <a routerLink="/products">New Drops</a>
+      <a routerLink="/" fragment="new-arrivals">New Drops</a>
       <a routerLink="/cart">Cart</a>
     </div>
 
     <div class="mh-footer__col">
       <h4>Company</h4>
       <a routerLink="/about">About Us</a>
-      <a routerLink="/login">Account</a>
+      <a [routerLink]="accountLink">Account</a>
       <a href="/contact">Contact</a>
     </div>
 
