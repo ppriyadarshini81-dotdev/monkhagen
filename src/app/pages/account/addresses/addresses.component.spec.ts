@@ -2,12 +2,13 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, Subject } from 'rxjs';
 import { AccountAddressesComponent } from './addresses.component';
 import { AccountService } from '../../../services/account.service';
+import { AuthService } from '../../../services/auth.service';
 import { Address, AddressPayload, IndiaLocations } from '../../../models/account.model';
 
 describe('Address book validation', () => {
   let fixture: ComponentFixture<AccountAddressesComponent>;
   let account: jasmine.SpyObj<AccountService>;
-  const valid: AddressPayload = { fullName: 'Test Customer', phone: '9876543210', addressLine1: '12 Test Street',
+  const valid: AddressPayload = { fullName: 'Test Customer', phone: '9876543210', email: 'test@example.com', addressLine1: '12 Test Street',
     city: 'Delhi', state: 'Delhi', postalCode: '110001', country: 'India', addressType: 'Home' };
   const locations: IndiaLocations = { country: 'India', attribution: 'test', states: [
     { name: 'Delhi', cities: ['Delhi', 'New Delhi'] },
@@ -16,13 +17,14 @@ describe('Address book validation', () => {
   ] };
 
   beforeEach(async () => {
-    account = jasmine.createSpyObj('AccountService', ['getAddresses', 'getAddressLocations', 'addAddress', 'updateAddress']);
+    account = jasmine.createSpyObj('AccountService', ['getAddresses', 'getAddressLocations', 'lookupPincode', 'addAddress', 'updateAddress']);
     account.getAddresses.and.returnValue(of([]));
     account.getAddressLocations.and.returnValue(of(locations));
+    account.lookupPincode.and.returnValue(of({ postalCode: '110001', state: 'Delhi', city: 'Delhi' }));
     account.addAddress.and.returnValue(of({ ...valid, id: 'address-test' } as Address));
     account.updateAddress.and.returnValue(of({ ...valid, id: 'address-test' } as Address));
     await TestBed.configureTestingModule({ imports: [AccountAddressesComponent],
-      providers: [{ provide: AccountService, useValue: account }] }).compileComponents();
+      providers: [{ provide: AccountService, useValue: account }, { provide: AuthService, useValue: { currentUser: null } }] }).compileComponents();
     fixture = TestBed.createComponent(AccountAddressesComponent);
     fixture.detectChanges();
     fixture.componentInstance.openAdd();
@@ -30,12 +32,12 @@ describe('Address book validation', () => {
     await fixture.whenStable();
   });
 
-  it('shows six required-field messages on submit without sending an API request', () => {
+  it('shows required-field messages on submit without sending an API request', () => {
     const root: HTMLElement = fixture.nativeElement;
     expect(root.querySelectorAll('.mh-field-error').length).toBe(0);
     root.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     fixture.detectChanges();
-    expect(root.querySelectorAll('.mh-field-error').length).toBe(6);
+    expect(root.querySelectorAll('.mh-field-error').length).toBe(7);
     expect(account.addAddress).not.toHaveBeenCalled();
     expect(fixture.componentInstance.saving).toBeFalse();
   });
@@ -53,7 +55,7 @@ describe('Address book validation', () => {
   it('rejects whitespace, incomplete address, invalid mobile and invalid PIN', () => {
     const component = fixture.componentInstance;
     for (const invalid of [{ fullName: '  ' }, { addressLine1: 'abc' }, { city: 'x' }, { state: ' ' },
-      { phone: '1234567890' }, { phone: '987654321' }, { postalCode: '012345' }, { postalCode: '11000a' }]) {
+      { phone: '1234567890' }, { phone: '987654321' }, { email: 'not-an-email' }, { postalCode: '012345' }, { postalCode: '11000a' }]) {
       component.form = { ...valid, ...invalid };
       component.save();
     }
@@ -62,6 +64,7 @@ describe('Address book validation', () => {
 
   it('trims a valid new address and allows empty optional fields', () => {
     fixture.componentInstance.form = { ...valid, fullName: ' Test Customer ', addressLine1: ' 12 Test Street ' };
+    fixture.componentInstance.pincodeChanged(valid.postalCode);
     fixture.componentInstance.save();
     expect(account.addAddress).toHaveBeenCalledWith({ ...valid, addressLine2: '', landmark: '' });
     expect(fixture.componentInstance.showForm).toBeFalse();
@@ -105,6 +108,7 @@ describe('Address book validation', () => {
   it('preserves input after API failure and prevents duplicate saves while pending', () => {
     const component = fixture.componentInstance;
     component.form = { ...valid };
+    component.pincodeChanged(valid.postalCode);
     const pending = new Subject<Address>();
     account.addAddress.and.returnValue(pending);
     component.save();
@@ -126,5 +130,19 @@ describe('Address book validation', () => {
     expect(account.updateAddress).toHaveBeenCalledWith('legacy-address', jasmine.objectContaining({
       state: 'Haryana', city: 'Legacy Township'
     }));
+  });
+
+  it('uses the PIN lookup city and state and updates them when the PIN changes', () => {
+    const component = fixture.componentInstance;
+    account.lookupPincode.and.callFake((pin: string) => of(pin === '122001'
+      ? { postalCode: '122001', state: 'Haryana', city: 'Gurugram' }
+      : { postalCode: '110001', state: 'Delhi', city: 'New Delhi' }));
+    component.pincodeChanged('110001');
+    expect(component.form.state).toBe('Delhi');
+    expect(component.form.city).toBe('New Delhi');
+    component.pincodeChanged('122001');
+    expect(component.form.state).toBe('Haryana');
+    expect(component.form.city).toBe('Gurugram');
+    expect(component.pincodeLoading).toBeFalse();
   });
 });

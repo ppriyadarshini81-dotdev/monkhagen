@@ -2,11 +2,12 @@ import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AccountService } from '../../../services/account.service';
+import { AuthService } from '../../../services/auth.service';
 import { Address, AddressPayload, IndiaLocations } from '../../../models/account.model';
 import { canonicalLocation, sameLocation, stateFor, withLegacyOption } from '../../../utils/india-locations';
 
 const EMPTY_FORM = (): AddressPayload => ({
-  fullName: '', phone: '', addressLine1: '', addressLine2: '',
+  fullName: '', phone: '', email: '', addressLine1: '', addressLine2: '',
   landmark: '', city: '', state: '', postalCode: '', country: 'India', addressType: 'Home'
 });
 
@@ -29,10 +30,14 @@ export class AccountAddressesComponent implements OnInit {
   locations: IndiaLocations | null = null;
   locationsLoading = true;
   locationError = '';
+  pincodeLoading = false;
+  pincodeError = '';
+  verifiedPincode = '';
+  private pincodeRequest = 0;
   private legacyLocation: { state: string; city: string } | null = null;
   @ViewChild('addressFormElement', { read: ElementRef }) addressFormElement?: ElementRef<HTMLFormElement>;
 
-  constructor(private account: AccountService) {}
+  constructor(private account: AccountService, private auth: AuthService) {}
 
   ngOnInit(): void {
     this.load();
@@ -50,15 +55,17 @@ export class AccountAddressesComponent implements OnInit {
   }
   load(): void { this.account.getAddresses().subscribe(a => this.addresses = a); }
 
-  openAdd(): void { this.editingId = null; this.legacyLocation = null; this.form = EMPTY_FORM(); this.showForm = true; this.resetValidation(); }
+  openAdd(): void { this.editingId = null; this.legacyLocation = null; this.form = { ...EMPTY_FORM(), email: this.auth.currentUser?.email || '' }; this.verifiedPincode = ''; this.pincodeError = ''; this.showForm = true; this.resetValidation(); }
   openEdit(a: Address): void {
     this.editingId = a.id;
     this.legacyLocation = { state: a.state, city: a.city };
-    this.form = { fullName: a.fullName, phone: a.phone, addressLine1: a.addressLine1,
+    this.form = { fullName: a.fullName, phone: a.phone, email: a.email || this.auth.currentUser?.email || '', addressLine1: a.addressLine1,
       addressLine2: a.addressLine2 || '', landmark: a.landmark || '',
       city: a.city, state: a.state, postalCode: a.postalCode,
       country: a.country, addressType: a.addressType };
     this.normaliseKnownLocation();
+    this.verifiedPincode = a.postalCode;
+    this.pincodeError = '';
     this.showForm = true; this.resetValidation();
   }
   cancel(): void { if (!this.saving) { this.showForm = false; this.resetValidation(); } }
@@ -76,10 +83,42 @@ export class AccountAddressesComponent implements OnInit {
     return withLegacyOption(cities, legacyCity);
   }
 
+  get pincodeLocked(): boolean {
+    return Boolean(this.verifiedPincode) && this.verifiedPincode === this.form.postalCode.trim();
+  }
+
   stateChanged(state: string): void {
+    if (this.pincodeLocked) return;
     this.form.state = state;
     this.form.city = '';
     this.touched.delete('city');
+  }
+
+  pincodeChanged(value: string): void {
+    this.form.postalCode = value.replace(/\D/g, '').slice(0, 6);
+    this.verifiedPincode = '';
+    this.pincodeError = '';
+    const request = ++this.pincodeRequest;
+    if (this.form.postalCode.length !== 6) { this.pincodeLoading = false; return; }
+    this.pincodeLoading = true;
+    this.account.lookupPincode(this.form.postalCode).subscribe({
+      next: location => {
+        if (request !== this.pincodeRequest) return;
+        this.form.postalCode = location.postalCode;
+        this.form.state = location.state;
+        this.form.city = location.city;
+        this.verifiedPincode = location.postalCode;
+        this.pincodeLoading = false;
+        this.touched.delete('state'); this.touched.delete('city');
+      },
+      error: err => {
+        if (request !== this.pincodeRequest) return;
+        this.pincodeLoading = false;
+        this.pincodeError = err?.status === 400
+          ? 'Please enter a valid Indian PIN code.'
+          : 'PIN code verification is unavailable. Please retry.';
+      }
+    });
   }
 
   private normaliseKnownLocation(): void {
@@ -90,12 +129,14 @@ export class AccountAddressesComponent implements OnInit {
   fieldError(field: keyof AddressPayload): string {
     const value = String(this.form[field] || '').trim();
     const labels: Partial<Record<keyof AddressPayload, string>> = {
-      fullName: 'Full name', phone: 'Phone number', addressLine1: 'Address line 1',
+      fullName: 'Full name', phone: 'Phone number', email: 'Email address', addressLine1: 'Address line 1',
       city: 'City', state: 'State', postalCode: 'PIN code'
     };
     if (labels[field] && !value) return `${labels[field]} is required.`;
     if (field === 'phone' && !/^[6-9]\d{9}$/.test(value)) return 'Enter a valid 10-digit Indian mobile number.';
+    if (field === 'email' && !/^[^\s@\r\n]+@[^\s@\r\n]+\.[^\s@\r\n]+$/.test(value)) return 'Enter a valid email address for shipment tracking.';
     if (field === 'postalCode' && !/^[1-9]\d{5}$/.test(value)) return 'Enter a valid 6-digit Indian PIN code.';
+    if (field === 'postalCode' && this.pincodeError) return this.pincodeError;
     if (['fullName', 'city', 'state'].includes(field) && value.length < 2) return `Enter at least 2 characters for ${labels[field]?.toLowerCase()}.`;
     if (['fullName', 'city', 'state'].includes(field) && String(this.form[field]).length > 100) return 'Use no more than 100 characters.';
     if (field === 'addressLine1' && value.length < 5) return 'Enter a complete house, street and area.';
@@ -123,13 +164,15 @@ export class AccountAddressesComponent implements OnInit {
       this.error = this.locationError || 'State and city options are still loading.';
       return;
     }
-    const fields: (keyof AddressPayload)[] = ['fullName', 'phone', 'addressLine1', 'addressLine2', 'landmark', 'city', 'state', 'postalCode'];
+    const fields: (keyof AddressPayload)[] = ['fullName', 'phone', 'email', 'addressLine1', 'addressLine2', 'landmark', 'city', 'state', 'postalCode'];
     const invalidField = fields.find(field => this.fieldError(field));
     if (invalidField) {
       const names: Partial<Record<keyof AddressPayload, string>> = { addressLine1: 'l1', addressLine2: 'l2', landmark: 'lm', postalCode: 'pin' };
       this.addressFormElement?.nativeElement.querySelector<HTMLElement>(`[name="${names[invalidField] || invalidField}"]`)?.focus();
       return;
     }
+    if (this.pincodeLoading) { this.error = 'PIN code verification is still in progress.'; return; }
+    if (this.verifiedPincode !== this.form.postalCode.trim()) { this.error = this.pincodeError || 'Please enter a valid Indian PIN code.'; return; }
     const payload = { ...this.form };
     for (const field of fields) payload[field] = String(this.form[field] || '').trim();
     const canonical = canonicalLocation(this.locations, payload.state, payload.city);

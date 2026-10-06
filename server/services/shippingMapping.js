@@ -1,4 +1,5 @@
 const { shippingError } = require('../config/shiprocket');
+const EMAIL = /^[^\s@\r\n]+@[^\s@\r\n]+\.[^\s@\r\n]+$/;
 
 function invalid(message) { return shippingError(400, 'SHIPPING_VALIDATION', message); }
 
@@ -30,6 +31,12 @@ function text(value, label, max = 255) {
 function postcode(value, label) {
   if (!['string', 'number'].includes(typeof value) || !/^[1-9]\d{5}$/.test(String(value))) throw invalid(`${label} must be a six-digit Indian PIN code.`);
   return String(value);
+}
+
+function customerEmail(customerEmail) {
+  const customer = typeof customerEmail === 'string' ? customerEmail.trim().toLowerCase() : '';
+  if (EMAIL.test(customer)) return customer;
+  throw invalid('The saved delivery email is missing or invalid. Ask the customer to update their delivery address.');
 }
 
 function serviceabilityInput(input) {
@@ -94,7 +101,7 @@ function buildOrderPayload(order, address, items, parcel) {
   if (phone.length === 12 && phone.startsWith('91')) phone = phone.slice(2);
   if (!/^[6-9]\d{9}$/.test(phone)) throw invalid('The saved shipping phone must be a valid Indian mobile number.');
   if (String(address.country || '').toLowerCase() !== 'india') throw invalid('Only domestic Indian shipments are supported.');
-  if (!order.customer_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(order.customer_email)) throw invalid('The customer account needs a valid email address for shipping.');
+  const billingEmail = customerEmail(address.email);
   if (!items.length) throw invalid('The order has no items.');
   const orderItems = items.map(item => {
     const units = providerId(item.quantity, 'Item quantity');
@@ -122,7 +129,7 @@ function buildOrderPayload(order, address, items, parcel) {
     billing_address_2: [address.address_line2, address.landmark].filter(Boolean).join(', '),
     billing_city: text(address.city, 'City', 100), billing_state: text(address.state, 'State', 100),
     billing_pincode: postcode(address.postal_code, 'Saved address postcode'), billing_country: 'India',
-    billing_email: order.customer_email, billing_phone: phone, shipping_is_billing: true,
+    billing_email: billingEmail, billing_phone: phone, shipping_is_billing: true,
     order_items: orderItems, payment_method: order.payment_method === 'cod' ? 'COD' : 'Prepaid',
     sub_total: subtotal, total_discount: discount, shipping_charges: shipping,
     length: parcel.length, breadth: parcel.breadth, height: parcel.height, weight: parcel.weight
@@ -183,5 +190,5 @@ function normalizeInvoice(data) {
   return invoiceUrl;
 }
 
-module.exports = { uuid, positive, providerId, serviceabilityInput, packageDetails, assertFulfillmentSafe, assertShippable,
+module.exports = { uuid, positive, providerId, serviceabilityInput, packageDetails, customerEmail, assertFulfillmentSafe, assertShippable,
   buildOrderPayload, normalizeCouriers, normalizeTracking, normalizeInvoice, optionalNumber, safeUrl };

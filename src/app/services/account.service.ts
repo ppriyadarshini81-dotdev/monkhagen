@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 import { Observable, shareReplay } from 'rxjs';
 import { User } from '../models/user.model';
 import {
-  Address, AddressPayload, IndiaLocations, Order, TrackingInfo,
+  Address, AddressPayload, IndiaLocations, PincodeLocation, Order, TrackingInfo,
   ReturnRequest, ReturnPayload, ReturnEligibility, CreditTransaction, CodRefundDestination, CodRefundDestinationPayload
 } from '../models/account.model';
 
@@ -52,6 +52,10 @@ export class AccountService {
     return this.addressLocations$ ||= this.http.get<IndiaLocations>(`${this.api}/addresses/locations`).pipe(
       shareReplay({ bufferSize: 1, refCount: false })
     );
+  }
+
+  lookupPincode(postalCode: string): Observable<PincodeLocation> {
+    return this.http.get<PincodeLocation>(`${this.api}/addresses/pincode/${encodeURIComponent(postalCode)}`);
   }
 
   // ── Orders ─────────────────────────────────────────────────

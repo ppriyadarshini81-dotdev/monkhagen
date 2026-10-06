@@ -118,6 +118,7 @@ async function initSchema(database = pool) {
 
       full_name       VARCHAR(255) NOT NULL,
       phone           VARCHAR(16) NOT NULL,
+      email           VARCHAR(254),
 
       address_line1   VARCHAR(255) NOT NULL,
       address_line2   VARCHAR(255),
@@ -432,6 +433,7 @@ async function initSchema(database = pool) {
 
       full_name       VARCHAR(255) NOT NULL,
       phone           VARCHAR(16) NOT NULL,
+      email           VARCHAR(254),
 
       address_line1   VARCHAR(255) NOT NULL,
       address_line2   VARCHAR(255),
@@ -821,6 +823,10 @@ async function applyFinancialEventActorMigration(database = pool) {
   await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '019_financial_event_actor.sql'), 'utf8'));
 }
 
+async function applyAddressEmailMigration(database = pool) {
+  await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '020_address_tracking_email.sql'), 'utf8'));
+}
+
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
   try {
@@ -884,9 +890,10 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const sizeInventoryApplied = await runMigration('017_size_inventory', applySizeInventoryMigration);
     const codRefundDestinationApplied = await runMigration('018_cod_refund_destinations', applyCodRefundDestinationMigration);
     const financialEventActorApplied = await runMigration('019_financial_event_actor', applyFinancialEventActorMigration);
+    const addressEmailApplied = await runMigration('020_address_tracking_email', applyAddressEmailMigration);
 
     console.log(
-      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied || financialLedgerApplied || analyticsDashboardApplied || sizeInventoryApplied || codRefundDestinationApplied || financialEventActorApplied
+      baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied || financialLedgerApplied || analyticsDashboardApplied || sizeInventoryApplied || codRefundDestinationApplied || financialEventActorApplied || addressEmailApplied
         ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );

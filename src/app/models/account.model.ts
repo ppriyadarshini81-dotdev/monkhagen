@@ -2,6 +2,7 @@ export interface Address {
   id: string;
   fullName: string;
   phone: string;
+  email: string;
   addressLine1: string;
   addressLine2: string | null;
   landmark: string | null;
@@ -18,6 +19,7 @@ export interface Address {
 export interface AddressPayload {
   fullName: string;
   phone: string;
+  email: string;
   addressLine1: string;
   addressLine2?: string;
   landmark?: string;
@@ -101,6 +103,12 @@ export interface IndiaLocations {
   country: 'India';
   attribution: string;
   states: Array<{ name: string; cities: string[] }>;
+}
+
+export interface PincodeLocation {
+  postalCode: string;
+  state: string;
+  city: string;
 }
 
 export interface ReturnItem {

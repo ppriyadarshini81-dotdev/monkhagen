@@ -104,18 +104,21 @@
   <form #addressForm="ngForm" (ngSubmit)="checkoutStep === 'address' ? continueCheckout() : placeOrder()">
     <fieldset *ngIf="checkoutStep === 'address'" [disabled]="placing || loadingAddresses">
       <legend class="mh-address-legend">{{ addresses.length ? 'SAVED DELIVERY ADDRESSES' : 'DELIVERY DETAILS' }}</legend>
-      <label class="mh-address-option" *ngFor="let address of addresses">
-        <input type="radio" name="savedAddress" [value]="address.id" [ngModel]="selectedAddressId" (ngModelChange)="selectAddress($event)" />
-        <span class="mh-address-copy"><span class="mh-address-meta"><span class="mh-address-tag">{{ address.addressType }}</span><span class="mh-address-default" *ngIf="address.isDefault">Default</span></span>
-          <strong class="mh-address-name">{{ address.fullName }}</strong>
-          <span class="mh-address-lines">{{ address.addressLine1 }}<span *ngIf="address.addressLine2">, {{ address.addressLine2 }}</span><span *ngIf="address.landmark">, {{ address.landmark }}</span><br />{{ address.city }}, {{ address.state }} &mdash; {{ address.postalCode }}<br />{{ address.country }}</span>
-          <span class="mh-address-phone">{{ address.phone }}</span>
-        </span>
-      </label>
+      <div class="mh-address-saved" *ngFor="let address of addresses">
+        <label class="mh-address-option">
+          <input type="radio" name="savedAddress" [value]="address.id" [ngModel]="selectedAddressId" (ngModelChange)="selectAddress($event)" />
+          <span class="mh-address-copy"><span class="mh-address-meta"><span class="mh-address-tag">{{ address.addressType }}</span><span class="mh-address-default" *ngIf="address.isDefault">Default</span></span>
+            <strong class="mh-address-name">{{ address.fullName }}</strong>
+            <span class="mh-address-lines">{{ address.addressLine1 }}<span *ngIf="address.addressLine2">, {{ address.addressLine2 }}</span><span *ngIf="address.landmark">, {{ address.landmark }}</span><br />{{ address.city }}, {{ address.state }} &mdash; {{ address.postalCode }}<br />{{ address.country }}</span>
+            <span class="mh-address-phone">{{ address.phone }}</span>
+          </span>
+        </label>
+        <button type="button" class="mh-address-edit" (click)="editAddress(address)">Edit address</button>
+      </div>
       <button type="button" class="mh-address-add" *ngIf="!addingAddress" (click)="newAddress()"><span aria-hidden="true">+</span> Add delivery address</button>
       <div class="mh-cart__ship" *ngIf="addingAddress">
         <div class="mh-address-form-head">
-          <div><h3>Add a delivery address</h3><p class="mh-cart__hint">Enter the recipient's details. This address will be saved for future orders.</p></div>
+          <div><h3>{{ editingAddressId ? 'Edit delivery address' : 'Add a delivery address' }}</h3><p class="mh-cart__hint">Enter the recipient's details. This address will be saved for future orders.</p></div>
           <button type="button" class="mh-address-cancel" *ngIf="addresses.length" (click)="cancelNewAddress()">Use saved address</button>
         </div>
         <label class="mh-address-field">Full name *
@@ -126,26 +129,38 @@
           <input #addressControl="ngModel" placeholder="House / flat, street and area" class="mh-input" [class.mh-input--invalid]="(addressControl.touched || addressAttempted) && addressFieldError('address')" name="street" autocomplete="street-address" [(ngModel)]="shipping.address" required minlength="5" maxlength="255" />
           <small class="mh-field-error" *ngIf="(addressControl.touched || addressAttempted) && addressFieldError('address')">{{ addressFieldError('address') }}</small>
         </label>
+        <label class="mh-address-field">Address line 2 <span>(optional)</span>
+          <input class="mh-input" placeholder="Apartment, floor, building, etc." name="addressLine2" autocomplete="address-line2" [(ngModel)]="shipping.addressLine2" maxlength="255" />
+        </label>
+        <label class="mh-address-field">Landmark <span>(optional)</span>
+          <input class="mh-input" placeholder="Nearby landmark" name="landmark" [(ngModel)]="shipping.landmark" maxlength="255" />
+        </label>
         <div class="mh-cart__row2">
           <label class="mh-address-field">State *
-            <select #stateControl="ngModel" class="mh-input mh-select" [class.mh-input--invalid]="(stateControl.touched || addressAttempted) && addressFieldError('state')" name="state" autocomplete="address-level1" [ngModel]="shipping.state" (ngModelChange)="stateChanged($event)" required [disabled]="locationsLoading || !!locationError">
+            <select #stateControl="ngModel" class="mh-input mh-select" [class.mh-input--invalid]="(stateControl.touched || addressAttempted) && addressFieldError('state')" name="state" autocomplete="address-level1" [ngModel]="shipping.state" (ngModelChange)="stateChanged($event)" required [disabled]="locationsLoading || !!locationError || pincodeLocked">
               <option value="">Select State</option><option *ngFor="let state of stateOptions" [value]="state">{{ state }}</option>
             </select>
             <small class="mh-field-error" *ngIf="(stateControl.touched || addressAttempted) && addressFieldError('state')">{{ addressFieldError('state') }}</small>
           </label>
           <label class="mh-address-field">City *
-            <select #cityControl="ngModel" class="mh-input mh-select" [class.mh-input--invalid]="(cityControl.touched || addressAttempted) && addressFieldError('city')" name="city" autocomplete="address-level2" [(ngModel)]="shipping.city" required [disabled]="!shipping.state || locationsLoading || !!locationError">
+            <select #cityControl="ngModel" class="mh-input mh-select" [class.mh-input--invalid]="(cityControl.touched || addressAttempted) && addressFieldError('city')" name="city" autocomplete="address-level2" [(ngModel)]="shipping.city" required [disabled]="!shipping.state || locationsLoading || !!locationError || pincodeLocked">
               <option value="">{{ shipping.state ? 'Select City' : 'Select state first' }}</option><option *ngFor="let city of cityOptions" [value]="city">{{ city }}</option>
             </select>
             <small class="mh-field-error" *ngIf="(cityControl.touched || addressAttempted) && addressFieldError('city')">{{ addressFieldError('city') }}</small>
           </label>
           <label class="mh-address-field">PIN code *
-            <input #pinControl="ngModel" class="mh-input" [class.mh-input--invalid]="(pinControl.touched || addressAttempted) && addressFieldError('zip')" name="pin" autocomplete="postal-code" inputmode="numeric" [(ngModel)]="shipping.zip" required pattern="[1-9][0-9]{5}" maxlength="6" />
+            <input #pinControl="ngModel" class="mh-input" [class.mh-input--invalid]="(pinControl.touched || addressAttempted) && addressFieldError('zip')" name="pin" autocomplete="postal-code" inputmode="numeric" [ngModel]="shipping.zip" (ngModelChange)="pincodeChanged($event)" required pattern="[1-9][0-9]{5}" maxlength="6" />
+            <small class="mh-cart__hint" *ngIf="pincodeLoading">Checking PIN code…</small>
             <small class="mh-field-error" *ngIf="(pinControl.touched || addressAttempted) && addressFieldError('zip')">{{ addressFieldError('zip') }}</small>
           </label>
           <label class="mh-address-field">Mobile number *
             <input #phoneControl="ngModel" class="mh-input" [class.mh-input--invalid]="(phoneControl.touched || addressAttempted) && addressFieldError('phone')" name="phone" autocomplete="tel-national" inputmode="tel" [(ngModel)]="shipping.phone" required pattern="[6-9][0-9]{9}" maxlength="10" />
             <small class="mh-field-error" *ngIf="(phoneControl.touched || addressAttempted) && addressFieldError('phone')">{{ addressFieldError('phone') }}</small>
+          </label>
+          <label class="mh-address-field">Email address *
+            <input #emailControl="ngModel" class="mh-input" [class.mh-input--invalid]="(emailControl.touched || addressAttempted) && addressFieldError('email')" name="email" autocomplete="email" type="email" [(ngModel)]="shipping.email" required maxlength="254" />
+            <small class="mh-cart__hint">Used only for order tracking and delivery updates. Monk Hagen will not send marketing spam to this address.</small>
+            <small class="mh-field-error" *ngIf="(emailControl.touched || addressAttempted) && addressFieldError('email')">{{ addressFieldError('email') }}</small>
           </label>
         </div>
       </div>
@@ -170,6 +185,7 @@
       </div>
     </fieldset>
     <p class="mh-error mh-checkout-error" role="alert" *ngIf="checkoutError">{{ checkoutError }}</p>
+    <button type="button" class="mh-address-repair" *ngIf="checkoutStep === 'address' && canEditSelectedAddress" (click)="editSelectedAddress()">Edit selected address</button>
     <button type="button" class="mh-btn mh-btn--ghost" *ngIf="checkoutStep === 'address' && checkoutError && !placing && !addingAddress && addresses.length === 0" (click)="loadAddresses()">Reload addresses</button>
     <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small *ngIf="checkoutDiscount">{{ cart.prepaidOffer.code }} Welcome Offer: &minus;&#8377;{{ checkoutDiscount | number: '1.2-2' }}</small><small *ngIf="codFee">COD charge: +&#8377;{{ codFee | number: '1.2-2' }}</small><small *ngIf="!checkoutDiscount && !codFee">Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number: '1.2-2' }}</strong></div>
     <div class="mh-payment-actions" *ngIf="checkoutStep === 'payment'">

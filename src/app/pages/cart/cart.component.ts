@@ -29,10 +29,11 @@ export class CartComponent implements OnInit, AfterViewInit {
   @ViewChild('addressDialog') addressDialog!: ElementRef<HTMLDialogElement>;
   addingAddress = false;
   loadingAddresses = false;
-  shipping = { name: '', address: '', city: '', state: '', zip: '', phone: '' };
+  shipping = { name: '', address: '', addressLine2: '', landmark: '', city: '', state: '', zip: '', phone: '', email: '' };
   addresses: Address[] = [];
   selectedAddressId = '';
   lastSelectedAddressId = '';
+  editingAddressId = '';
   addressAttempted = false;
   placing = false;
   error = '';
@@ -44,6 +45,10 @@ export class CartComponent implements OnInit, AfterViewInit {
   locations: IndiaLocations | null = null;
   locationsLoading = false;
   locationError = '';
+  pincodeLoading = false;
+  pincodeError = '';
+  verifiedPincode = '';
+  private pincodeRequest = 0;
   private locationsRequested = false;
 
   constructor(
@@ -156,22 +161,39 @@ export class CartComponent implements OnInit, AfterViewInit {
       this.checkoutError = 'Select a saved delivery address or add a new one.';
       return;
     }
-    if (this.addingAddress && ['name', 'address', 'city', 'state', 'zip', 'phone']
-        .some((field) => Boolean(this.addressFieldError(field)))) {
+    if (this.addingAddress && (this.pincodeLoading || this.verifiedPincode !== this.shipping.zip.trim() || ['name', 'address', 'city', 'state', 'zip', 'phone', 'email']
+        .some((field) => Boolean(this.addressFieldError(field))))) {
       this.addressAttempted = true;
+      if (!this.pincodeError && !this.pincodeLoading && this.verifiedPincode !== this.shipping.zip.trim()) this.pincodeError = 'Please enter a valid Indian PIN code.';
       return;
     }
     if (this.selectedAddressId) {
+      const selected = this.addresses.find((address) => address.id === this.selectedAddressId);
+      if (!selected?.email || !/^[^\s@\r\n]+@[^\s@\r\n]+\.[^\s@\r\n]+$/.test(selected.email.trim())) {
+        this.checkoutError = 'This saved address needs an email address for shipment tracking. Edit this address to continue.';
+        return;
+      }
+      if (this.pincodeLoading || this.verifiedPincode !== selected.postalCode) {
+        this.checkoutError = this.pincodeError || 'PIN code verification is still in progress.';
+        return;
+      }
       this.showPaymentStep(this.selectedAddressId);
       return;
     }
 
     this.placing = true;
-    this.account.addAddress(this.addressPayload()).subscribe({
+    const payload = this.addressPayload();
+    const request = this.editingAddressId
+      ? this.account.updateAddress(this.editingAddressId, payload)
+      : this.account.addAddress(payload);
+    request.subscribe({
       next: (address) => {
-        this.addresses = [...this.addresses, address];
+        this.addresses = this.editingAddressId
+          ? this.addresses.map(item => item.id === address.id ? address : item)
+          : [...this.addresses, address];
         this.selectedAddressId = address.id;
         this.lastSelectedAddressId = address.id;
+        this.editingAddressId = '';
         this.addingAddress = false;
         this.showPaymentStep(address.id);
       },
@@ -209,6 +231,7 @@ export class CartComponent implements OnInit, AfterViewInit {
 
   selectAddress(addressId: string): void {
     this.addingAddress = false;
+    this.editingAddressId = '';
     this.selectedAddressId = addressId;
     this.lastSelectedAddressId = addressId;
     this.addressAttempted = false;
@@ -218,19 +241,50 @@ export class CartComponent implements OnInit, AfterViewInit {
     this.shipping = {
       name: address.fullName,
       address: address.addressLine1,
+      addressLine2: address.addressLine2 || '',
+      landmark: address.landmark || '',
       city: address.city,
       state: address.state,
       zip: address.postalCode,
-      phone: address.phone
+      phone: address.phone,
+      email: address.email || this.auth.currentUser?.email || ''
     };
+    this.verifySavedAddressPincode(address);
   }
 
   newAddress(): void {
     this.selectedAddressId = '';
+    this.editingAddressId = '';
     this.addingAddress = true;
     this.addressAttempted = false;
     this.checkoutError = '';
-    this.shipping = { name: '', address: '', city: '', state: '', zip: '', phone: '' };
+    this.shipping = { name: '', address: '', addressLine2: '', landmark: '', city: '', state: '', zip: '', phone: '', email: this.auth.currentUser?.email || '' };
+    this.verifiedPincode = '';
+    this.pincodeError = '';
+  }
+
+  editAddress(address: Address): void {
+    if (this.placing) return;
+    this.selectedAddressId = '';
+    this.editingAddressId = address.id;
+    this.addingAddress = true;
+    this.addressAttempted = false;
+    this.checkoutError = '';
+    this.shipping = {
+      name: address.fullName, address: address.addressLine1, addressLine2: address.addressLine2 || '',
+      landmark: address.landmark || '', city: address.city, state: address.state, zip: address.postalCode,
+      phone: address.phone, email: address.email || this.auth.currentUser?.email || ''
+    };
+    this.pincodeChanged(address.postalCode);
+  }
+
+  editSelectedAddress(): void {
+    const selected = this.addresses.find(address => address.id === this.selectedAddressId);
+    if (selected) this.editAddress(selected);
+  }
+
+  get canEditSelectedAddress(): boolean {
+    return Boolean(this.selectedAddressId && (this.checkoutError || this.pincodeError));
   }
 
   get stateOptions(): string[] {
@@ -241,9 +295,66 @@ export class CartComponent implements OnInit, AfterViewInit {
     return stateFor(this.locations, this.shipping.state)?.cities || [];
   }
 
+  get pincodeLocked(): boolean {
+    return Boolean(this.verifiedPincode) && this.verifiedPincode === this.shipping.zip.trim();
+  }
+
   stateChanged(state: string): void {
+    if (this.pincodeLocked) return;
     this.shipping.state = state;
     this.shipping.city = '';
+  }
+
+  pincodeChanged(value: string): void {
+    this.shipping.zip = value.replace(/\D/g, '').slice(0, 6);
+    this.verifiedPincode = '';
+    this.pincodeError = '';
+    const request = ++this.pincodeRequest;
+    if (this.shipping.zip.length !== 6) { this.pincodeLoading = false; return; }
+    this.pincodeLoading = true;
+    this.account.lookupPincode(this.shipping.zip).subscribe({
+      next: location => {
+        if (request !== this.pincodeRequest) return;
+        this.shipping.zip = location.postalCode;
+        this.shipping.state = location.state;
+        this.shipping.city = location.city;
+        this.verifiedPincode = location.postalCode;
+        this.pincodeLoading = false;
+      },
+      error: err => {
+        if (request !== this.pincodeRequest) return;
+        this.pincodeLoading = false;
+        this.pincodeError = err?.status === 400
+          ? 'Please enter a valid Indian PIN code.'
+          : 'PIN code verification is unavailable. Please retry.';
+      }
+    });
+  }
+
+  private verifySavedAddressPincode(address: Address): void {
+    this.verifiedPincode = '';
+    this.pincodeError = '';
+    const request = ++this.pincodeRequest;
+    this.pincodeLoading = true;
+    this.account.lookupPincode(address.postalCode).subscribe({
+      next: location => {
+        if (request !== this.pincodeRequest) return;
+        this.pincodeLoading = false;
+        const expected = canonicalLocation(this.locations, address.state, address.city);
+        if (!expected || expected.state !== location.state || expected.city !== location.city) {
+          this.pincodeError = 'This saved address no longer matches its PIN code. Add a corrected delivery address to continue.';
+          return;
+        }
+        this.verifiedPincode = address.postalCode;
+      },
+      error: err => {
+        if (request !== this.pincodeRequest) return;
+        this.pincodeLoading = false;
+        this.pincodeError = err?.status === 400
+          ? 'This saved address has an invalid PIN code. Add a corrected delivery address to continue.'
+          : 'PIN code verification is unavailable. Please retry.';
+      }
+    });
   }
 
   cancelNewAddress(): void {
@@ -259,13 +370,14 @@ export class CartComponent implements OnInit, AfterViewInit {
       city: this.shipping.city,
       state: this.shipping.state,
       zip: this.shipping.zip,
-      phone: this.shipping.phone
+      phone: this.shipping.phone,
+      email: this.shipping.email
     };
     const value = values[field]?.trim() || '';
     if (!value) {
       const labels: Record<string, string> = {
         name: 'Full name', address: 'Delivery address', city: 'City', state: 'State',
-        zip: 'PIN code', phone: 'Mobile number'
+        zip: 'PIN code', phone: 'Mobile number', email: 'Email address'
       };
       return `${labels[field] || 'This field'} is required.`;
     }
@@ -279,7 +391,9 @@ export class CartComponent implements OnInit, AfterViewInit {
       return 'Select a city that belongs to the selected state.';
     }
     if (field === 'zip' && !/^[1-9]\d{5}$/.test(value)) return 'Enter a valid 6-digit Indian PIN code.';
+    if (field === 'zip' && this.pincodeError) return this.pincodeError;
     if (field === 'phone' && !/^[6-9]\d{9}$/.test(value)) return 'Enter a valid 10-digit Indian mobile number.';
+    if (field === 'email' && !/^[^\s@\r\n]+@[^\s@\r\n]+\.[^\s@\r\n]+$/.test(value)) return 'Enter a valid email address for shipment tracking.';
     return '';
   }
 
@@ -324,7 +438,7 @@ export class CartComponent implements OnInit, AfterViewInit {
     try {
       const result = await this.payments.openCheckout(order, {
         name: this.shipping.name,
-        email: this.auth.currentUser?.email || undefined,
+        email: this.shipping.email || undefined,
         contact: this.shipping.phone
       });
       this.verifyPayment(order, result);
@@ -355,7 +469,10 @@ export class CartComponent implements OnInit, AfterViewInit {
     return {
       fullName: this.shipping.name.trim(),
       phone: this.shipping.phone.trim(),
+      email: this.shipping.email.trim().toLowerCase(),
       addressLine1: this.shipping.address.trim(),
+      addressLine2: this.shipping.addressLine2.trim(),
+      landmark: this.shipping.landmark.trim(),
       city: location?.city || this.shipping.city.trim(),
       state: location?.state || this.shipping.state.trim(),
       postalCode: this.shipping.zip.trim(),

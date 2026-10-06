@@ -214,7 +214,10 @@
 .mh-address-dialog form::-webkit-scrollbar-thumb { border-radius: 999px; background: #c9c6c0; }
 .mh-address-dialog fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .mh-address-legend { padding: 0; margin-bottom: 16px; font-size: 10px; letter-spacing: .16em; color: var(--mh-text-dim); font-weight: 600; }
-.mh-address-option { display: flex; align-items: flex-start; gap: 14px; padding: 20px; margin-bottom: 12px; border: 1px solid var(--mh-line); border-radius: 14px; cursor: pointer; transition: background .18s, border-color .18s; }
+.mh-address-saved { position: relative; margin-bottom: 12px; }
+.mh-address-option { display: flex; align-items: flex-start; gap: 14px; padding: 20px; margin-bottom: 0; border: 1px solid var(--mh-line); border-radius: 14px; cursor: pointer; transition: background .18s, border-color .18s; }
+.mh-address-edit { position: absolute; top: 12px; right: 14px; padding: 4px 0; border: 0; border-bottom: 1px solid currentColor; background: transparent; color: var(--mh-accent); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.mh-address-repair { display: block; margin: -4px 0 14px; padding: 0; border: 0; border-bottom: 1px solid currentColor; background: transparent; color: var(--mh-accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .mh-address-option:hover { border-color: var(--mh-accent); }
 .mh-address-option:has(input:checked) { border-color: var(--mh-accent); background: #f5f7ff; box-shadow: inset 0 0 0 1px var(--mh-accent); }
 .mh-address-option input { accent-color: var(--mh-accent); width: 17px; height: 17px; flex-shrink: 0; margin: 3px 0 0; }

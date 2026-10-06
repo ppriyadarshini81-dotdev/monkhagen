@@ -36,8 +36,7 @@ function fixture({ failMail = false } = {}) {
 
   const database = { async query(statement, params = []) {
     const sql = String(statement).replace(/\s+/g, ' ').trim();
-    if (sql.startsWith('SELECT u.email FROM orders')) return { rows: [{ email: order.customer_email }] };
-    if (sql.startsWith('SELECT u.email FROM return_requests')) return { rows: [{ email: returned.customer_email }] };
+    if (sql.startsWith('SELECT COALESCE(NULLIF(oa.email')) return { rows: [{ email: order.customer_email }] };
     if (sql.startsWith('INSERT INTO transactional_email_events')) {
       if (events.some(event => event.event_key === params[0])) return { rows: [] };
       events.push({ id: `event-${events.length + 1}`, event_key: params[0], event_type: params[1], order_id: params[2],
@@ -223,6 +222,22 @@ test('invalid customer recipient is skipped while configured admin recipient rem
   await f.service.orderConfirmed(ORDER);
   assert.equal(f.sent.length, 1);
   assert.equal(f.sent[0].to, 'operations@example.test');
+});
+
+test('phone-only customer receives no email while email-only and both-contact customers receive customer email', async () => {
+  const phoneOnly = fixture();
+  phoneOnly.order.customer_email = null;
+  await phoneOnly.service.orderConfirmed(ORDER);
+  assert.deepEqual(phoneOnly.sent.map(message => message.to), ['operations@example.test']);
+
+  const emailOnly = fixture();
+  emailOnly.order.customer_phone = null;
+  await emailOnly.service.orderConfirmed(ORDER);
+  assert.deepEqual(emailOnly.sent.map(message => message.to), ['buyer@example.test', 'operations@example.test']);
+
+  const both = fixture();
+  await both.service.orderConfirmed(ORDER);
+  assert.deepEqual(both.sent.map(message => message.to), ['buyer@example.test', 'operations@example.test']);
 });
 
 test('template builder rejects unsupported events instead of emitting misleading mail', () => {

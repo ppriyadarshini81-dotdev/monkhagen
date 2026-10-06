@@ -14,10 +14,10 @@ const orderFixture = () => ({
   subtotal: '1499.00', discount_amount: '0', shipping_amount: '99', total_amount: '1598'
 });
 const address = { full_name: 'Test Customer', address_line1: '123 Test Street', city: 'Delhi', state: 'Delhi',
-  postal_code: '110001', country: 'India', phone: '+91 9876543210' };
+  postal_code: '110001', country: 'India', phone: '+91 9876543210', email: 'delivery@example.test' };
 const items = [{ id: 'line-1', variant_id: 'variant-1', product_name: 'Test Tee', quantity: 1, unit_price: '1499', sku: 'TEE-M-BLACK' }];
 
-function setup({ order = orderFixture(), request, downloadInvoice, row: initial } = {}) {
+function setup({ order = orderFixture(), request, downloadInvoice, row: initial, environment } = {}) {
   let row = initial || null;
   let locked = false;
   const calls = [];
@@ -47,7 +47,7 @@ function setup({ order = orderFixture(), request, downloadInvoice, row: initial 
       return downloadInvoice ? downloadInvoice(url) : Buffer.from('%PDF-1.4 test invoice');
     }
   };
-  return { service: createShippingService({ repository, api }), calls, repository, getRow: () => row };
+  return { service: createShippingService({ repository, api, environment }), calls, repository, getRow: () => row };
 }
 
 test('maps immutable order snapshots, INR totals, variant SKUs and package units', () => {
@@ -73,6 +73,35 @@ test('maps immutable order snapshots, INR totals, variant SKUs and package units
   assert.equal(codPayload.sub_total, 1499);
   assert.equal(codPayload.shipping_charges, 99);
   assert.throws(() => buildOrderPayload({ ...orderFixture(), total_amount: 1 }, address, items, parcel));
+});
+
+test('shipment payload uses the delivery email, not an account or store fallback email', () => {
+  const phoneOnlyAccount = buildOrderPayload({ ...orderFixture(), customer_email: null }, address, items, parcel);
+  const accountEmailDiffers = buildOrderPayload({ ...orderFixture(), customer_email: 'account@example.test' }, address, items, parcel);
+
+  assert.equal(phoneOnlyAccount.billing_email, 'delivery@example.test');
+  assert.equal(accountEmailDiffers.billing_email, 'delivery@example.test');
+  assert.throws(() => buildOrderPayload(orderFixture(), { ...address, email: null }, items, parcel),
+    error => error.code === 'SHIPPING_VALIDATION');
+});
+
+test('a confirmed order with a corrected delivery email safely retries shipment creation once', async () => {
+  const fixture = setup({ order: { ...orderFixture(), customer_email: null } });
+  const originalDetails = fixture.repository.details;
+  fixture.repository.details = async () => ({ address: { ...address, email: null }, items });
+
+  await assert.rejects(fixture.service.createShipment(ORDER_ID, parcel), error => error.code === 'SHIPPING_VALIDATION');
+  assert.equal(fixture.calls.length, 0);
+  assert.equal(fixture.getRow().shipping_status, 'validation_failed');
+  assert.equal(fixture.getRow().pending_operation ?? null, null);
+  assert.equal(fixture.getRow().shiprocket_shipment_id, undefined);
+
+  fixture.repository.details = originalDetails;
+  await fixture.service.createShipment(ORDER_ID, parcel);
+  await fixture.service.createShipment(ORDER_ID);
+
+  assert.equal(fixture.calls.length, 1);
+  assert.equal(fixture.getRow().shiprocket_shipment_id, 202);
 });
 
 test('rejects unpaid, failed, refunded, cancelled and unverified prepaid orders without remote calls', async () => {

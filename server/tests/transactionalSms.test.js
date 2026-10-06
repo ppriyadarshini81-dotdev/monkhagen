@@ -103,6 +103,17 @@ test('missing or invalid delivery phone skips SMS without failing the order', as
   }
 });
 
+test('phone-only and both-contact orders send SMS, while email-only orders do not', async () => {
+  const phoneOnly = fixture({ phone: '9876543210' });
+  assert.equal((await phoneOnly.service.orderConfirmed(ORDER_ID)).sent, 1);
+
+  const emailOnly = fixture({ phone: null });
+  assert.equal((await emailOnly.service.orderConfirmed(ORDER_ID)).sent, 0);
+
+  const both = fixture({ phone: '+91 9876543210' });
+  assert.equal((await both.service.orderConfirmed(ORDER_ID)).sent, 1);
+});
+
 test('MSG91 failure is recorded for retry and does not escape to order confirmation', async () => {
   const failure = Object.assign(new Error('private provider response'), { code: 'SMS_PROVIDER_UNAVAILABLE' });
   const f = fixture({}, async () => { throw failure; });

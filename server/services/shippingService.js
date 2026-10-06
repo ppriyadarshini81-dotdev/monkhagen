@@ -130,9 +130,10 @@ function createShippingService({ repository = Shipment, api = shiprocket, notifi
         const details = await repository.details(client, orderId);
         payload = buildOrderPayload(order, details.address, details.items, parcel);
       } catch (error) {
+        const configurationError = ['SHIPPING_PACKAGE_NOT_CONFIGURED'].includes(error.code);
         await repository.patch(client, orderId, {
-          shipping_status: error.code === 'SHIPPING_PACKAGE_NOT_CONFIGURED' ? 'needs_configuration' : 'validation_failed',
-          last_error_code: error.code === 'SHIPPING_PACKAGE_NOT_CONFIGURED' ? error.code : 'SHIPPING_VALIDATION',
+          shipping_status: configurationError ? 'needs_configuration' : 'validation_failed',
+          last_error_code: configurationError ? error.code : 'SHIPPING_VALIDATION',
           next_attempt_at: new Date(Date.now() + 5 * 60000)
         });
         if (!error.code) throw shippingError(400, 'SHIPPING_VALIDATION', 'Review the saved order and package data before shipping.');

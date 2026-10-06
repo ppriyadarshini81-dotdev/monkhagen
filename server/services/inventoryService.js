@@ -16,7 +16,7 @@ async function checkoutSnapshot(client, userId, addressId) {
   const addresses = await client.query('SELECT * FROM customer_addresses WHERE id = $1 AND user_id = $2', [addressId, userId]);
   const address = addresses.rows[0];
   if (!address) throw error(400, 'Select a shipping address saved to your account.');
-  const invalid = await addressValidationError({ fullName: address.full_name, phone: address.phone,
+  const invalid = await addressValidationError({ fullName: address.full_name, phone: address.phone, email: address.email,
     addressLine1: address.address_line1, city: address.city, state: address.state,
     postalCode: address.postal_code, country: address.country });
   if (invalid) throw error(400, invalid);
@@ -95,8 +95,8 @@ async function snapshotItems(client, orderId, items) {
 }
 async function snapshotAddress(client, orderId, address) {
   await client.query(`INSERT INTO order_addresses
-    (order_id, full_name, phone, address_line1, address_line2, landmark, city, state, postal_code, country)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [orderId, address.full_name, address.phone,
+    (order_id, full_name, phone, email, address_line1, address_line2, landmark, city, state, postal_code, country)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [orderId, address.full_name, address.phone, address.email,
     address.address_line1, address.address_line2, address.landmark, address.city,
     address.state, address.postal_code, address.country]);
 }

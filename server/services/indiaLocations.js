@@ -9,6 +9,14 @@ function key(value) {
   return String(value || '').trim().toLocaleLowerCase('en-IN');
 }
 
+const CITY_ALIASES = new Map([
+  ['gurgaon', 'gurugram'], ['gurugram', 'gurgaon'],
+  ['bangalore', 'bengaluru'], ['bengaluru', 'bangalore'],
+  ['bombay', 'mumbai'], ['mumbai', 'bombay'],
+  ['calcutta', 'kolkata'], ['kolkata', 'calcutta'],
+  ['poona', 'pune'], ['pune', 'poona']
+]);
+
 function uniqueSorted(values) {
   const unique = new Map();
   for (const value of values) {
@@ -42,7 +50,9 @@ async function resolveIndiaLocation(stateValue, cityValue) {
   const locations = await loadIndiaLocations();
   const state = locations.states.find(item => key(item.name) === key(stateValue));
   if (!state) return null;
-  const city = state.cities.find(item => key(item) === key(cityValue));
+  const wantedCity = key(cityValue);
+  const city = state.cities.find(item => key(item) === wantedCity) ||
+    state.cities.find(item => key(item) === CITY_ALIASES.get(wantedCity));
   return city ? { state: state.name, city } : null;
 }
 

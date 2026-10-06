@@ -3,6 +3,7 @@ const User = require('../models/User');
 const asyncHandler = require('../middleware/asyncHandler');
 const addressValidationError = require('../services/addressValidation');
 const { loadIndiaLocations, resolveIndiaLocation } = require('../services/indiaLocations');
+const { assertPincodeMatchesLocation, lookupPincode } = require('../services/indiaPincode');
 const shipping = require('../services/shippingService');
 const returns = require('../services/returnService');
 const codRefunds = require('../services/codRefundService');
@@ -36,6 +37,7 @@ function fmtAddr(row) {
     id: row.id,
     fullName: row.full_name,
     phone: row.phone,
+    email: row.email,
     addressLine1: row.address_line1,
     addressLine2: row.address_line2 || null,
     landmark: row.landmark || null,
@@ -72,14 +74,25 @@ exports.getAddressLocations = asyncHandler(async (_req, res) => {
   res.json(await loadIndiaLocations());
 });
 
+exports.lookupAddressPincode = asyncHandler(async (req, res) => {
+  const result = await lookupPincode(req.params.postalCode);
+  const location = await resolveIndiaLocation(result.state, result.city);
+  if (!location) {
+    return res.status(400).json({ message: 'Please enter a valid Indian PIN code.', code: 'PINCODE_LOCATION_UNSUPPORTED' });
+  }
+  res.set('Cache-Control', 'private, max-age=86400');
+  res.json({ postalCode: result.postalCode, ...location });
+});
+
 exports.addAddress = asyncHandler(async (req, res) => {
   const validationError = await addressValidationError(req.body, { validateLocation: true });
   if (validationError) return res.status(400).json({ message: validationError });
-  const { fullName, phone, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
-  if (!fullName || !phone || !addressLine1 || !city || !state || !postalCode) {
-    return res.status(400).json({ message: 'fullName, phone, addressLine1, city, state and postalCode are required.' });
+  const { fullName, phone, email, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
+  if (!fullName || !phone || !email || !addressLine1 || !city || !state || !postalCode) {
+    return res.status(400).json({ message: 'fullName, phone, email, addressLine1, city, state and postalCode are required.' });
   }
   const location = await resolveIndiaLocation(state, city);
+  await assertPincodeMatchesLocation({ postalCode, city: location.city, state: location.state });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -92,9 +105,9 @@ exports.addAddress = asyncHandler(async (req, res) => {
     if (existing[0].count >= 50) throw Object.assign(new Error('You can save up to 50 addresses. Remove an unused address first.'), { status: 409 });
     const makeDefault = existing[0].count === 0;
     const { rows } = await client.query(
-      `INSERT INTO customer_addresses (user_id, full_name, phone, address_line1, address_line2, landmark, city, state, postal_code, country, address_type, is_default)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [req.user.id, fullName, phone, addressLine1, addressLine2 || null, landmark || null,
+      `INSERT INTO customer_addresses (user_id, full_name, phone, email, address_line1, address_line2, landmark, city, state, postal_code, country, address_type, is_default)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [req.user.id, fullName, phone, email.trim().toLowerCase(), addressLine1, addressLine2 || null, landmark || null,
         location.city, location.state, postalCode, 'India', addressType, makeDefault]
     );
     await client.query('COMMIT');
@@ -119,14 +132,15 @@ exports.updateAddress = asyncHandler(async (req, res) => {
     legacyLocation: { city: owned[0].city, state: owned[0].state }
   });
   if (validationError) return res.status(400).json({ message: validationError });
-  const { fullName, phone, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
+  const { fullName, phone, email, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
   const location = await resolveIndiaLocation(state, city);
+  await assertPincodeMatchesLocation({ postalCode, city: location?.city || city, state: location?.state || state });
   const { rows } = await pool.query(
     `UPDATE customer_addresses
-     SET full_name=$1, phone=$2, address_line1=$3, address_line2=$4, landmark=$5,
-         city=$6, state=$7, postal_code=$8, country=$9, address_type=$10, updated_at=NOW()
-     WHERE id=$11 AND user_id=$12 RETURNING *`,
-    [fullName, phone, addressLine1, addressLine2 || null, landmark || null,
+     SET full_name=$1, phone=$2, email=$3, address_line1=$4, address_line2=$5, landmark=$6,
+         city=$7, state=$8, postal_code=$9, country=$10, address_type=$11, updated_at=NOW()
+     WHERE id=$12 AND user_id=$13 RETURNING *`,
+    [fullName, phone, email.trim().toLowerCase(), addressLine1, addressLine2 || null, landmark || null,
       location?.city || city.trim(), location?.state || state.trim(), postalCode, 'India', addressType, id, req.user.id]
   );
   res.json(fmtAddr(rows[0]));
