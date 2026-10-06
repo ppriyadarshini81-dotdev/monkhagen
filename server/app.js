@@ -27,7 +27,7 @@ function createApp() {
   const routes = { products: 'products', 'product-page-content': 'productPageContent', categories: 'categories',
     badges: 'badges', sizes: 'sizes', colors: 'colors', auth: 'auth', orders: 'orders', cart: 'cart',
     upload: 'upload', account: 'account', contact: 'contact', media: 'media', payments: 'payments',
-    shipping: 'shipping', maintenance: 'maintenance', analytics: 'analytics' };
+    shipping: 'shipping', maintenance: 'maintenance', analytics: 'analytics', newsletter: 'newsletter' };
   for (const [url, file] of Object.entries(routes)) app.use(`/api/${url}`, require(`./routes/${file}`));
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', brand: 'Monk Hagen' }));
   if (process.env.NODE_ENV === 'production') {

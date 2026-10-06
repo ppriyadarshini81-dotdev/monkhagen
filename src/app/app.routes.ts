@@ -87,6 +87,11 @@ export const routes: Routes = [
     title: 'Contact — Monk Hagen'
   },
   {
+    path: 'newsletter/unsubscribe',
+    loadComponent: () => import('./pages/newsletter-unsubscribe/newsletter-unsubscribe.component').then((m) => m.NewsletterUnsubscribeComponent),
+    title: 'Email Preferences — Monk Hagen'
+  },
+  {
     path: 'refund-policy',
     loadComponent: () =>
       import('./pages/refund-policy/refund-policy.component').then((m) => m.RefundPolicyComponent),

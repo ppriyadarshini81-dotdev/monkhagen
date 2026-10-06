@@ -141,6 +141,7 @@ function createTransactionalEmailService({ database = pool, mailer = getTranspor
   }
 
   async function loadEventData(event) {
+    if (event.event_type === 'NEW_ARRIVAL_SUBSCRIBER') return event.metadata || null;
     const data = event.return_id ? await loadReturn(event.return_id) : await loadOrder(event.order_id);
     return data ? { ...data, ...(event.metadata || {}) } : null;
   }
@@ -224,6 +225,30 @@ function createTransactionalEmailService({ database = pool, mailer = getTranspor
     }
   }
 
+  async function queueNewArrival(product) {
+    try {
+      const metadata = JSON.stringify({
+        product_name: String(product?.name || '').slice(0, 255),
+        product_slug: String(product?.slug || '').slice(0, 255),
+        product_price: Number(product?.price ?? product?.basePrice ?? 0),
+        image_url: Array.isArray(product?.images) ? product.images[0] || null : null
+      });
+      const { rowCount } = await database.query(`
+        INSERT INTO transactional_email_events (event_key, event_type, recipient, metadata)
+        SELECT 'NEW_ARRIVAL_SUBSCRIBER:' || $1 || ':' || ns.id,
+          'NEW_ARRIVAL_SUBSCRIBER', ns.email,
+          ($2::jsonb || jsonb_build_object('unsubscribe_token', ns.unsubscribe_token::text))
+        FROM newsletter_subscribers ns
+        WHERE ns.unsubscribed_at IS NULL
+        ON CONFLICT (event_key) DO NOTHING
+      `, [String(product?.id || ''), metadata]);
+      return rowCount || 0;
+    } catch (error) {
+      console.error('New arrival emails could not be queued:', { code: safeCode(error.code, 'EMAIL_QUEUE_FAILED') });
+      return 0;
+    }
+  }
+
   return {
     processPendingEmails,
     orderConfirmed: orderId => notify(() => queueOrder(orderId, ['ORDER_CONFIRMED_CUSTOMER','ORDER_CONFIRMED_ADMIN'])),
@@ -246,6 +271,7 @@ function createTransactionalEmailService({ database = pool, mailer = getTranspor
     shipmentFailure: (orderId, failureCode) => notify(() => queueOrder(orderId, ['SHIPMENT_CREATION_FAILED_ADMIN'], { failure_code: safeCode(failureCode) })),
     returnFailure: (returnId, failureCode) => notify(() => queueReturn(returnId, ['RETURN_CREATION_FAILED_ADMIN'], { failure_code: safeCode(failureCode) })),
     refundFailure: (returnId, failureCode) => notify(() => queueReturn(returnId, ['REFUND_FAILED_ADMIN'], { failure_code: safeCode(failureCode) })),
+    newArrival: queueNewArrival,
     _insert: insert, _loadOrder: loadOrder, _loadReturn: loadReturn
   };
 }

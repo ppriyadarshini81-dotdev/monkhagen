@@ -1,0 +1,7 @@
+<main class="mh-unsubscribe mh-container">
+  <span class="mh-eyebrow">Email preferences</span>
+  <h1>New-arrival emails</h1>
+  <p class="mh-unsubscribe__message" *ngIf="message" role="status">{{ message }}</p>
+  <p class="mh-unsubscribe__error" *ngIf="error" role="alert">{{ error }}</p>
+  <a class="mh-btn mh-btn--gold" routerLink="/">Return home</a>
+</main>

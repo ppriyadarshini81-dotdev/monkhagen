@@ -2,6 +2,7 @@ const Product = require('../models/Product');
 const Category = require('../models/Category');
 const { deleteFile } = require('../config/r2');
 const asyncHandler = require('../middleware/asyncHandler');
+const emails = require('../services/transactionalEmailService');
 
 // GET /api/products?category=&search=&featured=
 exports.list = asyncHandler(async (req, res) => {
@@ -47,6 +48,9 @@ exports.getOne = asyncHandler(async (req, res) => {
 // POST /api/products — admin
 exports.create = asyncHandler(async (req, res) => {
   const product = await Product.create({ ...sanitize(req.body), createdBy: req.user.id });
+  // Queue launch mail after the product transaction commits. A queue failure must
+  // never undo a successfully published product.
+  if (product.isActive) await emails.newArrival(product);
   res.status(201).json(product);
 });
 
@@ -71,6 +75,7 @@ exports.update = asyncHandler(async (req, res) => {
   }
 
   const updated = await Product.update(req.params.id, payload);
+  if (!product.isActive && updated.isActive) await emails.newArrival(updated);
   // Remove obsolete R2 objects only after the database transaction succeeds.
   await Promise.allSettled(removed.map(deleteFile));
   res.json(updated);
