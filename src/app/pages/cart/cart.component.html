@@ -185,7 +185,6 @@
       </div>
     </fieldset>
     <p class="mh-error mh-checkout-error" role="alert" *ngIf="checkoutError">{{ checkoutError }}</p>
-    <button type="button" class="mh-address-repair" *ngIf="checkoutStep === 'address' && canEditSelectedAddress" (click)="editSelectedAddress()">Edit selected address</button>
     <button type="button" class="mh-btn mh-btn--ghost" *ngIf="checkoutStep === 'address' && checkoutError && !placing && !addingAddress && addresses.length === 0" (click)="loadAddresses()">Reload addresses</button>
     <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small *ngIf="checkoutDiscount">{{ cart.prepaidOffer.code }} Welcome Offer: &minus;&#8377;{{ checkoutDiscount | number: '1.2-2' }}</small><small *ngIf="codFee">COD charge: +&#8377;{{ codFee | number: '1.2-2' }}</small><small *ngIf="!checkoutDiscount && !codFee">Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number: '1.2-2' }}</strong></div>
     <div class="mh-payment-actions" *ngIf="checkoutStep === 'payment'">
