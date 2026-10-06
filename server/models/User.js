@@ -88,8 +88,8 @@ const User = {
 
       const targetResult = await client.query(
         `${BASE_Q}
-         WHERE ($1::varchar IS NOT NULL AND u.firebase_uid = $1) OR LOWER(u.email) = LOWER($2)
-         ORDER BY CASE WHEN $1::varchar IS NOT NULL AND u.firebase_uid = $1 THEN 0 ELSE 1 END
+         WHERE u.firebase_uid = $1 OR LOWER(u.email) = LOWER($2)
+         ORDER BY CASE WHEN u.firebase_uid = $1 THEN 0 ELSE 1 END
          FOR UPDATE OF u`,
         [uid, email]
       );
@@ -102,9 +102,10 @@ const User = {
         if (uid && source.firebase_uid && source.firebase_uid !== uid) {
           throw Object.assign(new Error('This account is linked to a different Google identity.'), { status: 409 });
         }
+        const identityAssignment = uid ? 'firebase_uid = $2' : 'firebase_uid = firebase_uid';
         await client.query(
           `UPDATE users
-           SET email = $1, firebase_uid = COALESCE($2, firebase_uid),
+           SET email = $1, ${identityAssignment},
                profile_image = COALESCE(NULLIF($3, ''), profile_image),
                name = CASE
                  WHEN name IS NULL OR BTRIM(name) = '' OR name IN ('Customer', 'User')
