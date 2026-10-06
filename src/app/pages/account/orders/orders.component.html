@@ -4,21 +4,26 @@
     <h2>My Orders</h2>
     <p>View confirmed purchases and follow every delivery.</p>
   </header>
+  <label class="mh-account-filter">Filter orders
+    <select [(ngModel)]="statusFilter" (change)="applyStatusFilter()">
+      <option value="">All orders</option><option value="active">Active</option><option value="cancelled">Cancelled</option><option value="delivered">Delivered</option>
+    </select>
+  </label>
 
   <div *ngIf="loading" class="mh-orders-empty">Loading your orders...</div>
   <div *ngIf="!loading && loadError" class="mh-orders-empty mh-orders-empty--error">{{ loadError }}</div>
   <p class="mh-orders-empty mh-orders-empty--error" role="alert" *ngIf="invoiceError">{{ invoiceError }}</p>
   <p class="mh-orders-empty mh-orders-empty--success" role="status" *ngIf="returnMessage">{{ returnMessage }}</p>
   <div *ngIf="!loading && !loadError && orders.length === 0" class="mh-orders-empty">
-    <strong>No confirmed orders yet</strong>
-    <span>Your confirmed orders will appear here.</span>
+    <strong>No orders found</strong>
+    <span>{{ statusFilter ? 'No orders match this filter.' : 'Your confirmed orders will appear here.' }}</span>
   </div>
 
   <div class="mh-orders-list" *ngIf="!loading && orders.length">
-    <article class="mh-customer-order" *ngFor="let order of orders">
+    <article class="mh-customer-order" [class.mh-customer-order--cancelled]="isCancelled(order)" *ngFor="let order of orders">
       <header class="mh-customer-order__head">
         <div>
-          <span>Order confirmed</span>
+          <span>{{ isCancelled(order) ? 'Order cancelled' : 'Order confirmed' }}</span>
           <h3>#{{ order.orderNumber }}</h3>
           <small *ngIf="isPendingCod(order)">Cash on delivery &middot; Payment pending</small>
           <small>{{ order.createdAt | date: 'dd MMMM y, h:mm a' }}</small>
@@ -48,7 +53,8 @@
         <span class="mh-customer-order__more" *ngIf="order.items.length > 2">+{{ order.items.length - 2 }} more</span>
       </div>
 
-      <div class="mh-delivery-progress" [attr.aria-label]="deliveryLabel(order)">
+      <div *ngIf="isCancelled(order)" class="mh-return-availability mh-cancelled-note"><strong>Order cancelled</strong><span *ngIf="order.cancellation?.refundStatus === 'processing'">Refund initiated to your original payment method.</span></div>
+      <div *ngIf="!isCancelled(order)" class="mh-delivery-progress" [attr.aria-label]="deliveryLabel(order)">
         <div [class.is-complete]="orderStage(order) >= 1"><span></span><small>Confirmed</small></div>
         <div [class.is-complete]="orderStage(order) >= 2"><span></span><small>Preparing</small></div>
         <div [class.is-complete]="orderStage(order) >= 3"><span></span><small>Shipped</small></div>
@@ -56,14 +62,15 @@
       </div>
 
       <footer class="mh-customer-order__foot">
-        <span class="mh-delivery-state"><i></i>{{ deliveryLabel(order) }}</span>
+        <span class="mh-delivery-state"><i></i>{{ isCancelled(order) ? 'Cancelled' : deliveryLabel(order) }}</span>
         <div>
-          <button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button>
+          <button *ngIf="order.invoiceAvailable && !isCancelled(order)" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button>
           <button type="button" class="mh-order-action mh-order-action--quiet" (click)="openDetails(order)">View details</button>
-          <button type="button" class="mh-order-action mh-order-action--primary" (click)="openTracking(order)">Track order <span aria-hidden="true">&#8594;</span></button>
+          <button *ngIf="!isCancelled(order)" type="button" class="mh-order-action mh-order-action--primary" (click)="openTracking(order)">Track order <span aria-hidden="true">&#8594;</span></button>
         </div>
       </footer>
     </article>
+    <nav class="mh-pagination" *ngIf="page > 0 || hasNextPage" aria-label="Orders pages"><button type="button" [disabled]="page === 0" (click)="changePage(-1)">← Previous</button><span>Page {{ page + 1 }}</span><button type="button" [disabled]="!hasNextPage" (click)="changePage(1)">Next →</button></nav>
   </div>
 </section>
 
@@ -107,16 +114,23 @@
           </dl>
         </section>
       </div>
-      <section class="mh-return-availability">
+      <section class="mh-return-availability" [class.mh-cancelled-note]="isCancelled(order)">
+        <ng-container *ngIf="isCancelled(order); else returnAvailability"><strong class="mh-cancelled-dialog-status">Order cancelled</strong><span>This order was cancelled{{ order.cancellation?.refundStatus === 'processing' ? '. Refund initiated to your original payment method.' : '.' }}</span></ng-container>
+        <ng-template #returnAvailability>
         <span *ngIf="returnEligibilityLoading">Checking return availability...</span>
         <ng-container *ngIf="!returnEligibilityLoading && returnEligibility as eligibility">
           <strong *ngIf="eligibility.eligible">Return available until {{ eligibility.returnUntil | date: 'dd MMM y, h:mm a' }}</strong>
           <span *ngIf="!eligibility.eligible">{{ eligibility.reason === 'WINDOW_CLOSED' ? 'Return window closed' : eligibility.message }}</span>
         </ng-container>
+        </ng-template>
       </section>
     </div>
-    <footer class="mh-customer-dialog__foot"><small>{{ isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order)) }}</small><div><button *ngIf="returnEligibility?.eligible && (codEnabled || order.paymentMethod !== 'cod')" type="button" class="mh-order-action mh-order-action--quiet" (click)="openReturn(order)">Return item</button><button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
+    <footer class="mh-customer-dialog__foot"><small>{{ isCancelled(order) ? 'Order cancelled' : (isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order))) }}</small><div><button *ngIf="orderStage(order) < 3 && order.status !== 'cancelled'" type="button" class="mh-order-action mh-order-action--danger" [disabled]="cancellationLoading" (click)="openCancellation(order)">{{ cancellationLoading ? 'Checking cancellation...' : 'Cancel order' }}</button><button *ngIf="!isCancelled(order) && returnEligibility?.eligible && (codEnabled || order.paymentMethod !== 'cod')" type="button" class="mh-order-action mh-order-action--quiet" (click)="openReturn(order)">Return item</button><button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button *ngIf="!isCancelled(order)" type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
   </ng-container>
+</dialog>
+
+<dialog #cancelDialog class="mh-customer-dialog mh-return-dialog" aria-labelledby="cancel-title" (close)="clearCancellation()">
+  <ng-container *ngIf="cancellationOrder as order"><header class="mh-customer-dialog__head"><div><span class="mh-eyebrow">Order cancellation</span><h2 id="cancel-title">Cancel this order?</h2><p>Once cancelled, this order cannot be restored.</p></div><button type="button" class="mh-customer-dialog__close" (click)="closeCancellation()">&times;</button></header><div class="mh-customer-dialog__body"><p class="mh-tracking-error" *ngIf="cancellationError">{{ cancellationError }}</p><label class="mh-cancel-reason">Reason <span>(optional)</span><textarea maxlength="500" [(ngModel)]="cancellationReason" placeholder="Tell us why you are cancelling"></textarea></label></div><footer class="mh-customer-dialog__foot"><small>#{{ order.orderNumber }}</small><div><button type="button" class="mh-order-action mh-order-action--quiet" [disabled]="cancellationSubmitting" (click)="closeCancellation()">Keep order</button><button type="button" class="mh-order-action mh-order-action--danger" [disabled]="cancellationSubmitting" (click)="submitCancellation()">{{ cancellationSubmitting ? 'Cancelling...' : 'Cancel order' }}</button></div></footer></ng-container>
 </dialog>
 
 <dialog #returnDialog class="mh-customer-dialog mh-return-dialog" aria-labelledby="return-title" (close)="clearReturn()">
@@ -151,7 +165,10 @@
       <div class="mh-tracking-loading" *ngIf="trackingLoading"><span></span><p>Checking the latest delivery update...</p></div>
       <p class="mh-tracking-error" role="alert" *ngIf="trackingError">{{ trackingError }}</p>
 
-      <ng-container *ngIf="!trackingLoading && !trackingError">
+      <ng-container *ngIf="isCancelled(order)">
+        <section class="mh-tracking-summary mh-tracking-summary--cancelled"><span class="mh-tracking-summary__icon">!</span><div><small>Current status</small><h3>Order cancelled</h3><p>This order has been cancelled{{ order.cancellation?.refundStatus === 'processing' ? ' and your refund has been initiated.' : '.' }}</p></div></section>
+      </ng-container>
+      <ng-container *ngIf="!isCancelled(order) && !trackingLoading && !trackingError">
         <section class="mh-tracking-summary">
           <span class="mh-tracking-summary__icon">&#10003;</span>
           <div><small>Current status</small><h3>{{ tracking?.trackingStatus || deliveryLabel(order) }}</h3><p *ngIf="tracking?.estimatedDelivery">Estimated delivery: {{ tracking?.estimatedDelivery | date: 'mediumDate' }}</p><p *ngIf="!tracking?.estimatedDelivery">We’ll show an estimated date as soon as the courier provides one.</p></div>
@@ -176,6 +193,6 @@
         <ng-template #awaitingEvents><div class="mh-tracking-await"><strong>Tracking updates will appear here</strong><p>{{ tracking?.awbCode ? 'The courier has not published a scan yet.' : 'Your order is confirmed and is being prepared for shipment.' }}</p></div></ng-template>
       </ng-container>
     </div>
-    <footer class="mh-customer-dialog__foot"><small *ngIf="tracking?.lastCheckedAt">Updated {{ tracking?.lastCheckedAt | date: 'short' }}</small><span *ngIf="!tracking?.lastCheckedAt"></span><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeTracking()">Close</button><a *ngIf="tracking?.trackingUrl" class="mh-order-action mh-order-action--primary" [href]="tracking?.trackingUrl" target="_blank" rel="noopener">Courier tracking</a></div></footer>
+    <footer class="mh-customer-dialog__foot"><small *ngIf="tracking?.lastCheckedAt">Updated {{ tracking?.lastCheckedAt | date: 'short' }}</small><span *ngIf="!tracking?.lastCheckedAt"></span><div><button *ngIf="orderStage(order) < 3 && order.status !== 'cancelled'" type="button" class="mh-order-action mh-order-action--danger" [disabled]="cancellationLoading" (click)="openCancellation(order)">{{ cancellationLoading ? 'Checking cancellation...' : 'Cancel order' }}</button><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeTracking()">Close</button><a *ngIf="tracking?.trackingUrl" class="mh-order-action mh-order-action--primary" [href]="tracking?.trackingUrl" target="_blank" rel="noopener">Courier tracking</a></div></footer>
   </ng-container>
 </dialog>

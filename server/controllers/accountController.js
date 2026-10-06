@@ -3,9 +3,11 @@ const User = require('../models/User');
 const asyncHandler = require('../middleware/asyncHandler');
 const addressValidationError = require('../services/addressValidation');
 const { loadIndiaLocations, resolveIndiaLocation } = require('../services/indiaLocations');
+const { assertPincodeMatchesLocation, lookupPincode } = require('../services/indiaPincode');
 const shipping = require('../services/shippingService');
 const returns = require('../services/returnService');
 const codRefunds = require('../services/codRefundService');
+const cancellations = require('../services/orderCancellationService');
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,7 @@ function fmtAddr(row) {
     id: row.id,
     fullName: row.full_name,
     phone: row.phone,
+    email: row.email,
     addressLine1: row.address_line1,
     addressLine2: row.address_line2 || null,
     landmark: row.landmark || null,
@@ -72,14 +75,25 @@ exports.getAddressLocations = asyncHandler(async (_req, res) => {
   res.json(await loadIndiaLocations());
 });
 
+exports.lookupAddressPincode = asyncHandler(async (req, res) => {
+  const result = await lookupPincode(req.params.postalCode);
+  const location = await resolveIndiaLocation(result.state, result.city);
+  if (!location) {
+    return res.status(400).json({ message: 'Please enter a valid Indian PIN code.', code: 'PINCODE_LOCATION_UNSUPPORTED' });
+  }
+  res.set('Cache-Control', 'private, max-age=86400');
+  res.json({ postalCode: result.postalCode, ...location });
+});
+
 exports.addAddress = asyncHandler(async (req, res) => {
   const validationError = await addressValidationError(req.body, { validateLocation: true });
   if (validationError) return res.status(400).json({ message: validationError });
-  const { fullName, phone, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
-  if (!fullName || !phone || !addressLine1 || !city || !state || !postalCode) {
-    return res.status(400).json({ message: 'fullName, phone, addressLine1, city, state and postalCode are required.' });
+  const { fullName, phone, email, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
+  if (!fullName || !phone || !email || !addressLine1 || !city || !state || !postalCode) {
+    return res.status(400).json({ message: 'fullName, phone, email, addressLine1, city, state and postalCode are required.' });
   }
   const location = await resolveIndiaLocation(state, city);
+  await assertPincodeMatchesLocation({ postalCode, city: location.city, state: location.state });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -92,9 +106,9 @@ exports.addAddress = asyncHandler(async (req, res) => {
     if (existing[0].count >= 50) throw Object.assign(new Error('You can save up to 50 addresses. Remove an unused address first.'), { status: 409 });
     const makeDefault = existing[0].count === 0;
     const { rows } = await client.query(
-      `INSERT INTO customer_addresses (user_id, full_name, phone, address_line1, address_line2, landmark, city, state, postal_code, country, address_type, is_default)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [req.user.id, fullName, phone, addressLine1, addressLine2 || null, landmark || null,
+      `INSERT INTO customer_addresses (user_id, full_name, phone, email, address_line1, address_line2, landmark, city, state, postal_code, country, address_type, is_default)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+      [req.user.id, fullName, phone, email.trim().toLowerCase(), addressLine1, addressLine2 || null, landmark || null,
         location.city, location.state, postalCode, 'India', addressType, makeDefault]
     );
     await client.query('COMMIT');
@@ -119,14 +133,15 @@ exports.updateAddress = asyncHandler(async (req, res) => {
     legacyLocation: { city: owned[0].city, state: owned[0].state }
   });
   if (validationError) return res.status(400).json({ message: validationError });
-  const { fullName, phone, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
+  const { fullName, phone, email, addressLine1, addressLine2, landmark, city, state, postalCode, country = 'India', addressType = 'Home' } = req.body;
   const location = await resolveIndiaLocation(state, city);
+  await assertPincodeMatchesLocation({ postalCode, city: location?.city || city, state: location?.state || state });
   const { rows } = await pool.query(
     `UPDATE customer_addresses
-     SET full_name=$1, phone=$2, address_line1=$3, address_line2=$4, landmark=$5,
-         city=$6, state=$7, postal_code=$8, country=$9, address_type=$10, updated_at=NOW()
-     WHERE id=$11 AND user_id=$12 RETURNING *`,
-    [fullName, phone, addressLine1, addressLine2 || null, landmark || null,
+     SET full_name=$1, phone=$2, email=$3, address_line1=$4, address_line2=$5, landmark=$6,
+         city=$7, state=$8, postal_code=$9, country=$10, address_type=$11, updated_at=NOW()
+     WHERE id=$12 AND user_id=$13 RETURNING *`,
+    [fullName, phone, email.trim().toLowerCase(), addressLine1, addressLine2 || null, landmark || null,
       location?.city || city.trim(), location?.state || state.trim(), postalCode, 'India', addressType, id, req.user.id]
   );
   res.json(fmtAddr(rows[0]));
@@ -218,6 +233,8 @@ function fmtOrder(o, items, addr) {
     paymentStatus: o.payment_status,
     fulfillmentHoldReason: o.fulfillment_hold_reason || null,
     refundedAmount: Number(o.refunded_amount || 0),
+    cancellation: o.cancellation_status ? { status: o.cancellation_status, reason: o.cancellation_reason || null,
+      cancelledAt: o.cancelled_at || null, refundStatus: o.cancellation_refund_status || 'not_applicable' } : null,
     paymentMethod: o.payment_method,
     subtotal: Number(o.subtotal),
     discountAmount: Number(o.discount_amount),
@@ -232,7 +249,7 @@ function fmtOrder(o, items, addr) {
     trackingStatus: o.shipment_tracking_status || null,
     pickupStatus: o.shipment_pickup_status || null,
     estimatedDelivery: o.shipment_estimated_delivery || null,
-    invoiceAvailable: Boolean(o.invoice_available),
+    invoiceAvailable: Boolean(o.invoice_available) && o.order_status !== 'cancelled',
     shippedAt: o.shipped_at || null,
     deliveredAt: o.delivered_at || null,
     createdAt: o.created_at,
@@ -258,6 +275,9 @@ async function enrichOrder(o) {
 
 exports.getOrders = asyncHandler(async (req, res) => {
   const { limit, offset } = require('../middleware/validation').pagination(req.query);
+  const requestedStatus = String(req.query.status || '').toLowerCase();
+  const statusFilter = { active: ['confirmed', 'processing', 'shipped', 'pickup_scheduled', 'awb_assigned'], cancelled: ['cancelled'], delivered: ['delivered'] }[requestedStatus];
+  if (requestedStatus && !statusFilter) return res.status(400).json({ message: 'Invalid order status filter.' });
   const { rows } = await pool.query(
     `SELECT o.*,
        s.awb_code AS shipment_awb_code,
@@ -267,13 +287,16 @@ exports.getOrders = asyncHandler(async (req, res) => {
        s.tracking_status AS shipment_tracking_status,
        s.pickup_status AS shipment_pickup_status,
        s.estimated_delivery AS shipment_estimated_delivery,
-       (s.shiprocket_order_id IS NOT NULL) AS invoice_available
+       (s.shiprocket_order_id IS NOT NULL) AS invoice_available,
+       c.status AS cancellation_status, c.reason AS cancellation_reason, c.cancelled_at, c.refund_status AS cancellation_refund_status
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
+     LEFT JOIN order_cancellations c ON c.order_id = o.id
      WHERE o.user_id = $1
        AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
          OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))
+       AND ($4::text[] IS NULL OR o.order_status = ANY($4))
      ORDER BY o.created_at DESC LIMIT $2 OFFSET $3`,
-    [req.user.id, limit, offset]
+    [req.user.id, limit, offset, statusFilter || null]
   );
   const orders = await Promise.all(rows.map(enrichOrder));
   res.json(orders);
@@ -289,8 +312,10 @@ exports.getOrder = asyncHandler(async (req, res) => {
        s.tracking_status AS shipment_tracking_status,
        s.pickup_status AS shipment_pickup_status,
        s.estimated_delivery AS shipment_estimated_delivery,
-       (s.shiprocket_order_id IS NOT NULL) AS invoice_available
+       (s.shiprocket_order_id IS NOT NULL) AS invoice_available,
+       c.status AS cancellation_status, c.reason AS cancellation_reason, c.cancelled_at, c.refund_status AS cancellation_refund_status
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
+     LEFT JOIN order_cancellations c ON c.order_id = o.id
      WHERE o.id = $1 AND o.user_id = $2
        AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
          OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))`,
@@ -313,11 +338,22 @@ exports.getTracking = asyncHandler(async (req, res) => {
   res.json(await shipping.tracking(req.params.orderId, req.user));
 });
 
+exports.getCancellationEligibility = asyncHandler(async (req, res) => {
+  res.json(await cancellations.getEligibility(req.user.id, req.params.orderId));
+});
+
+exports.cancelOrder = asyncHandler(async (req, res) => {
+  res.json(await cancellations.cancel(req.user.id, req.params.orderId, req.body?.reason));
+});
+
 // ── Returns ───────────────────────────────────────────────────────────────────
 
 exports.getReturns = asyncHandler(async (req, res) => {
   const { limit, offset } = require('../middleware/validation').pagination(req.query);
-  res.json(await returns.listCustomerReturns(req.user.id, pool, { limit, offset }));
+  const requestedStatus = String(req.query.status || '').toLowerCase();
+  const statusFilter = { open: ['requested', 'return_created', 'shiprocket_failed', 'pickup_scheduled', 'picked_up', 'in_transit', 'received', 'approved'], refund_initiated: ['refund_initiated'], refunded: ['refunded'], cancelled: ['cancelled', 'rejected'] }[requestedStatus];
+  if (requestedStatus && !statusFilter) return res.status(400).json({ message: 'Invalid return status filter.' });
+  res.json(await returns.listCustomerReturns(req.user.id, pool, { limit, offset, statuses: statusFilter || null }));
 });
 
 exports.createReturn = asyncHandler(async (req, res) => {

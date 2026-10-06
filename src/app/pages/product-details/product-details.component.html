@@ -285,7 +285,7 @@
       <figure class="mh-pd__viewer-frame" *ngFor="let image of product.images; let i = index"
         [attr.data-viewer-index]="i" [class.is-active]="i === activeImage">
         <img [src]="cachedMediaUrl(viewerImageUrl(i))" (error)="viewerImageFailed($event, i)"
-          (dblclick)="toggleViewerZoom(i)"
+          (dblclick)="viewerImageDoubleClick($event, i)"
           (pointerdown)="viewerImagePointerDown($event, i)"
           (pointerup)="viewerImagePointerUp($event, i)"
           [alt]="product.name + ' enlarged image ' + (i + 1)"

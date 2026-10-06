@@ -15,6 +15,10 @@
         <div class="mh-field"><label class="mh-label" for="addr-phone">Phone *</label>
           <input id="addr-phone" class="mh-input" [(ngModel)]="form.phone" name="phone" required type="tel" inputmode="numeric" maxlength="10" autocomplete="tel-national" (blur)="touched.add('phone')" [attr.aria-invalid]="!!visibleError('phone')" aria-describedby="addr-phone-error" />
           <p id="addr-phone-error" class="mh-field-error" *ngIf="visibleError('phone')">{{ visibleError('phone') }}</p></div>
+        <div class="mh-field"><label class="mh-label" for="addr-email">Email address *</label>
+          <input id="addr-email" class="mh-input" [(ngModel)]="form.email" name="email" required type="email" maxlength="254" autocomplete="email" (blur)="touched.add('email')" [attr.aria-invalid]="!!visibleError('email')" aria-describedby="addr-email-error" />
+          <p class="mh-field-hint">Used only for shipment tracking and delivery updates. We will not send marketing spam to this address.</p>
+          <p id="addr-email-error" class="mh-field-error" *ngIf="visibleError('email')">{{ visibleError('email') }}</p></div>
         <div class="mh-field mh-field--full"><label class="mh-label" for="addr-line1">Address line 1 *</label>
           <input id="addr-line1" class="mh-input" [(ngModel)]="form.addressLine1" name="l1" required maxlength="255" autocomplete="address-line1" (blur)="touched.add('addressLine1')" [attr.aria-invalid]="!!visibleError('addressLine1')" aria-describedby="addr-line1-error" />
           <p id="addr-line1-error" class="mh-field-error" *ngIf="visibleError('addressLine1')">{{ visibleError('addressLine1') }}</p></div>
@@ -25,17 +29,18 @@
           <input id="addr-landmark" class="mh-input" [(ngModel)]="form.landmark" name="lm" maxlength="255" (blur)="touched.add('landmark')" [attr.aria-invalid]="!!visibleError('landmark')" aria-describedby="addr-landmark-error" />
           <p id="addr-landmark-error" class="mh-field-error" *ngIf="visibleError('landmark')">{{ visibleError('landmark') }}</p></div>
         <div class="mh-field"><label class="mh-label" for="addr-state">State *</label>
-          <select id="addr-state" class="mh-input mh-select" [ngModel]="form.state" (ngModelChange)="stateChanged($event)" name="state" required autocomplete="address-level1" (blur)="touched.add('state')" [disabled]="locationsLoading || !!locationError" [attr.aria-invalid]="!!visibleError('state')" aria-describedby="addr-state-error">
+          <select id="addr-state" class="mh-input mh-select" [ngModel]="form.state" (ngModelChange)="stateChanged($event)" name="state" required autocomplete="address-level1" (blur)="touched.add('state')" [disabled]="locationsLoading || !!locationError || pincodeLocked" [attr.aria-invalid]="!!visibleError('state')" aria-describedby="addr-state-error">
             <option value="">Select State</option><option *ngFor="let state of stateOptions" [value]="state">{{ state }}</option>
           </select>
           <p id="addr-state-error" class="mh-field-error" *ngIf="visibleError('state')">{{ visibleError('state') }}</p></div>
         <div class="mh-field"><label class="mh-label" for="addr-city">City *</label>
-          <select id="addr-city" class="mh-input mh-select" [(ngModel)]="form.city" name="city" required autocomplete="address-level2" (blur)="touched.add('city')" [disabled]="!form.state || locationsLoading || !!locationError" [attr.aria-invalid]="!!visibleError('city')" aria-describedby="addr-city-error">
+          <select id="addr-city" class="mh-input mh-select" [(ngModel)]="form.city" name="city" required autocomplete="address-level2" (blur)="touched.add('city')" [disabled]="!form.state || locationsLoading || !!locationError || pincodeLocked" [attr.aria-invalid]="!!visibleError('city')" aria-describedby="addr-city-error">
             <option value="">{{ form.state ? 'Select City' : 'Select state first' }}</option><option *ngFor="let city of cityOptions" [value]="city">{{ city }}</option>
           </select>
           <p id="addr-city-error" class="mh-field-error" *ngIf="visibleError('city')">{{ visibleError('city') }}</p></div>
         <div class="mh-field"><label class="mh-label" for="addr-pin">PIN code *</label>
-          <input id="addr-pin" class="mh-input" [(ngModel)]="form.postalCode" name="pin" required inputmode="numeric" maxlength="6" autocomplete="postal-code" (blur)="touched.add('postalCode')" [attr.aria-invalid]="!!visibleError('postalCode')" aria-describedby="addr-pin-error" />
+          <input id="addr-pin" class="mh-input" [ngModel]="form.postalCode" (ngModelChange)="pincodeChanged($event)" name="pin" required inputmode="numeric" maxlength="6" autocomplete="postal-code" (blur)="touched.add('postalCode')" [attr.aria-invalid]="!!visibleError('postalCode')" aria-describedby="addr-pin-error" />
+          <p class="mh-field-hint" *ngIf="pincodeLoading">Checking PIN code…</p>
           <p id="addr-pin-error" class="mh-field-error" *ngIf="visibleError('postalCode')">{{ visibleError('postalCode') }}</p></div>
         <div class="mh-field"><label class="mh-label">Type</label>
           <select class="mh-input mh-select" [(ngModel)]="form.addressType" name="type">

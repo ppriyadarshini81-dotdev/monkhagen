@@ -3,8 +3,8 @@ import { Injectable } from '@angular/core';
 import { Observable, shareReplay } from 'rxjs';
 import { User } from '../models/user.model';
 import {
-  Address, AddressPayload, IndiaLocations, Order, TrackingInfo,
-  ReturnRequest, ReturnPayload, ReturnEligibility, CreditTransaction, CodRefundDestination, CodRefundDestinationPayload
+  Address, AddressPayload, IndiaLocations, PincodeLocation, Order, TrackingInfo,
+  ReturnRequest, ReturnPayload, ReturnEligibility, CreditTransaction, CodRefundDestination, CodRefundDestinationPayload, CancellationEligibility
 } from '../models/account.model';
 
 @Injectable({ providedIn: 'root' })
@@ -54,9 +54,15 @@ export class AccountService {
     );
   }
 
+  lookupPincode(postalCode: string): Observable<PincodeLocation> {
+    return this.http.get<PincodeLocation>(`${this.api}/addresses/pincode/${encodeURIComponent(postalCode)}`);
+  }
+
   // ── Orders ─────────────────────────────────────────────────
-  getOrders(): Observable<Order[]> {
-    return this.http.get<Order[]>(`${this.api}/orders`);
+  getOrders(limit = 10, offset = 0, status = ''): Observable<Order[]> {
+    const params: Record<string, string | number> = { limit, offset };
+    if (status) params['status'] = status;
+    return this.http.get<Order[]>(`${this.api}/orders`, { params });
   }
 
   getOrder(orderId: string): Observable<Order> {
@@ -65,6 +71,12 @@ export class AccountService {
 
   getTracking(orderId: string): Observable<TrackingInfo> {
     return this.http.get<TrackingInfo>(`${this.api}/orders/${orderId}/tracking`);
+  }
+  getCancellationEligibility(orderId: string): Observable<CancellationEligibility> {
+    return this.http.get<CancellationEligibility>(`${this.api}/orders/${orderId}/cancellation-eligibility`);
+  }
+  cancelOrder(orderId: string, reason?: string): Observable<CancellationEligibility['cancellation']> {
+    return this.http.post<CancellationEligibility['cancellation']>(`${this.api}/orders/${orderId}/cancel`, reason ? { reason } : {});
   }
 
   getInvoice(orderId: string): Observable<HttpResponse<Blob>> {
@@ -75,8 +87,10 @@ export class AccountService {
   }
 
   // ── Returns ────────────────────────────────────────────────
-  getReturns(): Observable<ReturnRequest[]> {
-    return this.http.get<ReturnRequest[]>(`${this.api}/returns`);
+  getReturns(limit = 10, offset = 0, status = ''): Observable<ReturnRequest[]> {
+    const params: Record<string, string | number> = { limit, offset };
+    if (status) params['status'] = status;
+    return this.http.get<ReturnRequest[]>(`${this.api}/returns`, { params });
   }
 
   createReturn(payload: ReturnPayload): Observable<ReturnRequest> {

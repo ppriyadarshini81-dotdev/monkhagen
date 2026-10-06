@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AccountService } from '../../../services/account.service';
-import { Order, ReturnEligibility, TrackingInfo } from '../../../models/account.model';
+import { CancellationEligibility, Order, ReturnEligibility, TrackingInfo } from '../../../models/account.model';
 import { saveInvoice } from '../../../utils/invoice-download';
 import { FEATURE_FLAGS } from '../../../config/feature-flags';
 
@@ -18,10 +18,15 @@ export class AccountOrdersComponent implements OnInit {
   @ViewChild('detailsDialog') detailsDialog?: ElementRef<HTMLDialogElement>;
   @ViewChild('trackingDialog') trackingDialog?: ElementRef<HTMLDialogElement>;
   @ViewChild('returnDialog') returnDialog?: ElementRef<HTMLDialogElement>;
+  @ViewChild('cancelDialog') cancelDialog?: ElementRef<HTMLDialogElement>;
 
   orders: Order[] = [];
   loading = true;
   loadError = '';
+  page = 0;
+  readonly pageSize = 10;
+  hasNextPage = false;
+  statusFilter = '';
   selectedOrder: Order | null = null;
   trackingOrder: Order | null = null;
   tracking: TrackingInfo | null = null;
@@ -38,13 +43,23 @@ export class AccountOrdersComponent implements OnInit {
   returnIdempotencyKey = '';
   returnReasons: ReturnEligibility['reasons'] = [];
   returnRows: Array<{ orderItemId: string; productName: string; selected: boolean; quantity: number; max: number; reason: string; comments: string }> = [];
+  cancellationEligibility: CancellationEligibility | null = null;
+  cancellationLoading = false;
+  cancellationOrder: Order | null = null;
+  cancellationReason = '';
+  cancellationSubmitting = false;
+  cancellationError = '';
 
   constructor(private account: AccountService) {}
 
   ngOnInit(): void {
-    this.account.getOrders().subscribe({
+    this.loadOrders();
+  }
+  loadOrders(page = this.page): void {
+    this.loading = true; this.loadError = '';
+    this.account.getOrders(this.pageSize, page * this.pageSize, this.statusFilter).subscribe({
       next: (orders) => {
-        this.orders = orders;
+        this.orders = orders; this.page = page; this.hasNextPage = orders.length === this.pageSize;
         this.loading = false;
       },
       error: () => {
@@ -53,6 +68,8 @@ export class AccountOrdersComponent implements OnInit {
       }
     });
   }
+  changePage(direction: number): void { const next = this.page + direction; if (next >= 0 && (direction < 0 || this.hasNextPage)) this.loadOrders(next); }
+  applyStatusFilter(): void { this.loadOrders(0); }
 
   openDetails(order: Order): void {
     this.selectedOrder = order;
@@ -66,7 +83,33 @@ export class AccountOrdersComponent implements OnInit {
         this.returnEligibilityLoading = false;
       }
     });
+    this.cancellationEligibility = null;
+    this.cancellationLoading = true;
+    this.account.getCancellationEligibility(order.id).subscribe({ next: eligibility => { this.cancellationEligibility = eligibility; this.cancellationLoading = false; }, error: () => { this.cancellationLoading = false; } });
     queueMicrotask(() => this.detailsDialog?.nativeElement.showModal());
+  }
+
+  openCancellation(order: Order): void {
+    if (this.cancellationLoading) return;
+    this.cancellationOrder = order; this.cancellationReason = ''; this.cancellationError = ''; this.cancellationSubmitting = false;
+    this.trackingDialog?.nativeElement.close();
+    queueMicrotask(() => this.cancelDialog?.nativeElement.showModal());
+  }
+  closeCancellation(): void { this.cancelDialog?.nativeElement.close(); }
+  submitCancellation(): void {
+    if (!this.cancellationOrder || this.cancellationSubmitting) return;
+    this.cancellationSubmitting = true; this.cancellationError = '';
+    this.account.cancelOrder(this.cancellationOrder.id, this.cancellationReason.trim() || undefined).subscribe({
+      next: cancellation => { const order = this.orders.find(item => item.id === this.cancellationOrder?.id); if (order) {
+        order.status = 'cancelled';
+        order.cancellation = { status: 'cancelled', reason: this.cancellationReason.trim() || null,
+          cancelledAt: new Date().toISOString(), refundStatus: cancellation?.refundStatus || 'not_applicable' };
+      }
+        this.returnMessage = cancellation?.refundStatus === 'processing' ? 'Order cancelled. Your refund has been initiated.' : 'Order cancelled.';
+        this.loadOrders(0);
+        this.cancellationSubmitting = false; this.closeCancellation(); this.closeDetails(); },
+      error: error => { this.cancellationSubmitting = false; this.cancellationError = error?.error?.message || 'We could not cancel this order. Please try again.'; }
+    });
   }
 
   openReturn(order: Order): void {
@@ -138,10 +181,20 @@ export class AccountOrdersComponent implements OnInit {
     this.tracking = null;
     this.trackingError = '';
     this.trackingLoading = true;
+    this.cancellationEligibility = null;
+    this.cancellationLoading = true;
+    this.account.getCancellationEligibility(order.id).subscribe({
+      next: eligibility => { this.cancellationEligibility = eligibility; this.cancellationLoading = false; },
+      error: () => { this.cancellationLoading = false; }
+    });
     queueMicrotask(() => {
       const dialog = this.trackingDialog?.nativeElement;
       if (dialog && !dialog.open) dialog.showModal();
     });
+    if (this.isCancelled(order)) {
+      this.trackingLoading = false;
+      return;
+    }
     this.account.getTracking(order.id).subscribe({
       next: (tracking) => {
         this.tracking = tracking;
@@ -183,7 +236,9 @@ export class AccountOrdersComponent implements OnInit {
   clearDetails(): void {
     this.selectedOrder = null;
     this.returnEligibility = null;
+    this.cancellationEligibility = null;
   }
+  clearCancellation(): void { this.cancellationOrder = null; this.cancellationReason = ''; this.cancellationError = ''; this.cancellationSubmitting = false; }
 
   clearReturn(): void {
     this.returnOrder = null;
@@ -209,6 +264,8 @@ export class AccountOrdersComponent implements OnInit {
     return 1;
   }
 
+  isCancelled(order: Order): boolean { return order.status === 'cancelled'; }
+
   trackingStage(order: Order, tracking: TrackingInfo | null): number {
     if (!tracking) return this.orderStage(order);
     const status = `${tracking.shippingStatus || ''} ${tracking.trackingStatus || ''}`.toLowerCase();
@@ -219,6 +276,7 @@ export class AccountOrdersComponent implements OnInit {
   }
 
   deliveryLabel(order: Order): string {
+    if (this.isCancelled(order)) return 'Order cancelled';
     const stage = this.orderStage(order);
     if (stage === 4) return 'Delivered';
     if (stage === 3) return 'On the way';

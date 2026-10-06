@@ -72,7 +72,7 @@ const User = {
     );
     return this.findById(rows[0].id);
   },
-  async linkVerifiedGoogleAccount(sourceId, { uid, email, name, picture }) {
+  async linkVerifiedGoogleAccount(sourceId, { uid = null, email, name = '', picture = '' }) {
     const client = await pool.connect();
     let linkedId;
     try {
@@ -99,12 +99,13 @@ const User = {
       const target = targetResult.rows[0] || null;
 
       if (!target || target.id === source.id) {
-        if (source.firebase_uid && source.firebase_uid !== uid) {
+        if (uid && source.firebase_uid && source.firebase_uid !== uid) {
           throw Object.assign(new Error('This account is linked to a different Google identity.'), { status: 409 });
         }
+        const identityAssignment = uid ? 'firebase_uid = $2' : 'firebase_uid = firebase_uid';
         await client.query(
           `UPDATE users
-           SET email = $1, firebase_uid = $2,
+           SET email = $1, ${identityAssignment},
                profile_image = COALESCE(NULLIF($3, ''), profile_image),
                name = CASE
                  WHEN name IS NULL OR BTRIM(name) = '' OR name IN ('Customer', 'User')
@@ -120,7 +121,7 @@ const User = {
         if (!target.is_active || target.role_name !== 'customer') {
           throw Object.assign(new Error('This email cannot be linked to a customer account.'), { status: 403 });
         }
-        if (target.firebase_uid && target.firebase_uid !== uid) {
+        if (uid && target.firebase_uid && target.firebase_uid !== uid) {
           throw Object.assign(new Error('This email is linked to a different Google identity.'), { status: 409 });
         }
         if (target.email && target.email.trim().toLowerCase() !== email.toLowerCase()) {
@@ -209,7 +210,7 @@ const User = {
         await client.query(
           `UPDATE users
            SET phone = $1, phone_verified = TRUE, email = $2, email_verified = TRUE,
-               firebase_uid = $3,
+               firebase_uid = COALESCE($3, firebase_uid),
                profile_image = COALESCE(NULLIF($4, ''), profile_image),
                name = CASE
                  WHEN name IS NULL OR BTRIM(name) = '' OR name IN ('Customer', 'User')
@@ -231,6 +232,9 @@ const User = {
     } finally {
       client.release();
     }
+  },
+  async linkVerifiedEmailAccount(sourceId, email) {
+    return this.linkVerifiedGoogleAccount(sourceId, { email, name: '', picture: '', uid: null });
   },
   async updateLastLogin(id) {
     await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [id]);

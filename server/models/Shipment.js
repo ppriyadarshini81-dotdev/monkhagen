@@ -60,7 +60,7 @@ const Shipment = {
 
   async invoiceSource(orderId) {
     const { rows } = await pool.query(
-      `SELECT o.id, o.order_number, o.user_id, s.shiprocket_order_id
+      `SELECT o.id, o.order_number, o.user_id, o.order_status, s.shiprocket_order_id
        FROM orders o
        LEFT JOIN shipments s ON s.order_id = o.id
        WHERE o.id = $1`,

@@ -17,6 +17,15 @@ function encryptionKey(environment = process.env) {
   return key;
 }
 
+function canonicalBase64Url(value, expectedLength) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value)) throw new Error('Invalid encoding.');
+  const decoded = Buffer.from(value, 'base64url');
+  if (!decoded.length || decoded.toString('base64url') !== value || (expectedLength && decoded.length !== expectedLength)) {
+    throw new Error('Invalid encoding.');
+  }
+  return decoded;
+}
+
 function encrypt(value, environment = process.env) {
   const key = encryptionKey(environment);
   const iv = crypto.randomBytes(12);
@@ -34,10 +43,13 @@ function decrypt(payload, environment = process.env) {
     throw Object.assign(new Error('Encrypted refund details could not be read.'), { status: 409, code: 'COD_REFUND_DECRYPTION_FAILED' });
   }
   try {
-    const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey(environment), Buffer.from(ivText, 'base64url'));
+    const iv = canonicalBase64Url(ivText, 12);
+    const tag = canonicalBase64Url(tagText, 16);
+    const ciphertext = canonicalBase64Url(ciphertextText);
+    const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey(environment), iv);
     decipher.setAAD(AAD);
-    decipher.setAuthTag(Buffer.from(tagText, 'base64url'));
-    return Buffer.concat([decipher.update(Buffer.from(ciphertextText, 'base64url')), decipher.final()]).toString('utf8');
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
   } catch (error) {
     if (error.code === 'COD_REFUND_ENCRYPTION_UNAVAILABLE') throw error;
     throw Object.assign(new Error('Encrypted refund details could not be read.'), { status: 409, code: 'COD_REFUND_DECRYPTION_FAILED' });

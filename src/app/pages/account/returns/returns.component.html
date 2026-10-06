@@ -3,9 +3,12 @@
   <p class="mh-text-dim" style="font-size:13px;margin:8px 0 20px">
     To request a return on an eligible delivered order, open <strong>My Orders</strong> and choose Return item within 7 days of delivery.
   </p>
+  <label class="mh-account-filter">Filter returns
+    <select [(ngModel)]="statusFilter" (change)="applyStatusFilter()"><option value="">All returns</option><option value="open">Open</option><option value="refund_initiated">Refund processing</option><option value="refunded">Refund completed</option><option value="cancelled">Cancelled</option></select>
+  </label>
 
   <div *ngIf="loading" class="mh-empty">Loading...</div>
-  <div *ngIf="!loading && returns.length === 0" class="mh-empty">No return requests yet.</div>
+  <div *ngIf="!loading && returns.length === 0" class="mh-empty">{{ statusFilter ? 'No returns match this filter.' : 'No return requests yet.' }}</div>
 
   <div class="mh-returns" *ngIf="!loading && returns.length > 0">
     <div class="mh-return-card mh-card" *ngFor="let r of returns">
@@ -60,5 +63,6 @@
         </form>
       </section>
     </div>
+    <nav class="mh-pagination" *ngIf="page > 0 || hasNextPage" aria-label="Returns pages"><button type="button" [disabled]="page === 0" (click)="changePage(-1)">← Previous</button><span>Page {{ page + 1 }}</span><button type="button" [disabled]="!hasNextPage" (click)="changePage(1)">Next →</button></nav>
   </div>
 </section>

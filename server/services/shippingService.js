@@ -130,9 +130,10 @@ function createShippingService({ repository = Shipment, api = shiprocket, notifi
         const details = await repository.details(client, orderId);
         payload = buildOrderPayload(order, details.address, details.items, parcel);
       } catch (error) {
+        const configurationError = ['SHIPPING_PACKAGE_NOT_CONFIGURED'].includes(error.code);
         await repository.patch(client, orderId, {
-          shipping_status: error.code === 'SHIPPING_PACKAGE_NOT_CONFIGURED' ? 'needs_configuration' : 'validation_failed',
-          last_error_code: error.code === 'SHIPPING_PACKAGE_NOT_CONFIGURED' ? error.code : 'SHIPPING_VALIDATION',
+          shipping_status: configurationError ? 'needs_configuration' : 'validation_failed',
+          last_error_code: configurationError ? error.code : 'SHIPPING_VALIDATION',
           next_attempt_at: new Date(Date.now() + 5 * 60000)
         });
         if (!error.code) throw shippingError(400, 'SHIPPING_VALIDATION', 'Review the saved order and package data before shipping.');
@@ -269,6 +270,9 @@ function createShippingService({ repository = Shipment, api = shiprocket, notifi
     const source = await repository.invoiceSource(orderId);
     if (!source || (source.user_id !== user.id && !['admin', 'super_admin'].includes(user.role))) {
       throw shippingError(404, 'ORDER_NOT_FOUND', 'Order not found.');
+    }
+    if (source.order_status === 'cancelled') {
+      throw shippingError(409, 'INVOICE_NOT_AVAILABLE', 'Invoice is unavailable for a cancelled order.');
     }
     let shiprocketOrderId;
     try { shiprocketOrderId = providerId(source.shiprocket_order_id, 'shiprocket_order_id'); }

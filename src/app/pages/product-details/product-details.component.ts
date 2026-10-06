@@ -74,6 +74,7 @@ export class ProductDetailsComponent implements OnInit {
   private viewerPointerStart: { x: number; y: number; index: number } | null = null;
   private lastViewerTapAt = 0;
   private lastViewerTapIndex = -1;
+  private suppressSyntheticDoubleClickUntil = 0;
 
   openSizeChart(): void {
     if (this.pageContent?.sizeChartImageUrl) this.sizeChartDialog?.nativeElement.showModal();
@@ -164,6 +165,17 @@ export class ProductDetailsComponent implements OnInit {
     this.imageZoom = this.imageZoom > 1 ? 1 : 2;
   }
 
+  viewerImageDoubleClick(event: MouseEvent, index: number): void {
+    // Touch browsers commonly synthesize a dblclick after the second pointerup.
+    // The pointer handler has already toggled zoom, so ignore only that echo.
+    if (performance.now() < this.suppressSyntheticDoubleClickUntil) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    this.toggleViewerZoom(index);
+  }
+
   viewerImagePointerDown(event: PointerEvent, index: number): void {
     if (event.pointerType !== 'touch') return;
     this.viewerPointerStart = { x: event.clientX, y: event.clientY, index };
@@ -185,6 +197,7 @@ export class ProductDetailsComponent implements OnInit {
       event.stopPropagation();
       this.lastViewerTapAt = 0;
       this.lastViewerTapIndex = -1;
+      this.suppressSyntheticDoubleClickUntil = performance.now() + 500;
       this.toggleViewerZoom(index);
       return;
     }

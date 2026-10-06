@@ -2,6 +2,7 @@ export interface Address {
   id: string;
   fullName: string;
   phone: string;
+  email: string;
   addressLine1: string;
   addressLine2: string | null;
   landmark: string | null;
@@ -18,6 +19,7 @@ export interface Address {
 export interface AddressPayload {
   fullName: string;
   phone: string;
+  email: string;
   addressLine1: string;
   addressLine2?: string;
   landmark?: string;
@@ -76,6 +78,14 @@ export interface Order {
   deliveredAt: string | null;
   createdAt: string;
   updatedAt: string;
+  cancellation?: { status: string; reason: string | null; cancelledAt: string | null; refundStatus: string } | null;
+}
+export interface CancellationEligibility {
+  orderId: string;
+  eligible: boolean;
+  reason: string | null;
+  message: string | null;
+  cancellation: { status: string; reason: string | null; cancelledAt: string | null; refundStatus: string; refundId: string | null; shiprocketStatus: string } | null;
 }
 
 export interface TrackingInfo {
@@ -101,6 +111,12 @@ export interface IndiaLocations {
   country: 'India';
   attribution: string;
   states: Array<{ name: string; cities: string[] }>;
+}
+
+export interface PincodeLocation {
+  postalCode: string;
+  state: string;
+  city: string;
 }
 
 export interface ReturnItem {

@@ -420,6 +420,19 @@ async function recordProcessedRefund(client, refund, payment, eventId = null) {
        WHERE id = $2`, [refund.id, returnRequest.id]
     );
   }
+  // Cancellations are not returns.  Keep their refund lifecycle in the
+  // cancellation record while the signed Razorpay webhook remains the source
+  // of truth for completion.
+  const notedCancellationId = refund.notes?.order_cancellation_id;
+  const cancellation = await client.query(
+    `SELECT id FROM order_cancellations WHERE razorpay_refund_id = $1
+       OR ($2::uuid IS NOT NULL AND id = $2) FOR UPDATE`,
+    [refund.id, typeof notedCancellationId === 'string' && UUID_RE.test(notedCancellationId) ? notedCancellationId : null]
+  );
+  if (cancellation.rows[0]) {
+    await client.query(`UPDATE order_cancellations SET razorpay_refund_id = $1, refund_status = 'refunded',
+      updated_at = NOW() WHERE id = $2`, [refund.id, cancellation.rows[0].id]);
+  }
   await ledger.refund(client, {
     orderId: order.id, returnId: returnRequest?.id || null, refundId: refund.id,
     amount: fromPaise(refund.amount), status: 'SUCCESS', eventId,

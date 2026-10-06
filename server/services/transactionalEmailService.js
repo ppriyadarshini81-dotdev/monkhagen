@@ -8,7 +8,7 @@ const CUSTOMER_EVENTS = new Set([
   'ORDER_CONFIRMED_CUSTOMER', 'ORDER_SHIPPED_CUSTOMER', 'ORDER_OUT_FOR_DELIVERY_CUSTOMER', 'ORDER_DELIVERED_CUSTOMER',
   'RETURN_REQUESTED_CUSTOMER', 'RETURN_PICKUP_SCHEDULED_CUSTOMER', 'RETURN_PICKED_UP_CUSTOMER',
   'RETURN_RECEIVED_CUSTOMER', 'RETURN_APPROVED_CUSTOMER', 'REFUND_INITIATED_CUSTOMER', 'REFUND_COMPLETED_CUSTOMER',
-  'COD_REFUND_PENDING_CUSTOMER'
+  'COD_REFUND_PENDING_CUSTOMER', 'ORDER_CANCELLED_CUSTOMER'
 ]);
 
 function normalizedEmail(value) {
@@ -28,12 +28,17 @@ function safeSubject(value) { return String(value || '').replace(/[\r\n]+/g, ' '
 
 function createTransactionalEmailService({ database = pool, mailer = getTransporter, environment = process.env } = {}) {
   async function orderRecipient(orderId) {
-    const { rows } = await database.query('SELECT u.email FROM orders o JOIN users u ON u.id = o.user_id WHERE o.id = $1', [orderId]);
+    const { rows } = await database.query(`SELECT COALESCE(NULLIF(oa.email, ''), u.email) AS email
+      FROM orders o JOIN users u ON u.id = o.user_id
+      LEFT JOIN order_addresses oa ON oa.order_id = o.id WHERE o.id = $1`, [orderId]);
     return normalizedEmail(rows[0]?.email);
   }
 
   async function returnRecipient(returnId) {
-    const { rows } = await database.query('SELECT u.email FROM return_requests rr JOIN users u ON u.id = rr.user_id WHERE rr.id = $1', [returnId]);
+    const { rows } = await database.query(`SELECT COALESCE(NULLIF(oa.email, ''), u.email) AS email
+      FROM return_requests rr JOIN users u ON u.id = rr.user_id
+      JOIN orders o ON o.id = rr.order_id
+      LEFT JOIN order_addresses oa ON oa.order_id = o.id WHERE rr.id = $1`, [returnId]);
     return normalizedEmail(rows[0]?.email);
   }
 
@@ -77,13 +82,15 @@ function createTransactionalEmailService({ database = pool, mailer = getTranspor
 
   async function loadOrder(orderId) {
     const { rows } = await database.query(
-      `SELECT o.*, u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone,
-        oa.full_name, oa.phone, oa.address_line1, oa.address_line2, oa.landmark, oa.city, oa.state, oa.postal_code, oa.country,
+      `SELECT o.*, u.name AS customer_name, COALESCE(NULLIF(oa.email, ''), u.email) AS customer_email, u.phone AS customer_phone,
+        oa.full_name, oa.phone, oa.email AS delivery_email, oa.address_line1, oa.address_line2, oa.landmark, oa.city, oa.state, oa.postal_code, oa.country,
         s.shiprocket_order_id, s.awb_code, s.courier_name, s.shipping_status, s.tracking_status,
-        s.tracking_url, s.estimated_delivery
+        s.tracking_url, s.estimated_delivery, c.reason AS cancellation_reason,
+        c.cancelled_at, c.refund_status AS cancellation_refund_status, c.razorpay_refund_id AS cancellation_refund_id
        FROM orders o JOIN users u ON u.id = o.user_id
        LEFT JOIN order_addresses oa ON oa.order_id = o.id
-       LEFT JOIN shipments s ON s.order_id = o.id WHERE o.id = $1`, [orderId]
+       LEFT JOIN shipments s ON s.order_id = o.id
+       LEFT JOIN order_cancellations c ON c.order_id = o.id WHERE o.id = $1`, [orderId]
     );
     if (!rows[0]) return null;
     const order = rows[0];
@@ -107,8 +114,8 @@ function createTransactionalEmailService({ database = pool, mailer = getTranspor
       `SELECT rr.*, o.order_number, o.total_amount AS order_total, o.payment_method,
         d.method AS refund_destination_method, d.masked_destination AS refund_destination_masked,
         d.transaction_reference AS refund_transaction_reference,
-        u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone,
-        oa.full_name, oa.phone, oa.address_line1, oa.address_line2, oa.landmark, oa.city, oa.state, oa.postal_code, oa.country
+        u.name AS customer_name, COALESCE(NULLIF(oa.email, ''), u.email) AS customer_email, u.phone AS customer_phone,
+        oa.full_name, oa.phone, oa.email AS delivery_email, oa.address_line1, oa.address_line2, oa.landmark, oa.city, oa.state, oa.postal_code, oa.country
        FROM return_requests rr JOIN orders o ON o.id = rr.order_id JOIN users u ON u.id = rr.user_id
        LEFT JOIN cod_refund_destinations d ON d.return_id = rr.id
        LEFT JOIN order_addresses oa ON oa.order_id = o.id WHERE rr.id = $1`, [returnId]
@@ -223,6 +230,7 @@ function createTransactionalEmailService({ database = pool, mailer = getTranspor
     orderShipped: orderId => notify(() => queueOrder(orderId, ['ORDER_SHIPPED_CUSTOMER'])),
     orderOutForDelivery: orderId => notify(() => queueOrder(orderId, ['ORDER_OUT_FOR_DELIVERY_CUSTOMER'])),
     orderDelivered: orderId => notify(() => queueOrder(orderId, ['ORDER_DELIVERED_CUSTOMER'])),
+    orderCancelled: orderId => notify(() => queueOrder(orderId, ['ORDER_CANCELLED_CUSTOMER'])),
     returnRequested: returnId => notify(() => queueReturn(returnId, ['RETURN_REQUESTED_CUSTOMER','RETURN_REQUESTED_ADMIN'])),
     returnPickupScheduled: returnId => notify(() => queueReturn(returnId, ['RETURN_PICKUP_SCHEDULED_CUSTOMER'])),
     returnPickedUp: returnId => notify(() => queueReturn(returnId, ['RETURN_PICKED_UP_CUSTOMER'])),

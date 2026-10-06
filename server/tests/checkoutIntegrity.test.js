@@ -54,7 +54,7 @@ function setup({ stock = 3, quantity = 1, priorOrders = [], returnRequest = null
       if (sql.startsWith('SELECT id FROM carts')) {
         customer = params[0]; return { rows: state.converted.has(customer) ? [] : [{ id: `cart:${customer}` }] };
       }
-      if (sql.startsWith('SELECT * FROM customer_addresses')) return { rows: [{ full_name: 'Test Customer', phone: '9876543210',
+      if (sql.startsWith('SELECT * FROM customer_addresses')) return { rows: [{ full_name: 'Test Customer', phone: '9876543210', email: 'buyer@example.test',
         address_line1: '10 Test Road', city: 'Pune', state: 'Maharashtra', postal_code: '411001', country: 'India' }] };
       if (sql.startsWith('SELECT ci.product_id')) return { rows: [{ product_id: PRODUCT, variant_id: VARIANT,
         product_name: 'Test product', quantity: state.quantity, product_active: true, variant_active: true,

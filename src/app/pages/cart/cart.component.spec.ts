@@ -12,9 +12,13 @@ describe('Cart address locations', () => {
   ] };
 
   beforeEach(() => {
-    account = jasmine.createSpyObj<AccountService>('AccountService', ['getAddressLocations', 'addAddress']);
+    account = jasmine.createSpyObj<AccountService>('AccountService', ['getAddressLocations', 'lookupPincode', 'addAddress', 'updateAddress']);
     account.getAddressLocations.and.returnValue(of(locations));
-    account.addAddress.and.returnValue(of({ id: 'address-1', fullName: 'Test Customer', phone: '9876543210',
+    account.lookupPincode.and.returnValue(of({ postalCode: '122001', state: 'Haryana', city: 'Gurugram' }));
+    account.addAddress.and.returnValue(of({ id: 'address-1', fullName: 'Test Customer', phone: '9876543210', email: 'test@example.com',
+      addressLine1: '12 Test Street', city: 'Gurugram', state: 'Haryana', postalCode: '122001',
+      country: 'India', addressType: 'Home', isDefault: false } as Address));
+    account.updateAddress.and.returnValue(of({ id: 'address-1', fullName: 'Test Customer', phone: '9876543210', email: 'test@example.com',
       addressLine1: '12 Test Street', city: 'Gurugram', state: 'Haryana', postalCode: '122001',
       country: 'India', addressType: 'Home', isDefault: false } as Address));
     component = new CartComponent(
@@ -40,9 +44,16 @@ describe('Cart address locations', () => {
     expect(component.cityOptions).toEqual(['Amritsar', 'Ludhiana']);
   });
 
+  it('allows State and City to be selected before a PIN is entered', () => {
+    expect(component.pincodeLocked).toBeFalse();
+    component.stateChanged('Haryana');
+    expect(component.shipping.state).toBe('Haryana');
+    expect(component.cityOptions).toContain('Gurugram');
+  });
+
   it('rejects a mismatched city and state before calling the address API', () => {
     component.shipping = { name: 'Test Customer', address: '12 Test Street', state: 'Haryana',
-      city: 'Amritsar', zip: '122001', phone: '9876543210' };
+      addressLine2: '', landmark: '', city: 'Amritsar', zip: '122001', phone: '9876543210', email: 'test@example.com' };
     component.continueCheckout();
     expect(component.addressFieldError('city')).toContain('selected state');
     expect(account.addAddress).not.toHaveBeenCalled();
@@ -50,12 +61,33 @@ describe('Cart address locations', () => {
 
   it('saves canonical city and state strings and continues checkout', () => {
     component.shipping = { name: 'Test Customer', address: '12 Test Street', state: 'haryana',
-      city: 'gurugram', zip: '122001', phone: '9876543210' };
+      addressLine2: '', landmark: '', city: 'gurugram', zip: '122001', phone: '9876543210', email: 'test@example.com' };
+    component.pincodeChanged('122001');
     component.continueCheckout();
     expect(account.addAddress).toHaveBeenCalledWith(jasmine.objectContaining({
       state: 'Haryana', city: 'Gurugram', country: 'India'
     }));
     expect(component.checkoutStep).toBe('payment');
     expect(component.selectedAddressId).toBe('address-1');
+  });
+
+  it('does not continue checkout until a six-digit PIN has been verified', () => {
+    component.shipping = { name: 'Test Customer', address: '12 Test Street', addressLine2: '', landmark: '', state: 'Haryana',
+      city: 'Gurugram', zip: '122001', phone: '9876543210', email: 'test@example.com' };
+    component.continueCheckout();
+    expect(account.addAddress).not.toHaveBeenCalled();
+    expect(component.pincodeError).toContain('valid Indian PIN');
+  });
+
+  it('edits a saved address in checkout instead of creating a duplicate', () => {
+    const address = { id: 'address-1', fullName: 'Test Customer', phone: '9876543210', email: 'test@example.com',
+      addressLine1: '12 Test Street', addressLine2: null, landmark: null, city: 'Gurugram', state: 'Haryana', postalCode: '122001',
+      country: 'India', addressType: 'Home', isDefault: false } as Address;
+    component.addresses = [address];
+    component.editAddress(address);
+    expect(component.editingAddressId).toBe(address.id);
+    component.continueCheckout();
+    expect(account.updateAddress).toHaveBeenCalledWith(address.id, jasmine.objectContaining({ postalCode: '122001' }));
+    expect(account.addAddress).not.toHaveBeenCalled();
   });
 });

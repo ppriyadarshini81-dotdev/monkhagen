@@ -10,6 +10,9 @@ async function addressValidationError(address, { validateLocation = false, legac
     }
   }
   if (typeof address.phone !== 'string' || !/^[6-9]\d{9}$/.test(address.phone.trim())) return 'Enter a valid 10-digit Indian mobile number.';
+  if (typeof address.email !== 'string' || !/^[^\s@\r\n]+@[^\s@\r\n]+\.[^\s@\r\n]+$/.test(address.email.trim()) || address.email.trim().length > 254) {
+    return 'Enter a valid email address for shipment tracking.';
+  }
   if (typeof address.postalCode !== 'string' || !/^[1-9]\d{5}$/.test(address.postalCode.trim())) return 'Enter a valid 6-digit Indian PIN code.';
   if (address.country && !['india', 'in'].includes(String(address.country).trim().toLowerCase())) return 'Delivery is currently available within India only.';
   for (const [key, max] of [['addressLine2', 255], ['landmark', 255]]) {
