@@ -47,6 +47,15 @@ export class AccountOrdersComponent implements OnInit {
   cancellationLoading = false;
   cancellationOrder: Order | null = null;
   cancellationReason = '';
+  cancellationNotes = '';
+  readonly cancellationReasons = [
+    'Ordered by mistake',
+    'Changed my mind',
+    'Found a better price',
+    'Delivery is taking too long',
+    'Need to change my address or items',
+    'Other'
+  ];
   cancellationSubmitting = false;
   cancellationError = '';
 
@@ -91,18 +100,24 @@ export class AccountOrdersComponent implements OnInit {
 
   openCancellation(order: Order): void {
     if (this.cancellationLoading) return;
-    this.cancellationOrder = order; this.cancellationReason = ''; this.cancellationError = ''; this.cancellationSubmitting = false;
+    this.cancellationOrder = order; this.cancellationReason = ''; this.cancellationNotes = ''; this.cancellationError = ''; this.cancellationSubmitting = false;
     this.trackingDialog?.nativeElement.close();
     queueMicrotask(() => this.cancelDialog?.nativeElement.showModal());
   }
   closeCancellation(): void { this.cancelDialog?.nativeElement.close(); }
   submitCancellation(): void {
     if (!this.cancellationOrder || this.cancellationSubmitting) return;
-    this.cancellationSubmitting = true; this.cancellationError = '';
-    this.account.cancelOrder(this.cancellationOrder.id, this.cancellationReason.trim() || undefined).subscribe({
+    const reason = this.cancellationReason.trim();
+    const notes = this.cancellationNotes.trim();
+    this.cancellationError = '';
+    if (!reason) { this.cancellationError = 'Select a cancellation reason.'; return; }
+    if (reason === 'Other' && !notes) { this.cancellationError = 'Tell us the reason for cancelling this order.'; return; }
+    const savedReason = notes ? `${reason}: ${notes}` : reason;
+    this.cancellationSubmitting = true;
+    this.account.cancelOrder(this.cancellationOrder.id, savedReason).subscribe({
       next: cancellation => { const order = this.orders.find(item => item.id === this.cancellationOrder?.id); if (order) {
         order.status = 'cancelled';
-        order.cancellation = { status: 'cancelled', reason: this.cancellationReason.trim() || null,
+        order.cancellation = { status: 'cancelled', reason: savedReason,
           cancelledAt: new Date().toISOString(), refundStatus: cancellation?.refundStatus || 'not_applicable' };
       }
         this.returnMessage = cancellation?.refundStatus === 'processing' ? 'Order cancelled. Your refund has been initiated.' : 'Order cancelled.';
@@ -238,7 +253,7 @@ export class AccountOrdersComponent implements OnInit {
     this.returnEligibility = null;
     this.cancellationEligibility = null;
   }
-  clearCancellation(): void { this.cancellationOrder = null; this.cancellationReason = ''; this.cancellationError = ''; this.cancellationSubmitting = false; }
+  clearCancellation(): void { this.cancellationOrder = null; this.cancellationReason = ''; this.cancellationNotes = ''; this.cancellationError = ''; this.cancellationSubmitting = false; }
 
   clearReturn(): void {
     this.returnOrder = null;
