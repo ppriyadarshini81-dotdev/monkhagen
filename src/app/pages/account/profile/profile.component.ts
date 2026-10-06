@@ -19,6 +19,9 @@ export class AccountProfileComponent implements OnInit {
   editing = false;
   saving = false;
   verifyingEmail = false;
+  emailOtpSent = false;
+  emailOtp = '';
+  emailOtpLoading = false;
   message = '';
   error = '';
   form = { name: '', phone: '', dateOfBirth: '', email: '' };
@@ -98,4 +101,6 @@ export class AccountProfileComponent implements OnInit {
       this.verifyingEmail = false;
     }
   }
+  sendEmailOtp(): void { const email = this.form.email.trim().toLowerCase(); this.error = ''; if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { this.error = 'Enter a valid email address.'; return; } this.emailOtpLoading = true; this.auth.sendEmailOtp(email).subscribe({ next: () => { this.emailOtpSent = true; this.emailOtpLoading = false; this.message = 'A 6-digit code was sent to your email.'; }, error: err => { this.emailOtpLoading = false; this.error = err?.error?.message || 'Could not send the email code.'; } }); }
+  verifyEmailOtp(): void { if (!/^\d{6}$/.test(this.emailOtp)) { this.error = 'Enter the 6-digit code from your email.'; return; } this.emailOtpLoading = true; this.error = ''; this.auth.verifyEmailOtp(this.form.email.trim().toLowerCase(), this.emailOtp).subscribe({ next: response => { this.user = response.user; this.emailOtpLoading = false; this.emailOtpSent = false; this.emailOtp = ''; this.resetForm(); this.editing = false; this.message = 'Email verified. Your saved account details are now available.'; }, error: err => { this.emailOtpLoading = false; this.error = err?.error?.message || 'Email verification failed.'; } }); }
 }

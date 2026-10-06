@@ -1,8 +1,9 @@
-:host { display: block; }
+:host { display: block; height: var(--mh-header-h); }
 
 .mh-header {
-  position: sticky;
-  top: 0;
+  position: fixed;
+  inset: 0 0 auto;
+  width: 100%;
   z-index: 50;
   height: var(--mh-header-h);
   background: rgba(255, 255, 255, 0.96);
@@ -190,7 +191,6 @@
 .mh-nav__logout { padding: 0; border: 0; background: transparent; color: var(--mh-accent); font: inherit; font-weight: 600; text-align: left; }
 
 @media (max-width: 1023px) {
-  :host { height: var(--mh-header-h); }
   .mh-header {
     position: fixed;
     z-index: 100;

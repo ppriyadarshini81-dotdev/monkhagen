@@ -63,6 +63,8 @@ export class AuthService {
       .post<AuthResponse>(`${this.api}/link-google`, { email, idToken })
       .pipe(tap((res) => this.persist(res)));
   }
+  sendEmailOtp(email: string): Observable<{ message: string; email: string; expiresInSeconds: number }> { return this.http.post<{ message: string; email: string; expiresInSeconds: number }>(`${this.api}/email-otp/send`, { email }); }
+  verifyEmailOtp(email: string, otp: string): Observable<AuthResponse> { return this.http.post<AuthResponse>(`${this.api}/email-otp/verify`, { email, otp }).pipe(tap(res => this.persist(res))); }
 
   logout(): void {
     const token = this.token;

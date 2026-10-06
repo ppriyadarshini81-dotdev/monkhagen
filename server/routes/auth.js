@@ -3,6 +3,7 @@ const { createLimiter } = require('../middleware/rateLimit');
 const ctrl = require('../controllers/authController');
 const firebaseCtrl = require('../controllers/firebaseAuthController');
 const otpCtrl = require('../controllers/otpController');
+const emailOtpCtrl = require('../controllers/emailOtpController');
 const { authenticate } = require('../middleware/auth');
 const { phoneRateLimitKey } = require('../services/phoneNumber');
 
@@ -24,6 +25,9 @@ router.post('/firebase', authLimiter, firebaseCtrl.firebaseLogin);
 // Compatibility for clients deployed before the provider-neutral endpoint.
 router.post('/google', authLimiter, firebaseCtrl.firebaseLogin);
 router.post('/link-google', authenticate, authLimiter, firebaseCtrl.linkGoogleAccount);
+const emailOtpLimiter = createLimiter('email-otp', { windowMs: 15 * 60000, limit: 5, authenticated: true });
+router.post('/email-otp/send', authenticate, emailOtpLimiter, emailOtpCtrl.send);
+router.post('/email-otp/verify', authenticate, emailOtpLimiter, emailOtpCtrl.verify);
 
 const phoneKey = scope => req => `${scope}:${phoneRateLimitKey(req.body?.phone)}`;
 const otpSendIpLimiter = createLimiter('otp-send-ip', { windowMs: 15 * 60000, limit: 5 });
