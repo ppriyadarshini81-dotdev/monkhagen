@@ -17,6 +17,7 @@ export class AccountReturnsComponent implements OnInit {
   returns: ReturnRequest[] = [];
   loading = true;
   page = 0; readonly pageSize = 10; hasNextPage = false;
+  statusFilter = '';
   refundFormReturnId = '';
   refundMethod: 'UPI' | 'BANK' = 'UPI';
   upiId = ''; confirmUpiId = '';
@@ -30,12 +31,13 @@ export class AccountReturnsComponent implements OnInit {
   }
   loadReturns(page = this.page): void {
     this.loading = true;
-    this.account.getReturns(this.pageSize, page * this.pageSize).subscribe({
+    this.account.getReturns(this.pageSize, page * this.pageSize, this.statusFilter).subscribe({
       next: (r) => { this.returns = r; this.page = page; this.hasNextPage = r.length === this.pageSize; this.loading = false; },
       error: () => { this.loading = false; }
     });
   }
   changePage(direction: number): void { const next = this.page + direction; if (next >= 0 && (direction < 0 || this.hasNextPage)) this.loadReturns(next); }
+  applyStatusFilter(): void { this.loadReturns(0); }
 
   statusClass(s: string): string {
     const m: Record<string, string> = {

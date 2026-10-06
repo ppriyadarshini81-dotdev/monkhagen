@@ -26,6 +26,7 @@ export class AccountOrdersComponent implements OnInit {
   page = 0;
   readonly pageSize = 10;
   hasNextPage = false;
+  statusFilter = '';
   selectedOrder: Order | null = null;
   trackingOrder: Order | null = null;
   tracking: TrackingInfo | null = null;
@@ -56,7 +57,7 @@ export class AccountOrdersComponent implements OnInit {
   }
   loadOrders(page = this.page): void {
     this.loading = true; this.loadError = '';
-    this.account.getOrders(this.pageSize, page * this.pageSize).subscribe({
+    this.account.getOrders(this.pageSize, page * this.pageSize, this.statusFilter).subscribe({
       next: (orders) => {
         this.orders = orders; this.page = page; this.hasNextPage = orders.length === this.pageSize;
         this.loading = false;
@@ -67,7 +68,8 @@ export class AccountOrdersComponent implements OnInit {
       }
     });
   }
-  changePage(direction: number): void { const next = this.page + direction; if (next >= 0 && (!direction || this.hasNextPage)) this.loadOrders(next); }
+  changePage(direction: number): void { const next = this.page + direction; if (next >= 0 && (direction < 0 || this.hasNextPage)) this.loadOrders(next); }
+  applyStatusFilter(): void { this.loadOrders(0); }
 
   openDetails(order: Order): void {
     this.selectedOrder = order;
@@ -189,6 +191,10 @@ export class AccountOrdersComponent implements OnInit {
       const dialog = this.trackingDialog?.nativeElement;
       if (dialog && !dialog.open) dialog.showModal();
     });
+    if (this.isCancelled(order)) {
+      this.trackingLoading = false;
+      return;
+    }
     this.account.getTracking(order.id).subscribe({
       next: (tracking) => {
         this.tracking = tracking;
@@ -270,6 +276,7 @@ export class AccountOrdersComponent implements OnInit {
   }
 
   deliveryLabel(order: Order): string {
+    if (this.isCancelled(order)) return 'Order cancelled';
     const stage = this.orderStage(order);
     if (stage === 4) return 'Delivered';
     if (stage === 3) return 'On the way';

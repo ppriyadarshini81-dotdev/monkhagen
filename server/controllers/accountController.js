@@ -275,6 +275,9 @@ async function enrichOrder(o) {
 
 exports.getOrders = asyncHandler(async (req, res) => {
   const { limit, offset } = require('../middleware/validation').pagination(req.query);
+  const requestedStatus = String(req.query.status || '').toLowerCase();
+  const statusFilter = { active: ['confirmed', 'processing', 'shipped', 'pickup_scheduled', 'awb_assigned'], cancelled: ['cancelled'], delivered: ['delivered'] }[requestedStatus];
+  if (requestedStatus && !statusFilter) return res.status(400).json({ message: 'Invalid order status filter.' });
   const { rows } = await pool.query(
     `SELECT o.*,
        s.awb_code AS shipment_awb_code,
@@ -291,8 +294,9 @@ exports.getOrders = asyncHandler(async (req, res) => {
      WHERE o.user_id = $1
        AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
          OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))
+       AND ($4::text[] IS NULL OR o.order_status = ANY($4))
      ORDER BY o.created_at DESC LIMIT $2 OFFSET $3`,
-    [req.user.id, limit, offset]
+    [req.user.id, limit, offset, statusFilter || null]
   );
   const orders = await Promise.all(rows.map(enrichOrder));
   res.json(orders);
@@ -346,7 +350,10 @@ exports.cancelOrder = asyncHandler(async (req, res) => {
 
 exports.getReturns = asyncHandler(async (req, res) => {
   const { limit, offset } = require('../middleware/validation').pagination(req.query);
-  res.json(await returns.listCustomerReturns(req.user.id, pool, { limit, offset }));
+  const requestedStatus = String(req.query.status || '').toLowerCase();
+  const statusFilter = { open: ['requested', 'return_created', 'shiprocket_failed', 'pickup_scheduled', 'picked_up', 'in_transit', 'received', 'approved'], refund_initiated: ['refund_initiated'], refunded: ['refunded'], cancelled: ['cancelled', 'rejected'] }[requestedStatus];
+  if (requestedStatus && !statusFilter) return res.status(400).json({ message: 'Invalid return status filter.' });
+  res.json(await returns.listCustomerReturns(req.user.id, pool, { limit, offset, statuses: statusFilter || null }));
 });
 
 exports.createReturn = asyncHandler(async (req, res) => {

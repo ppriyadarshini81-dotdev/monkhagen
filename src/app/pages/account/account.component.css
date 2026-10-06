@@ -11,6 +11,9 @@
 .mh-acct__sidebar {
   position: sticky;
   top: calc(var(--mh-header-h) + 24px);
+  align-self: start;
+  max-height: calc(100dvh - var(--mh-header-h) - 48px);
+  overflow-y: auto;
   background: var(--mh-bg-elev);
   border: 1px solid var(--mh-line);
   border-radius: var(--mh-radius);
@@ -119,9 +122,11 @@
 
   .mh-acct__sidebar {
     position: static;
+    width: auto;
     padding: 16px;
     text-align: left;
   }
+
 
   .mh-acct__avatar { width: 52px; height: 52px; margin: 0 12px 8px 0; float: left; }
   .mh-acct__name { padding-top: 4px; }

@@ -405,8 +405,11 @@ async function createReturn(userId, body = {}, database = pool, dependencies = {
   await notifySafely(() => notifier.returnRequested(local.row.id));
   return formatReturn(await findReturn(database, local.row.id, userId));
 }
-async function listCustomerReturns(userId, database = pool, { limit = 100, offset = 0 } = {}) {
-  const result = await database.query('SELECT id FROM return_requests WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3', [userId, limit, offset]);
+async function listCustomerReturns(userId, database = pool, { limit = 100, offset = 0, statuses = null } = {}) {
+  const result = await database.query(
+    'SELECT id FROM return_requests WHERE user_id = $1 AND ($4::text[] IS NULL OR status = ANY($4)) ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+    [userId, limit, offset, statuses]
+  );
   return Promise.all(result.rows.map(async row => formatReturn(await findReturn(database, row.id, userId))));
 }
 async function listAdminReturns(database = pool, { limit = 100, offset = 0 } = {}) {

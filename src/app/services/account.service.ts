@@ -59,8 +59,10 @@ export class AccountService {
   }
 
   // ── Orders ─────────────────────────────────────────────────
-  getOrders(limit = 10, offset = 0): Observable<Order[]> {
-    return this.http.get<Order[]>(`${this.api}/orders`, { params: { limit, offset } });
+  getOrders(limit = 10, offset = 0, status = ''): Observable<Order[]> {
+    const params: Record<string, string | number> = { limit, offset };
+    if (status) params['status'] = status;
+    return this.http.get<Order[]>(`${this.api}/orders`, { params });
   }
 
   getOrder(orderId: string): Observable<Order> {
@@ -85,8 +87,10 @@ export class AccountService {
   }
 
   // ── Returns ────────────────────────────────────────────────
-  getReturns(limit = 10, offset = 0): Observable<ReturnRequest[]> {
-    return this.http.get<ReturnRequest[]>(`${this.api}/returns`, { params: { limit, offset } });
+  getReturns(limit = 10, offset = 0, status = ''): Observable<ReturnRequest[]> {
+    const params: Record<string, string | number> = { limit, offset };
+    if (status) params['status'] = status;
+    return this.http.get<ReturnRequest[]>(`${this.api}/returns`, { params });
   }
 
   createReturn(payload: ReturnPayload): Observable<ReturnRequest> {
