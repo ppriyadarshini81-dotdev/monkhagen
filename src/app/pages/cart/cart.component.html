@@ -159,7 +159,7 @@
           </label>
           <label class="mh-address-field">Email address *
             <input #emailControl="ngModel" class="mh-input" [class.mh-input--invalid]="(emailControl.touched || addressAttempted) && addressFieldError('email')" name="email" autocomplete="email" type="email" [(ngModel)]="shipping.email" required maxlength="254" />
-            <small class="mh-cart__hint">Used only for order tracking and delivery updates. Monk Hagen will not send marketing spam to this address.</small>
+            <small class="mh-cart__hint">Used solely for sending delivery updates.</small>
             <small class="mh-field-error" *ngIf="(emailControl.touched || addressAttempted) && addressFieldError('email')">{{ addressFieldError('email') }}</small>
           </label>
         </div>
