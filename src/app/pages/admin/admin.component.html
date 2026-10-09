@@ -1,8 +1,8 @@
 <section class="mh-admin mh-container">
-  <header class="mh-admin__head">
+  <header class="mh-admin__head" style="margin-bottom: 14px;">
     <div>
       <span class="mh-eyebrow">Admin management</span>
-      <h1>Admin</h1>
+      <h1>{{ adminTitle }}</h1>
     </div>
     <button class="mh-btn mh-btn--gold" (click)="newProduct()" *ngIf="tab === 'products'">
       + New Product
@@ -20,34 +20,6 @@
       + New Color
     </button>
   </header>
-
-  <div class="mh-admin__tabs">
-    <button [class.active]="tab === 'products'" (click)="tab = 'products'">
-      Products ({{ products.length }})
-    </button>
-    <button [class.active]="tab === 'categories'" (click)="tab = 'categories'">
-      Categories ({{ categories.length }})
-    </button>
-    <button [class.active]="tab === 'badges'" (click)="tab = 'badges'">
-      Badges ({{ badges.length }})
-    </button>
-    <button [class.active]="tab === 'sizes'" (click)="tab = 'sizes'">
-      Sizes ({{ sizes.length }})
-    </button>
-    <button [class.active]="tab === 'colors'" (click)="tab = 'colors'">
-      Colors ({{ colors.length }})
-    </button>
-    <button [class.active]="tab === 'orders'" (click)="tab = 'orders'">
-      Orders ({{ orders.length }})
-    </button>
-    <button [class.active]="tab === 'returns'" (click)="tab = 'returns'">
-      Returns ({{ returns.length }})
-    </button>
-    <button [class.active]="tab === 'reviews'" (click)="tab = 'reviews'">
-      Reviews ({{ customerReviews.length }})
-    </button>
-    <button [class.active]="tab === 'content'" (click)="tab = 'content'">Product page content</button>
-  </div>
 
   <p class="mh-admin__msg" *ngIf="message">{{ message }}</p>
   <p class="mh-error" *ngIf="error">{{ error }}</p>
@@ -436,6 +408,36 @@
       <div><span class="mh-eyebrow">Reverse logistics</span><h2>Customer returns</h2><p>Approve stock only after receipt, then initiate or record the appropriate refund.</p></div>
       <button class="mh-btn mh-btn--ghost" type="button" (click)="loadReturns()" [disabled]="returnsLoading">{{ returnsLoading ? 'Refreshing...' : 'Refresh returns' }}</button>
     </div>
+    <section class="mh-return-override mh-admin__form mh-card" aria-labelledby="return-override-title">
+      <div><span class="mh-eyebrow">Exceptional case</span><h3 id="return-override-title">Grant eligibility override</h3><p>Use only for documented exceptions. Defect overrides require a consumer-law review and are audit logged.</p></div>
+      <div class="mh-return-override__fields mh-admin__grid">
+        <label>Order
+          <select class="mh-input" [ngModel]="eligibilityOverride.orderId" (ngModelChange)="selectEligibilityOverrideOrder($event)">
+            <option value="">Select a customer order</option>
+            <option *ngFor="let order of orders" [value]="order.id">{{ order.orderNumber || order.id }} — {{ order.address?.fullName || 'Customer' }}</option>
+          </select>
+        </label>
+        <label>Request type
+          <select class="mh-input" [(ngModel)]="eligibilityOverride.requestType">
+            <option value="defect">Defective / damaged / wrong product</option>
+            <option value="return">Normal return</option>
+            <option value="replacement">Size replacement</option>
+          </select>
+        </label>
+        <label class="mh-return-override__reason mh-admin__full">Mandatory override reason
+          <textarea class="mh-input" [(ngModel)]="eligibilityOverride.reason" maxlength="500" placeholder="Explain the exceptional circumstance and remedy decision"></textarea>
+        </label>
+        <button class="mh-btn mh-btn--gold" type="button" [disabled]="eligibilityOverrideSubmitting || !eligibilityOverride.orderId || !eligibilityOverride.userId || eligibilityOverride.reason.trim().length < 5" (click)="grantEligibilityOverride()">{{ eligibilityOverrideSubmitting ? 'Recording...' : 'Grant override' }}</button>
+      </div>
+      <div class="mh-return-override__history" *ngIf="eligibilityOverride.orderId">
+        <span *ngIf="eligibilityOverrideLoading">Loading override history...</span>
+        <ng-container *ngIf="!eligibilityOverrideLoading && eligibilityOverrideHistory as history">
+          <p *ngIf="!history.overrides.length">No eligibility overrides have been recorded for this order.</p>
+          <article *ngFor="let override of history.overrides"><strong>{{ statusLabel(override.requestType) }}</strong><span>{{ override.reason }}</span><small>Granted by {{ override.grantedBy }} · {{ override.grantedAt | date:'medium' }} · {{ override.usedAt ? 'Used' : 'Available for one request' }}</small></article>
+          <article *ngFor="let audit of history.audit"><strong>{{ statusLabel(audit.action) }}</strong><span>{{ audit.reason || 'Customer return request submitted.' }}</span><small>{{ audit.createdAt | date:'medium' }}</small></article>
+        </ng-container>
+      </div>
+    </section>
     <p class="mh-empty" *ngIf="!returnsLoading && returns.length === 0">No return requests yet.</p>
     <div class="mh-admin-return-card" *ngFor="let r of returns">
       <header><div><small>Return ID</small><strong>#{{ r.returnNumber }}</strong><span>Order #{{ r.orderNumber || r.orderId }}</span></div><span class="mh-status" [ngClass]="statusClass(r.status)">{{ r.cancellationPending ? 'Cancellation pending' : statusLabel(r.status) }}</span></header>

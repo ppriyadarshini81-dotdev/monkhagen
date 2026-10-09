@@ -51,6 +51,7 @@ describe('AccountOrdersComponent', () => {
   it('keeps return reasons and submission state after the order-details dialog closes', () => {
     component.returnEligibility = {
       orderId: order.id, eligible: true, reason: null, message: null, returnUntil: new Date().toISOString(),
+      requestTypes: [{ code: 'return', label: 'Return item', eligible: true, message: 'Return item is available.' }],
       reasons: [{ code: 'size_issue', label: 'Size issue' }],
       items: [{ orderItemId: 'item-1', productName: 'Test tee', sku: 'TEE-1', size: 'M', color: 'Black',
         purchasedQuantity: 1, returnedQuantity: 0, remainingQuantity: 1 }]

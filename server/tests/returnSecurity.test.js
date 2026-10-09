@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  RETURN_WINDOW_MS, evaluateEligibility, refundableItems, validateRequest,
+  DEFECT_WINDOW_MS, RETURN_TYPES, RETURN_WINDOW_MS, evaluateEligibility, refundableItems, validateRequest,
   createLocalReturn, returnPayload, provisionReturn, mappedWebhookStatus,
   approveReturn, rejectReturn, initiateRefund, processShiprocketWebhook, resolveReturnWarehouse
 } = require('../services/returnService');
@@ -28,6 +28,28 @@ test('exact seven-day delivery eligibility uses delivered_at and supports remain
   assert.equal(evaluateEligibility(order(RETURN_WINDOW_MS + 1), items(), NOW).reason, 'WINDOW_CLOSED');
 });
 
+test('defect reports close immediately after the exact 48-hour delivery boundary', () => {
+  const atBoundary = evaluateEligibility(order(DEFECT_WINDOW_MS), items(), NOW);
+  assert.equal(atBoundary.requestTypes.find(type => type.code === RETURN_TYPES.defect).eligible, true);
+  assert.equal(atBoundary.requestTypes.find(type => type.code === RETURN_TYPES.return).eligible, true);
+
+  const justAfter = evaluateEligibility(order(DEFECT_WINDOW_MS + 1), items(), NOW);
+  assert.equal(justAfter.requestTypes.find(type => type.code === RETURN_TYPES.defect).eligible, false);
+  assert.equal(justAfter.requestTypes.find(type => type.code === RETURN_TYPES.return).eligible, true);
+  assert.equal(justAfter.defectReportingEnded, true);
+});
+
+test('normal returns and size replacements close immediately after the exact seven-day delivery boundary', () => {
+  const atBoundary = evaluateEligibility(order(RETURN_WINDOW_MS), items(), NOW);
+  assert.equal(atBoundary.requestTypes.find(type => type.code === RETURN_TYPES.return).eligible, true);
+  assert.equal(atBoundary.requestTypes.find(type => type.code === RETURN_TYPES.replacement).eligible, true);
+
+  const justAfter = evaluateEligibility(order(RETURN_WINDOW_MS + 1), items(), NOW);
+  assert.equal(justAfter.requestTypes.find(type => type.code === RETURN_TYPES.return).eligible, false);
+  assert.equal(justAfter.requestTypes.find(type => type.code === RETURN_TYPES.replacement).eligible, false);
+  assert.equal(justAfter.reason, 'WINDOW_CLOSED');
+});
+
 test('undelivered, cancelled, RTO, missing timestamp and fully returned orders are ineligible', () => {
   assert.equal(evaluateEligibility(order(0, { order_status: 'confirmed' }), items(), NOW).reason, 'NOT_DELIVERED');
   assert.equal(evaluateEligibility(order(0, { order_status: 'cancelled' }), items(), NOW).eligible, false);
@@ -47,6 +69,34 @@ test('request validation requires server reason codes, quantities, ownership IDs
     { ...valid, items: [{ orderItemId: ITEM, quantity: 1, reason: 'other' }] },
     { ...valid, items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }, { orderItemId: ITEM, quantity: 1, reason: 'quality_issue' }] }
   ]) assert.throws(() => validateRequest(body));
+});
+
+test('each selected size-exchange item carries its own replacement size and cannot use a shared payload value', () => {
+  const exchange = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, requestType: RETURN_TYPES.replacement,
+    items: [
+      { orderItemId: ITEM, quantity: 1, reason: 'size_issue', replacementSize: 'L' },
+      { orderItemId: OTHER, quantity: 1, reason: 'size_issue', replacementSize: 'XL' }
+    ]
+  });
+  assert.equal(exchange.items.length, 2);
+  assert.equal(exchange.items[0].replacementSize, 'L');
+  assert.equal(exchange.items[1].replacementSize, 'XL');
+  assert.equal(exchange.replacementSize, null);
+  assert.throws(() => validateRequest({ ...exchange, items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] }), /Replacement size/);
+});
+
+test('a client cannot relabel a defect as a normal return to bypass the 48-hour policy', async () => {
+  const relabelled = {
+    orderId: ORDER, idempotencyKey: IDEM, requestType: RETURN_TYPES.return,
+    items: [{ orderItemId: ITEM, quantity: 1, reason: 'product_damaged', comments: 'The garment arrived torn.' }]
+  };
+  assert.throws(() => validateRequest(relabelled), /Report a defect/);
+
+  const defect = validateRequest({ ...relabelled, requestType: RETURN_TYPES.defect });
+  await assert.rejects(
+    createLocalReturn('customer', defect, localDatabase({ deliveredAt: new Date(NOW - DEFECT_WINDOW_MS - 1) }), () => NOW),
+    error => error.code === 'DEFECT_WINDOW_CLOSED'
+  );
 });
 
 test('partial refund allocation uses original snapshots, allocates discount in paise, and excludes charges', () => {
@@ -89,7 +139,7 @@ test('same idempotency key replays the local return and a conflicting body is re
   const first = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] });
   const replay = localDatabase({ duplicate: { id: RETURN, request_hash: first.requestHash } });
   assert.equal((await createLocalReturn('customer', first, replay, () => NOW)).created, false);
-  const changed = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'quality_issue' }] });
+  const changed = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'quality_issue', comments: 'Stitching is damaged.' }] });
   await assert.rejects(createLocalReturn('customer', changed, localDatabase({ duplicate: { id: RETURN, request_hash: first.requestHash } })), /different items/);
 });
 

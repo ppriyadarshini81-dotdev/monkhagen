@@ -79,6 +79,22 @@ export interface AdminReturn {
   items: Array<{ productName: string; sku: string | null; size: string | null; color: string | null; quantity: number; reason: string; comments: string | null; refundAmount: number }>;
 }
 
+export interface EligibilityOverride {
+  id: string;
+  orderId: string;
+  userId: string;
+  requestType: 'return' | 'defect' | 'replacement';
+  reason: string;
+  grantedAt: string;
+  usedAt: string | null;
+  grantedBy: string;
+}
+
+export interface EligibilityOverrideHistory {
+  overrides: EligibilityOverride[];
+  audit: Array<{ action: string; reason: string | null; metadata: Record<string, unknown>; createdAt: string }>;
+}
+
 export type CodRefundReveal = { method: 'UPI'; upiId: string; refundAmount: number; status: string; masked: string }
   | { method: 'BANK'; accountHolderName: string; accountNumber: string; ifsc: string; bankName: string | null;
       refundAmount: number; status: string; masked: string };
@@ -122,4 +138,10 @@ export class OrderService {
     return this.http.post<AdminReturn>(`/api/admin/returns/${id}/refund/complete`, { transactionReference, internalNote });
   }
   retryReturnCreation(id: string): Observable<AdminReturn> { return this.http.post<AdminReturn>(`/api/admin/returns/${id}/retry-creation`, {}); }
+  grantEligibilityOverride(payload: { orderId: string; userId: string; requestType: 'return' | 'defect' | 'replacement'; reason: string }): Observable<EligibilityOverride> {
+    return this.http.post<EligibilityOverride>('/api/admin/returns/eligibility-overrides', payload);
+  }
+  eligibilityOverrideHistory(orderId: string): Observable<EligibilityOverrideHistory> {
+    return this.http.get<EligibilityOverrideHistory>('/api/admin/returns/eligibility-overrides', { params: { orderId } });
+  }
 }

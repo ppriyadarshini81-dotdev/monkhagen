@@ -49,7 +49,9 @@ test('overview KPI catalogue documents ledger, privacy, returns and health metri
 });
 
 test('aggregate uses ledger credits minus completed refunds and safe zero denominators', async () => {
+  let sessionQuery = '';
   const database = { query: async sql => {
+    if (sql.includes('FROM visitors')) sessionQuery = sql;
     if (sql.includes('FROM visitors')) return { rows: [{ sessions: 2, visitors: 2, logged_in_visitors: 1,
       anonymous_visitors: 1, returning_visitors: 1, page_views: 6, product_views: 3, average_session_seconds: 45 }] };
     if (sql.includes('GROUP BY e.event_type')) return { rows: [{ event_type: 'ADD_TO_CART', count: 2 }] };
@@ -70,6 +72,9 @@ test('aggregate uses ledger credits minus completed refunds and safe zero denomi
   assert.equal(result.averageOrderValue, 400);
   assert.equal(result.paymentFailureRate, 0);
   assert.equal(result.cartAbandonmentRate, 0);
+  assert.match(sessionQuery, /CASE WHEN user_id IS NULL THEN 'visitor:'/);
+  assert.match(sessionQuery, /ELSE 'user:'\|\|user_id::text END AS identity/);
+  assert.match(sessionQuery, /old\.user_id IS NULL THEN 'visitor:'/);
 });
 
 test('period comparisons use equal inclusive business-day windows', () => {

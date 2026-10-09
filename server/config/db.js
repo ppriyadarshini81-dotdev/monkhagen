@@ -555,6 +555,8 @@ async function initSchema(database = pool) {
 
       reason              TEXT,
 
+      replacement_size    VARCHAR(50),
+
       refund_amount       NUMERIC(10,2) NOT NULL DEFAULT 0
                           CHECK (refund_amount >= 0),
 
@@ -831,6 +833,7 @@ async function applyOrderCancellationsMigration(database = pool) {
 }
 async function applyEmailOtpMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '022_email_verification_otps.sql'), 'utf8')); }
 async function applyNewsletterSubscribersMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '023_newsletter_subscribers.sql'), 'utf8')); }
+async function applyReturnEligibilityPolicyMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '024_return_eligibility_policy.sql'), 'utf8')); }
 
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
@@ -899,10 +902,11 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const orderCancellationsApplied = await runMigration('021_order_cancellations', applyOrderCancellationsMigration);
     const emailOtpApplied = await runMigration('022_email_verification_otps', applyEmailOtpMigration);
     const newsletterSubscribersApplied = await runMigration('023_newsletter_subscribers', applyNewsletterSubscribersMigration);
+    const returnEligibilityPolicyApplied = await runMigration('024_return_eligibility_policy', applyReturnEligibilityPolicyMigration);
 
     console.log(
       baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied || financialLedgerApplied || analyticsDashboardApplied || sizeInventoryApplied || codRefundDestinationApplied || financialEventActorApplied || addressEmailApplied
-      || orderCancellationsApplied || emailOtpApplied || newsletterSubscribersApplied ? 'Database migrations applied successfully'
+      || orderCancellationsApplied || emailOtpApplied || newsletterSubscribersApplied || returnEligibilityPolicyApplied ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
   } catch (err) {
@@ -934,5 +938,6 @@ module.exports = {
   applyOrderCancellationsMigration,
   applyEmailOtpMigration,
   applyNewsletterSubscribersMigration,
+  applyReturnEligibilityPolicyMigration,
   runMigration
 };

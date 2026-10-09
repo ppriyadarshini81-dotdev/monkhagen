@@ -11,11 +11,8 @@
       <a routerLink="/products" routerLinkActive="active" (click)="closeMenu()">Products</a>
       <a routerLink="/about" routerLinkActive="active" (click)="closeMenu()">About Us</a>
 
-      <ng-container *ngIf="isAdmin">
-        <a routerLink="/admin" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Admin</a>
-        <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Dashboard</a>
-        <a routerLink="/admin/ledger" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Ledger</a>
-        <a routerLink="/admin/stock" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Stock</a>
+      <ng-container *ngIf="isAdmin && !inAdminPortal">
+        <a routerLink="/admin/dashboard" routerLinkActive="active" (click)="closeMenu()">Admin Portal</a>
       </ng-container>
 
       <div class="mh-nav__mobileonly">

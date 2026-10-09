@@ -10,7 +10,7 @@ import { ProductService, ProductWrite } from '../../services/product.service';
 import { CategoryService } from '../../services/category.service';
 import { BadgeService } from '../../services/badge.service';
 import { VariantOptionService } from '../../services/variant-option.service';
-import { AdminReturn, CodRefundReveal, OrderService, Order } from '../../services/order.service';
+import { AdminReturn, CodRefundReveal, EligibilityOverrideHistory, OrderService, Order } from '../../services/order.service';
 import { UploadService } from '../../services/upload.service';
 import { AuthService } from '../../services/auth.service';
 import { ShippingService } from '../../services/shipping.service';
@@ -77,6 +77,10 @@ export class AdminComponent implements OnInit, DoCheck {
   codRefundReference = '';
   codRefundNote = '';
   codRefundError = '';
+  eligibilityOverride = { orderId: '', userId: '', requestType: 'defect' as 'return' | 'defect' | 'replacement', reason: '' };
+  eligibilityOverrideHistory?: EligibilityOverrideHistory;
+  eligibilityOverrideLoading = false;
+  eligibilityOverrideSubmitting = false;
   customerReviews: AdminReview[] = [];
   reviewsLoading = false;
   reviewBusyId = '';
@@ -133,6 +137,8 @@ export class AdminComponent implements OnInit, DoCheck {
   ) {}
 
   ngOnInit(): void {
+    const routedTab = this.route?.snapshot.data['tab'];
+    if (['products', 'categories', 'badges', 'sizes', 'colors', 'orders', 'returns', 'reviews', 'content'].includes(routedTab)) this.tab = routedTab;
     this.requestedOrderId = this.route?.snapshot.queryParamMap.get('order') || '';
     this.loadProducts();
     this.loadCategories();
@@ -142,6 +148,10 @@ export class AdminComponent implements OnInit, DoCheck {
     this.loadOrders();
     this.loadReturns();
     this.loadCustomerReviews();
+  }
+
+  get adminTitle(): string {
+    return ({ orders: 'Orders', returns: 'Returns & Replacements', reviews: 'Reviews', products: 'Products', categories: 'Categories', badges: 'Badges', sizes: 'Sizes', colors: 'Colors', content: 'Product Page Content' } as Record<string, string>)[this.tab] || 'Admin';
   }
 
   ngDoCheck(): void {
@@ -223,6 +233,44 @@ export class AdminComponent implements OnInit, DoCheck {
     this.orderService.adminReturns().subscribe({
       next: returns => { this.returns = returns; this.returnsLoading = false; },
       error: () => { this.error = 'Could not load returns.'; this.returnsLoading = false; }
+    });
+  }
+
+  selectEligibilityOverrideOrder(orderId: string): void {
+    const order = this.orders.find(item => item.id === orderId);
+    this.eligibilityOverride.orderId = orderId;
+    this.eligibilityOverride.userId = order?.userId || '';
+    this.eligibilityOverrideHistory = undefined;
+    if (orderId && order?.userId) this.loadEligibilityOverrideHistory();
+  }
+
+  loadEligibilityOverrideHistory(): void {
+    const orderId = this.eligibilityOverride.orderId;
+    if (!orderId) return;
+    this.eligibilityOverrideLoading = true;
+    this.orderService.eligibilityOverrideHistory(orderId).subscribe({
+      next: history => { this.eligibilityOverrideHistory = history; this.eligibilityOverrideLoading = false; },
+      error: error => { this.eligibilityOverrideLoading = false; this.error = error?.error?.message || 'Could not load override history.'; }
+    });
+  }
+
+  grantEligibilityOverride(): void {
+    const form = this.eligibilityOverride;
+    if (this.eligibilityOverrideSubmitting || !form.orderId || !form.userId || form.reason.trim().length < 5) return;
+    const statutoryPrompt = form.requestType === 'defect'
+      ? 'Grant a defect-reporting override? Record this exceptional remedy decision and review consumer-law obligations before continuing.'
+      : 'Grant this exceptional return eligibility override?';
+    if (!window.confirm(statutoryPrompt)) return;
+    this.eligibilityOverrideSubmitting = true;
+    this.error = '';
+    this.orderService.grantEligibilityOverride({ ...form, reason: form.reason.trim() }).subscribe({
+      next: () => {
+        this.eligibilityOverrideSubmitting = false;
+        this.message = 'Eligibility override recorded.';
+        this.eligibilityOverride.reason = '';
+        this.loadEligibilityOverrideHistory();
+      },
+      error: error => { this.eligibilityOverrideSubmitting = false; this.error = error?.error?.message || 'Could not record the eligibility override.'; }
     });
   }
 

@@ -4,6 +4,8 @@ const ctrl = require('../controllers/adminReturnController');
 require('../middleware/validation').params(router);
 
 router.use(authenticate, requireAdmin);
+router.post('/eligibility-overrides', ctrl.grantEligibilityOverride);
+router.get('/eligibility-overrides', ctrl.eligibilityOverrideHistory);
 router.get('/', ctrl.list);
 router.get('/:returnId', ctrl.get);
 router.post('/:returnId/approve', ctrl.approve);

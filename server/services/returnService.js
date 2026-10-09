@@ -8,7 +8,11 @@ const codRefunds = require('./codRefundService');
 const inventory = require('./inventoryService');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DEFECT_WINDOW_MS = 48 * 60 * 60 * 1000;
 const RETURN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const RETURN_TYPES = Object.freeze({ return: 'return', defect: 'defect', replacement: 'replacement' });
+const DEFECT_REASONS = new Set(['product_damaged', 'wrong_item', 'quality_issue']);
+const NORMAL_REASONS = new Set(['size_issue', 'changed_mind', 'other']);
 const ACTIVE_STATUSES = [
   'requested', 'return_created', 'pickup_scheduled', 'picked_up', 'in_transit',
   'received', 'approved', 'refund_initiated', 'refunded', 'shiprocket_failed', 'pickup_failed'
@@ -40,6 +44,13 @@ function moneyPaise(value) {
   return amount;
 }
 function rupees(paise) { return (paise / 100).toFixed(2); }
+function returnShippingDeductionPaise(environment = process.env) {
+  const raw = environment.RETURN_SHIPPING_DEDUCTION_PAISE;
+  if (raw == null || raw === '') return 15000;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0 || value > 100000) throw fault(503, 'RETURN_POLICY_CONFIG_INVALID', 'Return policy configuration needs review.');
+  return value;
+}
 function validId(value, label = 'identifier') {
   if (typeof value !== 'string' || !UUID.test(value)) throw fault(400, 'RETURN_VALIDATION', `A valid ${label} is required.`);
   return value.toLowerCase();
@@ -66,35 +77,52 @@ function normalizePincode(value, code, message) {
   return Number(pincode);
 }
 
-function evaluateEligibility(order, items, now = Date.now()) {
-  if (!order) return { eligible: false, reason: 'ORDER_NOT_FOUND', message: 'Order not found.', returnUntil: null, items: [] };
+function evaluateEligibility(order, items, now = Date.now(), overrideTypes = []) {
+  if (!order) return { eligible: false, reason: 'ORDER_NOT_FOUND', message: 'Order not found.', returnUntil: null, requestTypes: [], defectReportingEnded: false, items: [] };
   if (order.order_status !== 'delivered') {
-    return { eligible: false, reason: 'NOT_DELIVERED', message: 'Returns are available only after delivery.', returnUntil: null, items: [] };
+    return { eligible: false, reason: 'NOT_DELIVERED', message: 'Returns are available only after delivery.', returnUntil: null, requestTypes: [], defectReportingEnded: false, items: [] };
   }
   const deliveredAt = new Date(order.delivered_at).getTime();
   if (!order.delivered_at || !Number.isFinite(deliveredAt)) {
     console.warn('Return eligibility unavailable: missing delivered timestamp.', { orderId: order.id });
-    return { eligible: false, reason: 'DELIVERY_TIME_MISSING', message: 'Delivery confirmation is still being verified.', returnUntil: null, items: [] };
+    return { eligible: false, reason: 'DELIVERY_TIME_MISSING', message: 'Delivery confirmation is still being verified.', returnUntil: null, requestTypes: [], defectReportingEnded: false, items: [] };
   }
   const current = typeof now === 'function' ? Number(now()) : Number(now);
   const returnUntilMs = deliveredAt + RETURN_WINDOW_MS;
+  const defectUntilMs = deliveredAt + DEFECT_WINDOW_MS;
   if (!Number.isFinite(current) || current < deliveredAt) {
-    return { eligible: false, reason: 'DELIVERY_TIME_INVALID', message: 'Delivery confirmation is still being verified.', returnUntil: new Date(returnUntilMs).toISOString(), items: [] };
+    return { eligible: false, reason: 'DELIVERY_TIME_INVALID', message: 'Delivery confirmation is still being verified.', returnUntil: new Date(returnUntilMs).toISOString(), requestTypes: [], defectReportingEnded: false, items: [] };
   }
   const availableItems = items.map(item => ({
     orderItemId: item.id, productName: item.product_name, sku: item.sku || null,
     size: item.size || null, color: item.color || null,
+    replacementSizes: Array.isArray(item.replacement_sizes) ? item.replacement_sizes : [],
     purchasedQuantity: Number(item.quantity), returnedQuantity: Number(item.returned_quantity || 0),
     remainingQuantity: Math.max(0, Number(item.quantity) - Number(item.returned_quantity || 0))
   }));
-  if (current > returnUntilMs) {
-    return { eligible: false, reason: 'WINDOW_CLOSED', message: 'The 7-day return window has closed.', returnUntil: new Date(returnUntilMs).toISOString(), items: availableItems };
+  const override = new Set(overrideTypes || []);
+  const normalEligible = current <= returnUntilMs || override.has(RETURN_TYPES.return);
+  const replacementEligible = current <= returnUntilMs || override.has(RETURN_TYPES.replacement);
+  const defectEligible = current <= defectUntilMs || override.has(RETURN_TYPES.defect);
+  const requestTypes = [
+    { code: RETURN_TYPES.defect, label: 'Report a defect', eligible: defectEligible,
+      message: defectEligible ? 'Report a defect \u2014 available within 2 days of delivery.' : 'Defect reporting window ended. Contact support for late defect claims.' },
+    { code: RETURN_TYPES.return, label: 'Return item', eligible: normalEligible,
+      message: normalEligible ? 'Return item \u2014 available within 7 days of delivery.' : 'The 7-day return window has closed.' },
+    { code: RETURN_TYPES.replacement, label: 'Replace size', eligible: replacementEligible,
+      message: replacementEligible ? 'Replace size \u2014 available within 7 days of delivery.' : 'The 7-day size replacement window has closed.' }
+  ];
+  const eligible = availableItems.some(item => item.remainingQuantity > 0) && requestTypes.some(type => type.eligible);
+  if (!eligible) {
+    return { eligible: false, reason: availableItems.some(item => item.remainingQuantity > 0) ? 'WINDOW_CLOSED' : 'FULLY_RETURNED',
+      message: availableItems.some(item => item.remainingQuantity > 0) ? 'The return and replacement windows have closed.' : 'All purchased quantities already have a return request.',
+      deliveredAt: new Date(deliveredAt).toISOString(), returnUntil: new Date(returnUntilMs).toISOString(), defectUntil: new Date(defectUntilMs).toISOString(),
+      defectReportingEnded: current > defectUntilMs && !override.has(RETURN_TYPES.defect), requestTypes, items: availableItems };
   }
-  const eligible = availableItems.some(item => item.remainingQuantity > 0);
   return {
-    eligible, reason: eligible ? null : 'FULLY_RETURNED',
-    message: eligible ? null : 'All purchased quantities already have a return request.',
-    deliveredAt: new Date(deliveredAt).toISOString(), returnUntil: new Date(returnUntilMs).toISOString(), items: availableItems
+    eligible, reason: null, message: null,
+    deliveredAt: new Date(deliveredAt).toISOString(), returnUntil: new Date(returnUntilMs).toISOString(), defectUntil: new Date(defectUntilMs).toISOString(),
+    defectReportingEnded: current > defectUntilMs && !override.has(RETURN_TYPES.defect), requestTypes, items: availableItems
   };
 }
 
@@ -106,7 +134,9 @@ async function loadOrderAndItems(client, userId, orderId, lock = false) {
   );
   if (!order.rows[0]) return { order: null, items: [] };
   const items = await client.query(
-    `SELECT oi.*, COALESCE(SUM(ri.quantity) FILTER (WHERE rr.status = ANY($2::varchar[])), 0)::integer AS returned_quantity
+    `SELECT oi.*, COALESCE(SUM(ri.quantity) FILTER (WHERE rr.status = ANY($2::varchar[])), 0)::integer AS returned_quantity,
+       COALESCE((SELECT array_agg(s.name ORDER BY s.name) FROM product_size_details psd JOIN sizes s ON s.id = psd.size_id
+         WHERE psd.product_id = oi.product_id AND psd.is_active = TRUE), ARRAY[]::varchar[]) AS replacement_sizes
      FROM order_items oi LEFT JOIN return_items ri ON ri.order_item_id = oi.id
      LEFT JOIN return_requests rr ON rr.id = ri.return_request_id
      WHERE oi.order_id = $1 GROUP BY oi.id ORDER BY oi.created_at, oi.id`,
@@ -118,7 +148,14 @@ async function loadOrderAndItems(client, userId, orderId, lock = false) {
 async function getEligibility(userId, orderId, database = pool, now = Date.now) {
   orderId = validId(orderId, 'order ID');
   const source = await loadOrderAndItems(database, userId, orderId, false);
-  return { orderId, reasons: RETURN_REASONS, ...evaluateEligibility(source.order, source.items, now) };
+  const overrides = source.order ? await database.query(`SELECT request_type FROM return_eligibility_overrides
+    WHERE order_id = $1 AND user_id = $2 AND used_at IS NULL`, [orderId, userId]) : { rows: [] };
+  const eligibility = evaluateEligibility(source.order, source.items, now, overrides.rows.map(row => row.request_type));
+  const permitted = new Set(eligibility.requestTypes?.filter(type => type.eligible).map(type => type.code) || []);
+  return { orderId, reasons: RETURN_REASONS.filter(reason =>
+    (DEFECT_REASONS.has(reason.code) && permitted.has(RETURN_TYPES.defect)) ||
+    (NORMAL_REASONS.has(reason.code) && permitted.has(RETURN_TYPES.return)) ||
+    (reason.code === 'size_issue' && permitted.has(RETURN_TYPES.replacement))), ...eligibility };
 }
 
 // Allocate order-level discount over original item units in integer paise.
@@ -152,6 +189,13 @@ function refundableItems(order, items) {
 function validateRequest(body = {}) {
   const orderId = validId(body.orderId, 'order ID');
   const idempotencyKey = validId(body.idempotencyKey, 'idempotency key');
+  const submittedReasons = Array.isArray(body.items) ? body.items.map(item => item?.reason) : [];
+  // Preserve the pre-policy API contract while still applying the stricter 48-hour
+  // window to legacy clients that submit only a defect reason.
+  const requestType = body.requestType || (submittedReasons.length && submittedReasons.every(reason => DEFECT_REASONS.has(reason))
+    ? RETURN_TYPES.defect : RETURN_TYPES.return);
+  if (!Object.values(RETURN_TYPES).includes(requestType)) throw fault(400, 'RETURN_VALIDATION', 'Select a valid request type.');
+  const legacyReplacementSize = requestType === RETURN_TYPES.replacement ? cleanText(body.replacementSize, 'Replacement size', 50) : null;
   const comments = cleanText(body.comments, 'Comments', 500);
   if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 50) throw fault(400, 'RETURN_VALIDATION', 'Select between 1 and 50 order items.');
   const seen = new Set();
@@ -162,11 +206,16 @@ function validateRequest(body = {}) {
     seen.add(orderItemId);
     if (!Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 100) throw fault(400, 'RETURN_VALIDATION', 'Return quantity must be a whole number between 1 and 100.');
     if (!REASON_CODES.has(item.reason)) throw fault(400, 'RETURN_VALIDATION', 'Select a valid return reason.');
-    const explanation = cleanText(item.comments, 'Reason explanation', 250, item.reason === 'other');
-    return { orderItemId, quantity: item.quantity, reason: item.reason, comments: explanation };
+    const explanation = cleanText(item.comments, 'Reason explanation', 250, item.reason === 'other' || (requestType === RETURN_TYPES.defect && DEFECT_REASONS.has(item.reason)));
+    const replacementSize = requestType === RETURN_TYPES.replacement
+      ? cleanText(item.replacementSize || legacyReplacementSize, 'Replacement size', 50, true) : null;
+    return { orderItemId, quantity: item.quantity, reason: item.reason, comments: explanation, replacementSize };
   });
-  const canonical = JSON.stringify({ orderId, items: [...items].sort((a, b) => a.orderItemId.localeCompare(b.orderItemId)), comments });
-  return { orderId, idempotencyKey, items, comments, requestHash: crypto.createHash('sha256').update(canonical).digest('hex') };
+  if (requestType === RETURN_TYPES.defect && items.some(item => !DEFECT_REASONS.has(item.reason))) throw fault(400, 'RETURN_VALIDATION', 'Defect reports must use a defect, damage, or wrong-product reason.');
+  if (requestType === RETURN_TYPES.return && items.some(item => !NORMAL_REASONS.has(item.reason))) throw fault(400, 'RETURN_VALIDATION', 'Use Report a defect for damaged or wrong-product claims.');
+  if (requestType === RETURN_TYPES.replacement && items.some(item => item.reason !== 'size_issue' || !item.replacementSize)) throw fault(400, 'RETURN_VALIDATION', 'Each size replacement needs a selected item, Size issue reason, and replacement size.');
+  const canonical = JSON.stringify({ orderId, requestType, items: [...items].sort((a, b) => a.orderItemId.localeCompare(b.orderItemId)), comments });
+  return { orderId, idempotencyKey, requestType, replacementSize: items.length === 1 ? items[0].replacementSize : null, items, comments, requestHash: crypto.createHash('sha256').update(canonical).digest('hex') };
 }
 function returnNumber() { return `R-${crypto.randomUUID().replace(/-/g, '')}`; }
 
@@ -174,7 +223,8 @@ function formatReturn(row) {
   if (!row) return null;
   return {
     id: row.id, orderId: row.order_id, orderNumber: row.order_number || null, returnNumber: row.return_number,
-    status: row.status, reason: row.reason || null, comments: row.comments || null,
+    status: row.status, reason: row.reason || null, comments: row.comments || null, requestType: row.request_type || RETURN_TYPES.return,
+    requestedReplacementSize: row.requested_replacement_size || null, returnShippingDeduction: Number(row.return_shipping_deduction || 0),
     refundAmount: Number(row.refund_amount || 0), refundStatus: row.refund_status,
     shiprocketReturnOrderId: row.shiprocket_return_order_id || null, returnAwb: row.return_awb || null,
     pickupStatus: row.pickup_status || null,
@@ -206,7 +256,7 @@ async function findReturn(database, id, userId = null, admin = false) {
        d.transaction_reference AS refund_transaction_reference, d.completed_at AS refund_destination_completed_at,
        COALESCE(json_agg(json_build_object('id', ri.id, 'orderItemId', ri.order_item_id,
          'productName', oi.product_name, 'sku', oi.sku, 'size', oi.size, 'color', oi.color,
-         'quantity', ri.quantity, 'reason', ri.reason, 'comments', ri.comments,
+         'quantity', ri.quantity, 'reason', ri.reason, 'comments', ri.comments, 'replacementSize', ri.replacement_size,
          'refundAmount', ri.refund_amount) ORDER BY ri.created_at) FILTER (WHERE ri.id IS NOT NULL), '[]') AS items
      FROM return_requests rr JOIN orders o ON o.id = rr.order_id JOIN users u ON u.id = rr.user_id
      LEFT JOIN cod_refund_destinations d ON d.return_id = rr.id
@@ -228,31 +278,61 @@ async function createLocalReturn(userId, input, database = pool, now = Date.now)
     }
     const source = await loadOrderAndItems(client, userId, input.orderId, true);
     if (!source.order) throw fault(404, 'ORDER_NOT_FOUND', 'Order not found.');
-    const eligibility = evaluateEligibility(source.order, source.items, now);
-    if (!eligibility.eligible) throw fault(409, eligibility.reason, eligibility.message);
+    const overrides = await client.query(`SELECT * FROM return_eligibility_overrides
+      WHERE order_id = $1 AND user_id = $2 AND request_type = $3 AND used_at IS NULL FOR UPDATE`, [input.orderId, userId, input.requestType]);
+    const eligibility = evaluateEligibility(source.order, source.items, now, overrides.rows.map(row => row.request_type));
+    const requestType = eligibility.requestTypes?.find(type => type.code === input.requestType);
+    if (!eligibility.eligible || !requestType?.eligible) {
+      if (eligibility.reason === 'FULLY_RETURNED') {
+        throw fault(409, 'FULLY_RETURNED', 'All purchased quantities already have a return request.');
+      }
+      const message = input.requestType === RETURN_TYPES.defect
+        ? 'Defect reporting window ended. Contact support for late defect claims.'
+        : input.requestType === RETURN_TYPES.replacement ? 'The 7-day size replacement window has closed.' : 'The 7-day return window has closed.';
+      throw fault(409, input.requestType === RETURN_TYPES.defect ? 'DEFECT_WINDOW_CLOSED' : 'WINDOW_CLOSED', message);
+    }
     const byId = new Map(refundableItems(source.order, source.items).map(item => [item.id, item]));
     const selected = input.items.map(item => {
       const purchased = byId.get(item.orderItemId);
       if (!purchased) throw fault(400, 'RETURN_ITEM_INVALID', 'A selected item does not belong to this order.');
       const alreadyReturned = Number(purchased.returned_quantity || 0);
       if (item.quantity > purchased.quantity - alreadyReturned) throw fault(409, 'RETURN_QUANTITY_EXCEEDED', 'Return quantity exceeds the remaining purchased quantity.');
-      return { ...item, refundPaise: purchased.refundFor(alreadyReturned, item.quantity) };
+      return { ...item, productId: purchased.product_id, size: purchased.size, refundPaise: purchased.refundFor(alreadyReturned, item.quantity) };
     });
+    if (input.requestType === RETURN_TYPES.replacement) {
+      for (const original of selected) {
+      if (String(original.size || '').trim().toLowerCase() === original.replacementSize.toLowerCase()) {
+        throw fault(400, 'RETURN_VALIDATION', 'Choose a different replacement size for every selected item.');
+      }
+      const available = await client.query(`SELECT 1 FROM product_size_details psd JOIN sizes s ON s.id = psd.size_id
+        WHERE psd.product_id = (SELECT product_id FROM order_items WHERE id = $1)
+          AND psd.is_active = TRUE AND LOWER(s.name) = LOWER($2)`, [original.id, original.replacementSize]);
+      if (!available.rows.length) throw fault(409, 'REPLACEMENT_SIZE_UNAVAILABLE', 'That replacement size is not available for this product.');
+      }
+    }
     const totalPaise = selected.reduce((sum, item) => sum + item.refundPaise, 0);
+    const shippingDeductionPaise = input.requestType === RETURN_TYPES.return
+      ? Math.min(totalPaise, returnShippingDeductionPaise()) : 0;
+    const eligibleRefundPaise = input.requestType === RETURN_TYPES.replacement ? 0 : totalPaise - shippingDeductionPaise;
+    const override = overrides.rows[0] || null;
     const inserted = await client.query(
       `INSERT INTO return_requests
-       (order_id, user_id, return_number, reason, comments, status, refund_amount, refund_status, idempotency_key, request_hash)
-       VALUES ($1,$2,$3,$4,$5,'requested',$6,'pending',$7,$8) RETURNING *`,
-      [input.orderId, userId, returnNumber(), selected.length === 1 ? selected[0].reason : 'multiple_items', input.comments,
-        rupees(totalPaise), input.idempotencyKey, input.requestHash]
+       (order_id, user_id, return_number, reason, comments, status, refund_amount, refund_status, idempotency_key, request_hash, request_type, requested_replacement_size, return_shipping_deduction, eligibility_override_id)
+       VALUES ($1,$2,$3,$4,$5,'requested',$6,'pending',$7,$8,$9,$10,$11,$12) RETURNING *`,
+        [input.orderId, userId, returnNumber(), selected.length === 1 ? selected[0].reason : 'multiple_items', input.comments,
+        rupees(eligibleRefundPaise), input.idempotencyKey, input.requestHash, input.requestType, selected.length === 1 ? selected[0].replacementSize : null, rupees(shippingDeductionPaise), override?.id || null]
     );
     for (const item of selected) {
       await client.query(
-        `INSERT INTO return_items (return_request_id, order_item_id, quantity, reason, comments, refund_amount)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [inserted.rows[0].id, item.orderItemId, item.quantity, item.reason, item.comments, rupees(item.refundPaise)]
+        `INSERT INTO return_items (return_request_id, order_item_id, quantity, reason, comments, replacement_size, refund_amount)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [inserted.rows[0].id, item.orderItemId, item.quantity, item.reason, item.comments, item.replacementSize, rupees(item.refundPaise)]
       );
     }
+    if (override) await client.query('UPDATE return_eligibility_overrides SET used_at = NOW() WHERE id = $1', [override.id]);
+    await client.query(`INSERT INTO return_request_audit (return_request_id, order_id, actor_user_id, action, reason, metadata)
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb)`, [inserted.rows[0].id, input.orderId, userId, 'REQUEST_SUBMITTED', null,
+      JSON.stringify({ requestType: input.requestType, returnShippingDeduction: rupees(shippingDeductionPaise), usedEligibilityOverride: Boolean(override) })]);
     await client.query('COMMIT');
     return { row: inserted.rows[0], created: true };
   } catch (error) {
@@ -415,6 +495,54 @@ async function listCustomerReturns(userId, database = pool, { limit = 100, offse
 async function listAdminReturns(database = pool, { limit = 100, offset = 0 } = {}) {
   const result = await database.query('SELECT id FROM return_requests ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
   return Promise.all(result.rows.map(async row => formatReturn(await findReturn(database, row.id, null, true))));
+}
+
+async function grantEligibilityOverride(adminUserId, body = {}, database = pool) {
+  const orderId = validId(body.orderId, 'order ID');
+  const userId = validId(body.userId, 'customer ID');
+  const requestType = body.requestType;
+  if (!Object.values(RETURN_TYPES).includes(requestType)) throw fault(400, 'RETURN_VALIDATION', 'Select a valid request type.');
+  const reason = cleanText(body.reason, 'Override reason', 500, true);
+  if (reason.length < 5) throw fault(400, 'RETURN_VALIDATION', 'Provide a meaningful override reason.');
+  const client = await database.connect();
+  try {
+    await client.query('BEGIN');
+    const order = await client.query('SELECT id FROM orders WHERE id = $1 AND user_id = $2 FOR UPDATE', [orderId, userId]);
+    if (!order.rows.length) throw fault(404, 'ORDER_NOT_FOUND', 'The customer order was not found.');
+    const result = await client.query(`INSERT INTO return_eligibility_overrides
+      (order_id, user_id, request_type, reason, granted_by)
+      VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (order_id, user_id, request_type) WHERE used_at IS NULL
+      DO UPDATE SET reason = EXCLUDED.reason, granted_by = EXCLUDED.granted_by, granted_at = NOW()
+      RETURNING *`, [orderId, userId, requestType, reason, adminUserId]);
+    await client.query(`INSERT INTO return_request_audit (order_id, actor_user_id, action, reason, metadata)
+      VALUES ($1,$2,'ELIGIBILITY_OVERRIDE_GRANTED',$3,$4::jsonb)`, [orderId, adminUserId, reason,
+      JSON.stringify({ userId, requestType, statutoryRemedyReviewRequired: requestType === RETURN_TYPES.defect })]);
+    await client.query('COMMIT');
+    return { id: result.rows[0].id, orderId, userId, requestType, reason, grantedAt: result.rows[0].granted_at };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally { client.release(); }
+}
+
+async function listEligibilityOverrideHistory(orderId, database = pool) {
+  orderId = validId(orderId, 'order ID');
+  const [overrides, audit] = await Promise.all([
+    database.query(`SELECT eo.id, eo.order_id, eo.user_id, eo.request_type, eo.reason, eo.granted_at, eo.used_at,
+        u.name AS granted_by_name
+      FROM return_eligibility_overrides eo LEFT JOIN users u ON u.id = eo.granted_by
+      WHERE eo.order_id = $1 ORDER BY eo.granted_at DESC`, [orderId]),
+    database.query(`SELECT action, reason, metadata, created_at FROM return_request_audit
+      WHERE order_id = $1 AND action IN ('ELIGIBILITY_OVERRIDE_GRANTED', 'REQUEST_SUBMITTED')
+      ORDER BY created_at DESC`, [orderId])
+  ]);
+  return {
+    overrides: overrides.rows.map(row => ({ id: row.id, orderId: row.order_id, userId: row.user_id,
+      requestType: row.request_type, reason: row.reason, grantedAt: row.granted_at, usedAt: row.used_at || null,
+      grantedBy: row.granted_by_name || 'Administrator' })),
+    audit: audit.rows.map(row => ({ action: row.action, reason: row.reason || null, metadata: row.metadata || {}, createdAt: row.created_at }))
+  };
 }
 
 async function rejectReturn(returnId, { database = pool, api = shiprocket, confirmedNoRemote = false } = {}) {
@@ -745,8 +873,8 @@ async function processShiprocketWebhook(payload, headers, database = pool, env =
 }
 
 module.exports = {
-  RETURN_REASONS, RETURN_WINDOW_MS, ACTIVE_STATUSES, evaluateEligibility, refundableItems,
+  RETURN_REASONS, RETURN_TYPES, DEFECT_WINDOW_MS, RETURN_WINDOW_MS, ACTIVE_STATUSES, evaluateEligibility, refundableItems, returnShippingDeductionPaise,
   validateRequest, createLocalReturn, getEligibility, createReturn, provisionReturn, listCustomerReturns, listAdminReturns,
-  findReturn, formatReturn, approveReturn, rejectReturn, initiateRefund,
+  findReturn, formatReturn, approveReturn, rejectReturn, initiateRefund, grantEligibilityOverride, listEligibilityOverrideHistory,
   mappedWebhookStatus, processShiprocketWebhook, returnPayload, resolveReturnWarehouse
 };

@@ -46,6 +46,7 @@ export class HeaderComponent implements OnDestroy {
   get isAdmin(): boolean {
     return this.auth.isAdmin;
   }
+  get inAdminPortal(): boolean { return this.router.url.startsWith('/admin'); }
 
   dismissProfileHint(): void {
     this.showProfileHint = false;

@@ -129,6 +129,7 @@ export interface ReturnItem {
   quantity: number;
   reason: string | null;
   comments: string | null;
+  replacementSize?: string | null;
   refundAmount: number;
 }
 
@@ -137,6 +138,9 @@ export interface ReturnRequest {
   orderId: string;
   returnNumber: string;
   reason: string;
+  requestType: 'return' | 'defect' | 'replacement';
+  requestedReplacementSize: string | null;
+  returnShippingDeduction: number;
   comments: string | null;
   status: string;
   refundAmount: number;
@@ -174,8 +178,10 @@ export type CodRefundDestinationPayload =
 export interface ReturnPayload {
   orderId: string;
   idempotencyKey: string;
+  requestType: 'return' | 'defect' | 'replacement';
+  replacementSize?: string;
   comments?: string;
-  items: { orderItemId: string; quantity: number; reason: string; comments?: string }[];
+  items: { orderItemId: string; quantity: number; reason: string; comments?: string; replacementSize?: string }[];
 }
 
 export interface ReturnEligibility {
@@ -185,6 +191,9 @@ export interface ReturnEligibility {
   message: string | null;
   deliveredAt?: string;
   returnUntil: string | null;
+  defectUntil?: string | null;
+  defectReportingEnded?: boolean;
+  requestTypes: Array<{ code: 'return' | 'defect' | 'replacement'; label: string; eligible: boolean; message: string }>;
   reasons: Array<{ code: string; label: string }>;
   items: Array<{
     orderItemId: string;
@@ -195,6 +204,7 @@ export interface ReturnEligibility {
     purchasedQuantity: number;
     returnedQuantity: number;
     remainingQuantity: number;
+    replacementSizes: string[];
   }>;
 }
 

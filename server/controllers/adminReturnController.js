@@ -18,6 +18,12 @@ exports.reject = asyncHandler(async (req, res) => res.json(await returns.rejectR
 })));
 exports.refund = asyncHandler(async (req, res) => res.json(await returns.initiateRefund(req.params.returnId)));
 exports.retry = asyncHandler(async (req, res) => res.json(returns.formatReturn(await returns.provisionReturn(req.params.returnId))));
+exports.grantEligibilityOverride = asyncHandler(async (req, res) =>
+  res.status(201).json(await returns.grantEligibilityOverride(req.user.id, req.body))
+);
+exports.eligibilityOverrideHistory = asyncHandler(async (req, res) =>
+  res.json(await returns.listEligibilityOverrideHistory(req.query.orderId))
+);
 exports.revealRefundDestination = asyncHandler(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json(await codRefunds.reveal(req.user.id, req.params.returnId));
