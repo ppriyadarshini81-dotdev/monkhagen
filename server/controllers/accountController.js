@@ -291,7 +291,7 @@ exports.getOrders = asyncHandler(async (req, res) => {
        c.status AS cancellation_status, c.reason AS cancellation_reason, c.cancelled_at, c.refund_status AS cancellation_refund_status
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      LEFT JOIN order_cancellations c ON c.order_id = o.id
-     WHERE o.user_id = $1
+     WHERE o.user_id = $1 AND o.order_type = 'normal'
        AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
          OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))
        AND ($4::text[] IS NULL OR o.order_status = ANY($4))
@@ -316,7 +316,7 @@ exports.getOrder = asyncHandler(async (req, res) => {
        c.status AS cancellation_status, c.reason AS cancellation_reason, c.cancelled_at, c.refund_status AS cancellation_refund_status
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      LEFT JOIN order_cancellations c ON c.order_id = o.id
-     WHERE o.id = $1 AND o.user_id = $2
+     WHERE o.id = $1 AND o.user_id = $2 AND o.order_type = 'normal'
        AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
          OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))`,
     [req.params.orderId, req.user.id]
@@ -368,6 +368,16 @@ exports.getReturn = asyncHandler(async (req, res) => {
   const row = await returns.findReturn(pool, req.params.returnId, req.user.id);
   if (!row) return res.status(404).json({ message: 'Return request not found.' });
   res.json(returns.formatReturn(row));
+});
+exports.cancelReturn = asyncHandler(async (req, res) => {
+  const row = await returns.findReturn(pool, req.params.returnId, req.user.id);
+  if (!row) return res.status(404).json({ message: 'Return request not found.' });
+  if (!['requested', 'return_created', 'shiprocket_failed'].includes(row.status)) {
+    return res.status(409).json({ message: 'This return can no longer be cancelled because return initiation has started.' });
+  }
+  res.json(await returns.rejectReturn(req.params.returnId, {
+    database: pool, confirmedNoRemote: !row.shiprocket_return_order_id
+  }));
 });
 
 exports.getCodRefundDestination = asyncHandler(async (req, res) => {

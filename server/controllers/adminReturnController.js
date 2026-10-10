@@ -5,7 +5,10 @@ const { pool } = require('../config/db');
 const codRefunds = require('../services/codRefundService');
 
 exports.list = asyncHandler(async (req, res) => res.json(
-  await returns.listAdminReturns(pool, validation.pagination(req.query))
+  await returns.listAdminReturns(pool, { ...validation.pagination(req.query), tab: req.query.tab || 'all' })
+));
+exports.outboundOrders = asyncHandler(async (req, res) => res.json(
+  await require('../models/Order').findAll({ ...validation.pagination(req.query), afterSales: true })
 ));
 exports.get = asyncHandler(async (req, res) => {
   const row = await returns.findReturn(pool, req.params.returnId, null, true);
@@ -13,6 +16,15 @@ exports.get = asyncHandler(async (req, res) => {
   res.json(returns.formatReturn(row));
 });
 exports.approve = asyncHandler(async (req, res) => res.json(await returns.approveReturn(req.params.returnId)));
+exports.inspectItem = asyncHandler(async (req, res) => res.json(await returns.inspectReturnItem(
+  req.params.returnId, req.params.itemId, req.body, req.user.id
+)));
+exports.createReplacementShipment = asyncHandler(async (req, res) => res.json(await returns.createReplacementShipment(
+  req.params.returnId, req.user.id
+)));
+exports.submitInspection = asyncHandler(async (req, res) => res.json(await returns.submitReplacementInspection(
+  req.params.returnId, req.body, req.user.id
+)));
 exports.reject = asyncHandler(async (req, res) => res.json(await returns.rejectReturn(req.params.returnId, {
   confirmedNoRemote: req.body?.confirmedNoRemote === true
 })));

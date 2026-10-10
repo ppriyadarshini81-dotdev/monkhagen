@@ -96,6 +96,9 @@ export class AccountService {
   createReturn(payload: ReturnPayload): Observable<ReturnRequest> {
     return this.http.post<ReturnRequest>(`${this.api}/returns`, payload);
   }
+  cancelReturn(returnId: string): Observable<ReturnRequest> {
+    return this.http.post<ReturnRequest>(`${this.api}/returns/${returnId}/cancel`, {});
+  }
 
   getReturnEligibility(orderId: string): Observable<ReturnEligibility> {
     return this.http.get<ReturnEligibility>(`${this.api}/orders/${orderId}/return-eligibility`);

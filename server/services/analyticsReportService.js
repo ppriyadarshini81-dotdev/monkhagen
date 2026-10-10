@@ -154,7 +154,7 @@ async function aggregate(start, end, database = pool) {
       COUNT(*) FILTER (WHERE payment_method = 'razorpay' AND payment_status = 'pending')::int AS pending_payments,
       COUNT(*) FILTER (WHERE payment_method = 'razorpay' AND
         (payment_status = 'failed' OR (payment_status = 'pending' AND inventory_released_at IS NOT NULL)))::int AS abandoned_checkouts
-      FROM orders WHERE created_at >= $1 AND created_at < $2`, [start, end]),
+      FROM orders WHERE order_type = 'normal' AND created_at >= $1 AND created_at < $2`, [start, end]),
     database.query(`SELECT COUNT(*)::int AS attempts,
       COUNT(*) FILTER (WHERE status = 'successful')::int AS successful,
       COUNT(*) FILTER (WHERE status = 'failed')::int AS failed
@@ -282,7 +282,7 @@ async function revenue(query) {
       GROUP BY 1
     ), orders_by_day AS (
       SELECT (created_at AT TIME ZONE $3)::date AS day, COUNT(*)::int AS orders
-      FROM orders WHERE created_at >= $4 AND created_at < $5
+      FROM orders WHERE order_type = 'normal' AND created_at >= $4 AND created_at < $5
         AND payment_status IN ('paid','refunded','partially_refunded') GROUP BY 1
     ), traffic AS (
       SELECT (started_at AT TIME ZONE $3)::date AS day,
@@ -368,13 +368,13 @@ async function products(query) {
       SELECT oi.product_id, COUNT(DISTINCT o.id)::int AS orders,
         COALESCE(SUM(oi.quantity),0)::int AS units_sold,
         COALESCE(SUM(oi.total_price - (oi.total_price / NULLIF(o.total_amount,0) * o.refunded_amount)),0) AS revenue
-      FROM order_items oi JOIN orders o ON o.id = oi.order_id
+      FROM order_items oi JOIN orders o ON o.id = oi.order_id AND o.order_type = 'normal'
       WHERE o.paid_at >= $1 AND o.paid_at < $2
         AND o.payment_status IN ('paid','refunded','partially_refunded')
       GROUP BY oi.product_id
     ), checkouts AS (
       SELECT oi.product_id, COUNT(DISTINCT o.id)::int AS checkouts
-      FROM order_items oi JOIN orders o ON o.id = oi.order_id
+      FROM order_items oi JOIN orders o ON o.id = oi.order_id AND o.order_type = 'normal'
       WHERE o.created_at >= $1 AND o.created_at < $2 GROUP BY oi.product_id
     ) SELECT p.id, p.name,
       COALESCE(b.views,0)::int AS views, COALESCE(b.unique_viewers,0)::int AS unique_viewers,
@@ -414,8 +414,8 @@ async function carts(query) {
         status = 'converted' AND updated_at - last_activity >= INTERVAL '24 hours' AS recovered
       FROM cart_activity WHERE created_at < $2 AND last_activity >= $1
     ) SELECT *,
-      EXISTS(SELECT 1 FROM orders o WHERE o.cart_id = scoped.id) AS checkout_started,
-      EXISTS(SELECT 1 FROM orders o WHERE o.cart_id = scoped.id AND o.payment_status IN ('paid','refunded','partially_refunded')) AS purchased,
+      EXISTS(SELECT 1 FROM orders o WHERE o.order_type = 'normal' AND o.cart_id = scoped.id) AS checkout_started,
+      EXISTS(SELECT 1 FROM orders o WHERE o.order_type = 'normal' AND o.cart_id = scoped.id AND o.payment_status IN ('paid','refunded','partially_refunded')) AS purchased,
       EXISTS(SELECT 1 FROM orders o JOIN payment_attempts pa ON pa.order_id=o.id WHERE o.cart_id=scoped.id) AS payment_attempted,
       (SELECT pa.status FROM orders o JOIN payment_attempts pa ON pa.order_id=o.id
         WHERE o.cart_id=scoped.id ORDER BY pa.attempted_at DESC LIMIT 1) AS last_payment_status,
@@ -442,7 +442,7 @@ async function carts(query) {
       (SELECT CASE WHEN e.event_type='PAYMENT_SUCCESS' THEN 'successful' WHEN e.event_type='PAYMENT_FAILED' THEN 'failed' ELSE 'started' END
         FROM analytics_events e WHERE e.session_id=journeys.session_id AND e.event_type IN ('PAYMENT_STARTED','PAYMENT_SUCCESS','PAYMENT_FAILED')
         ORDER BY e.occurred_at DESC LIMIT 1) AS last_payment_status,
-      EXISTS(SELECT 1 FROM orders o WHERE o.analytics_session_id=journeys.session_id
+      EXISTS(SELECT 1 FROM orders o WHERE o.order_type = 'normal' AND o.analytics_session_id=journeys.session_id
         AND o.payment_status IN ('paid','refunded','partially_refunded')) AS purchased
     FROM journeys WHERE quantity > 0 ORDER BY abandoned DESC,last_activity DESC LIMIT 100`, [period.start, period.end]);
   const allRows = [...rows, ...guestResult.rows];
@@ -514,7 +514,7 @@ async function visitors(query) {
       COUNT(*) FILTER (WHERE purchases.orders > 1)::int AS repeat_customers
       FROM users u JOIN roles r ON r.id=u.role_id AND r.name='customer'
       CROSS JOIN LATERAL (SELECT COUNT(*)::int AS orders FROM orders o
-        WHERE o.user_id=u.id AND o.payment_status IN ('paid','refunded','partially_refunded')) purchases`,
+        WHERE o.user_id=u.id AND o.order_type = 'normal' AND o.payment_status IN ('paid','refunded','partially_refunded')) purchases`,
     [period.start, period.end])
   ]);
   const segment = segments.rows[0];
@@ -623,7 +623,7 @@ async function trend(query) {
           OR (payment_method='cod' AND payment_status='pending')))::int AS unique_purchasers,
         COALESCE(SUM(total_amount) FILTER (WHERE order_status<>'cancelled' AND (payment_status IN ('paid','refunded','partially_refunded')
           OR (payment_method='cod' AND payment_status='pending'))),0) AS gross_order_value
-      FROM orders WHERE created_at >= $4 AND created_at < $5 GROUP BY 1
+      FROM orders WHERE order_type = 'normal' AND created_at >= $4 AND created_at < $5 GROUP BY 1
     ), login_by_day AS (
       SELECT (e.occurred_at AT TIME ZONE $3)::date AS day,e.user_id,COUNT(*) AS login_count
       FROM analytics_events e JOIN analytics_sessions s ON s.id=e.session_id AND NOT s.is_internal
@@ -775,7 +775,7 @@ async function drilldown(query) {
       : "o.order_status<>'cancelled' AND (o.payment_status IN ('paid','refunded','partially_refunded') OR (o.payment_method='cod' AND o.payment_status='pending'))";
     result = await pool.query(`SELECT o.order_number,u.name AS customer,u.email,o.total_amount,o.payment_method,
         o.payment_status,o.order_status,o.created_at
-      FROM orders o JOIN users u ON u.id=o.user_id WHERE o.created_at >= $1 AND o.created_at < $2
+      FROM orders o JOIN users u ON u.id=o.user_id WHERE o.order_type = 'normal' AND o.created_at >= $1 AND o.created_at < $2
         AND ${orderFilter}
       ORDER BY o.created_at DESC LIMIT 250`, [start,end]);
     columns = [['order_number','Order'],['customer','Customer'],['email','Email'],['total_amount','Amount'],

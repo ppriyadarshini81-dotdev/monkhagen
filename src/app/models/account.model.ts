@@ -123,6 +123,7 @@ export interface ReturnItem {
   id: string;
   orderItemId: string;
   productName: string;
+  imageUrl?: string | null;
   sku: string | null;
   size: string | null;
   color: string | null;
@@ -130,12 +131,16 @@ export interface ReturnItem {
   reason: string | null;
   comments: string | null;
   replacementSize?: string | null;
+  inspectionStatus?: 'pending' | 'approved' | 'rejected';
+  inspectionReason?: string | null;
+  inspectedAt?: string | null;
   refundAmount: number;
 }
 
 export interface ReturnRequest {
   id: string;
   orderId: string;
+  orderNumber?: string | null;
   returnNumber: string;
   reason: string;
   requestType: 'return' | 'defect' | 'replacement';
@@ -148,6 +153,15 @@ export interface ReturnRequest {
   paymentMethod: string;
   refundDestination: CodRefundDestination;
   returnAwb: string | null;
+  shiprocketReturnOrderId?: number | null;
+  shiprocketOutboundOrderId?: number | null;
+  outboundAwb?: string | null;
+  outboundStatus?: string | null;
+  outboundTrackingUrl?: string | null;
+  outboundCreatedAt?: string | null;
+  replacementShipmentPending?: boolean;
+  outboundStage?: number;
+  outboundOrder?: { id: string; orderNumber: string; orderType: 'replacement' | 'rejected_return'; status: string } | null;
   pickupStatus: string | null;
   pickupDelayed: boolean;
   cancellationPending: boolean;

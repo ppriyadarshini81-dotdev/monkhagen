@@ -195,6 +195,16 @@ No live provider credentials were used during implementation. Live serviceabilit
 
 ## Files
 
+### Return and replacement outbound orders
+
+Admin Returns & Replacements has five tabs: All, Requested, Inspection Required, Completed, and Return & Replacement Orders. Completed means no administrator action is pending; it does not necessarily mean the courier has delivered or a refund has settled. Outbound parcels awaiting courier assignment, pickup scheduling, or provider reconciliation remain visible in the outbound orders tab.
+
+Submitting all product inspection decisions creates one zero-charge application order linked to both the original purchase and the return request. `orders.order_type` distinguishes `normal`, `replacement`, and `rejected_return`. Mixed parcels use `replacement` at order level, while `order_items.fulfillment_type` distinguishes replacement sizes from rejected originals and preserves each inspection reason. The same linked `shipments` row supports existing tracking operations and signed forward callbacks. Retried inspection submissions reuse the original outbound order.
+
+Customers track the complete inbound, inspection, and outbound journey in the existing return details. After-sales orders are excluded from their purchase list and purchase analytics. The outbound order is created in Shiprocket on inspection submission; courier assignment and pickup scheduling remain deliberate operations in Shiprocket. A creation timeout or uncertain provider response requires reconciliation before retrying.
+
+Migration `027_after_sales_orders` adds the links and classifications and backfills recorded outbound shipments without booking or enqueueing a shipment. Apply this migration before deploying the updated backend. The rollback-only PostgreSQL verification can be run with `$env:AFTER_SALES_DB_TESTS = '1'; node --test server/tests/afterSalesDatabase.test.js`; all provider requests are mocked and all database test objects are rolled back.
+
 The fulfillment integration is centered on `server/config/shiprocket.js`, `server/models/Shipment.js`, `server/services/shippingService.js`, and `server/services/shippingWorker.js`. Reverse logistics is implemented in `server/services/returnService.js`, the account/admin return controllers and routes, and `server/migrations/009_returns_workflow.sql`. Backend configuration lives only in private environment settings; do not commit provider credentials or webhook secrets.
 
 References: [Shiprocket official API documentation](https://apidocs.shiprocket.in/), [official Postman collection](https://www.postman.com/shiprocketdev/shiprocket-dev-s-public-workspace/documentation/qu05zax/shiprocket-api), [official authentication/API helpsheet](https://shiprocket.freshdesk.com/support/solutions/articles/43000337456-api-document-helpsheet).

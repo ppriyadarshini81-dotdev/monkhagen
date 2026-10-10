@@ -33,10 +33,16 @@ function errorHandler(err, req, res, _next) {
   const status = Number.isInteger(err.status) && err.status >= 400 && err.status <= 599
     ? err.status
     : 500;
-  res.status(status).json({
+  const response = {
     message: status >= 500 ? 'The request could not be completed. Please try again.' :
       (!err.response && !err.config && typeof err.message === 'string' && err.message.length < 300 ? err.message : 'Invalid request.')
-  });
+  };
+  if (status < 500 && err.details && typeof err.details === 'object' && !Array.isArray(err.details)) {
+    if (err.details.field === 'replacementSize' && /^[0-9a-f-]{36}$/i.test(err.details.orderItemId || '')) {
+      response.field = err.details.field; response.orderItemId = err.details.orderItemId;
+    }
+  }
+  res.status(status).json(response);
 }
 
 module.exports = { notFound, errorHandler };

@@ -177,10 +177,10 @@
           <span class="mh-replacement-product__copy"><strong>{{ row.productName }}</strong><span>Size: {{ row.size || 'One size' }}<ng-container *ngIf="row.color"> · {{ row.color }}</ng-container></span><b>₹{{ row.unitPrice | number }}</b></span>
           <span class="mh-replacement-product__radio" [attr.aria-label]="row.selected ? 'Selected' : 'Select item'">{{ row.selected ? '✓' : '' }}</span>
         </button>
-          <section *ngIf="row.selected" class="mh-replacement-step" [class.mh-replacement-step--invalid]="replacementSizeMissing(row)">
+          <section *ngIf="row.selected" class="mh-replacement-step" [class.mh-replacement-step--invalid]="replacementSizeMissing(row) || row.replacementSizeServerError">
             <h3>Select replacement size</h3><p>Original size: <strong>{{ row.size || 'One size' }}</strong></p>
             <div class="mh-replacement-sizes"><button *ngFor="let size of row.replacementSizes" type="button" [class.is-selected]="row.replacementSize === size" [disabled]="size === row.size" (click)="selectReplacementSize(row, size)">{{ size }}</button></div>
-            <p class="mh-replacement-validation" *ngIf="replacementSizeMissing(row)">Choose a replacement size.</p>
+            <p class="mh-replacement-validation" *ngIf="replacementSizeMissing(row)">Choose a replacement size.</p><p class="mh-replacement-validation" *ngIf="row.replacementSizeServerError">{{ row.replacementSizeServerError }}</p>
             <small *ngIf="row.replacementSizes.length">Select a different size for this product. Availability is checked again before submission.</small><small *ngIf="!row.replacementSizes.length">Replacement sizes are not currently available for this product.</small>
           </section>
           <section *ngIf="row.selected" class="mh-replacement-step" [class.mh-replacement-step--invalid]="replacementReasonMissing(row)">
@@ -203,7 +203,7 @@
       <p class="mh-return-note" *ngIf="returnRequestType === 'defect'">Verified defective, damaged, or wrong-product claims have no ₹150 return shipping deduction. We may contact you for supporting evidence.</p>
       <p class="mh-return-note" *ngIf="returnRequestType === 'replacement'">Size replacements are for the same product only and are completed after warehouse inspection and stock confirmation.</p>
     </div>
-    <footer class="mh-customer-dialog__foot"><small>Pickup uses the original delivery address.</small><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeReturn()">Cancel</button><button type="button" class="mh-order-action mh-order-action--primary" [disabled]="returnSubmitting" (click)="submitReturn()">{{ returnSubmitting ? 'Submitting...' : 'Confirm return' }}</button></div></footer>
+    <footer class="mh-customer-dialog__foot"><small>Pickup uses the original delivery address.</small><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeReturn()">Cancel</button><button type="button" class="mh-order-action mh-order-action--primary" [disabled]="returnSubmitting" (click)="submitReturn()">{{ returnSubmitting ? 'Submitting...' : (returnRequestType === 'replacement' ? 'Confirm Replace' : 'Confirm return') }}</button></div></footer>
   </ng-container>
 </dialog>
 

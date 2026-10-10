@@ -6,6 +6,8 @@ const emails = require('./transactionalEmailService');
 const ledger = require('./financialLedgerService');
 const codRefunds = require('./codRefundService');
 const inventory = require('./inventoryService');
+const afterSalesOrders = require('./afterSalesOrderService');
+const { outboundStage, adminCategory, ADMIN_CATEGORY_SQL } = require('./returnWorkflow');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DEFECT_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -37,7 +39,7 @@ async function notifySafely(action) {
   catch (error) { console.error('Return notification could not be queued.', { code: /^[A-Z0-9_]{1,100}$/.test(error.code || '') ? error.code : 'EMAIL_QUEUE_FAILED' }); }
 }
 
-function fault(status, code, message) { return Object.assign(new Error(message), { status, code }); }
+function fault(status, code, message, details = null) { return Object.assign(new Error(message), { status, code, details }); }
 function moneyPaise(value) {
   const amount = Math.round(Number(value) * 100);
   if (!Number.isSafeInteger(amount) || amount < 0) throw fault(409, 'RETURN_FINANCIAL_REVIEW', 'The saved order amount needs review.');
@@ -78,6 +80,7 @@ function normalizePincode(value, code, message) {
 }
 
 function evaluateEligibility(order, items, now = Date.now(), overrideTypes = []) {
+  if (order?.order_type && order.order_type !== 'normal') return { eligible: false, reason: 'AFTER_SALES_ORDER', message: 'Track this shipment in the original return request.', items: [] };
   if (!order) return { eligible: false, reason: 'ORDER_NOT_FOUND', message: 'Order not found.', returnUntil: null, requestTypes: [], defectReportingEnded: false, items: [] };
   if (order.order_status !== 'delivered') {
     return { eligible: false, reason: 'NOT_DELIVERED', message: 'Returns are available only after delivery.', returnUntil: null, requestTypes: [], defectReportingEnded: false, items: [] };
@@ -221,12 +224,20 @@ function returnNumber() { return `R-${crypto.randomUUID().replace(/-/g, '')}`; }
 
 function formatReturn(row) {
   if (!row) return null;
+  const outbound = row.outbound_order;
   return {
     id: row.id, orderId: row.order_id, orderNumber: row.order_number || null, returnNumber: row.return_number,
     status: row.status, reason: row.reason || null, comments: row.comments || null, requestType: row.request_type || RETURN_TYPES.return,
     requestedReplacementSize: row.requested_replacement_size || null, returnShippingDeduction: Number(row.return_shipping_deduction || 0),
     refundAmount: Number(row.refund_amount || 0), refundStatus: row.refund_status,
     shiprocketReturnOrderId: row.shiprocket_return_order_id || null, returnAwb: row.return_awb || null,
+    shiprocketOutboundOrderId: row.shiprocket_outbound_order_id || null,
+    outboundAwb: outbound?.awb || row.outbound_awb || null,
+    outboundStatus: outbound?.status === 'delivered' ? 'delivered' : outbound?.shippingStatus || row.outbound_status || null,
+    outboundTrackingUrl: outbound?.trackingUrl || row.outbound_tracking_url || null, outboundCreatedAt: row.outbound_created_at || null,
+    outboundOrder: row.outbound_order || null, outboundStage: row.outbound_order ? outboundStage(row.outbound_order) : 0,
+    adminCategory: adminCategory(row),
+    replacementShipmentPending: row.pending_operation === 'replacement_create',
     pickupStatus: row.pickup_status || null,
     pickupDelayed: row.status === 'shiprocket_failed' || (row.status === 'requested' && row.pending_operation === 'create'),
     cancellationPending: row.pending_operation === 'cancel',
@@ -251,12 +262,21 @@ async function findReturn(database, id, userId = null, admin = false) {
   if (!admin) params.push(userId);
   const result = await database.query(
     `SELECT rr.*, o.order_number, o.payment_method, u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone,
+       (SELECT json_build_object('id', child.id, 'orderNumber', child.order_number, 'orderType', child.order_type,
+         'sourceOrderId', child.source_order_id, 'returnId', child.return_request_id, 'status', child.order_status,
+         'holdReason', child.fulfillment_hold_reason, 'shiprocketOrderId', s.shiprocket_order_id,
+         'awb', s.awb_code, 'shippingStatus', s.shipping_status, 'trackingStatus', s.tracking_status,
+         'trackingUrl', s.tracking_url, 'pickupStatus', s.pickup_status, 'pendingOperation', s.pending_operation,
+         'lastErrorCode', s.last_error_code, 'shippedAt', child.shipped_at, 'deliveredAt', child.delivered_at)
+        FROM orders child LEFT JOIN shipments s ON s.order_id = child.id WHERE child.return_request_id = rr.id) AS outbound_order,
        d.id AS refund_destination_id, d.method AS refund_destination_method,
        d.masked_destination AS refund_destination_masked, d.status AS refund_destination_status,
        d.transaction_reference AS refund_transaction_reference, d.completed_at AS refund_destination_completed_at,
        COALESCE(json_agg(json_build_object('id', ri.id, 'orderItemId', ri.order_item_id,
          'productName', oi.product_name, 'sku', oi.sku, 'size', oi.size, 'color', oi.color,
+         'imageUrl', (SELECT pi.image_url FROM product_images pi WHERE pi.product_id = oi.product_id ORDER BY pi.is_primary DESC, pi.display_order, pi.created_at LIMIT 1),
          'quantity', ri.quantity, 'reason', ri.reason, 'comments', ri.comments, 'replacementSize', ri.replacement_size,
+         'inspectionStatus', ri.inspection_status, 'inspectionReason', ri.inspection_reason, 'inspectedAt', ri.inspected_at,
          'refundAmount', ri.refund_amount) ORDER BY ri.created_at) FILTER (WHERE ri.id IS NOT NULL), '[]') AS items
      FROM return_requests rr JOIN orders o ON o.id = rr.order_id JOIN users u ON u.id = rr.user_id
      LEFT JOIN cod_refund_destinations d ON d.return_id = rr.id
@@ -306,8 +326,9 @@ async function createLocalReturn(userId, input, database = pool, now = Date.now)
       }
       const available = await client.query(`SELECT 1 FROM product_size_details psd JOIN sizes s ON s.id = psd.size_id
         WHERE psd.product_id = (SELECT product_id FROM order_items WHERE id = $1)
-          AND psd.is_active = TRUE AND LOWER(s.name) = LOWER($2)`, [original.id, original.replacementSize]);
-      if (!available.rows.length) throw fault(409, 'REPLACEMENT_SIZE_UNAVAILABLE', 'That replacement size is not available for this product.');
+          AND psd.is_active = TRUE AND LOWER(s.name) = LOWER($2)`, [original.orderItemId, original.replacementSize]);
+      if (!available.rows.length) throw fault(409, 'REPLACEMENT_SIZE_UNAVAILABLE', 'That replacement size is not available for this product.',
+        { field: 'replacementSize', orderItemId: original.orderItemId });
       }
     }
     const totalPaise = selected.reduce((sum, item) => sum + item.refundPaise, 0);
@@ -492,8 +513,12 @@ async function listCustomerReturns(userId, database = pool, { limit = 100, offse
   );
   return Promise.all(result.rows.map(async row => formatReturn(await findReturn(database, row.id, userId))));
 }
-async function listAdminReturns(database = pool, { limit = 100, offset = 0 } = {}) {
-  const result = await database.query('SELECT id FROM return_requests ORDER BY created_at DESC LIMIT $1 OFFSET $2', [limit, offset]);
+async function listAdminReturns(database = pool, { limit = 100, offset = 0, tab = 'all' } = {}) {
+  if (!['all', 'requested', 'inspection_required', 'completed'].includes(tab)) throw fault(400, 'RETURN_VALIDATION', 'Choose a valid returns tab.');
+  const result = await database.query(`SELECT rr.id FROM return_requests rr JOIN orders original ON original.id = rr.order_id
+    LEFT JOIN orders child ON child.return_request_id = rr.id LEFT JOIN shipments s ON s.order_id = child.id
+    LEFT JOIN cod_refund_destinations d ON d.return_id = rr.id
+    WHERE ($3 = 'all' OR (${ADMIN_CATEGORY_SQL}) = $3) ORDER BY rr.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset, tab]);
   return Promise.all(result.rows.map(async row => formatReturn(await findReturn(database, row.id, null, true))));
 }
 
@@ -561,6 +586,7 @@ async function rejectReturn(returnId, { database = pool, api = shiprocket, confi
       throw fault(409, 'RETURN_CANCELLATION_UNAVAILABLE', 'This return is already moving and cannot be cancelled. Review it after warehouse receipt.');
     }
     if (row.status === 'received') {
+      if (row.request_type === RETURN_TYPES.replacement) throw fault(409, 'RETURN_ITEM_INSPECTION_REQUIRED', 'Approve or reject each replacement product and submit one outbound shipment.');
       await client.query(
         `UPDATE return_requests SET status = 'rejected', rejected_at = NOW(), refund_status = 'not_applicable',
            pending_operation = NULL, operation_started_at = NULL, updated_at = NOW() WHERE id = $1`, [returnId]
@@ -639,6 +665,7 @@ async function approveReturn(returnId, database = pool, notifications = null) {
     const row = found.rows[0];
     if (!row) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
     if (!['received','approved','refund_initiated','refunded'].includes(row.status)) throw fault(409, 'RETURN_TRANSITION_INVALID', 'The return must be received before it can be approved.');
+    if (row.request_type === RETURN_TYPES.replacement) throw fault(409, 'RETURN_ITEM_INSPECTION_REQUIRED', 'Submit the inspection decision for each replacement product.');
     if (!row.inventory_restored_at) {
       const items = await client.query(
         `SELECT psd.id AS inventory_id, psd.product_id, psd.size_id,
@@ -671,6 +698,232 @@ async function approveReturn(returnId, database = pool, notifications = null) {
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
   finally { client.release(); }
   await notifySafely(() => notifier.returnApproved(returnId));
+  return formatReturn(await findReturn(database, returnId, null, true));
+}
+
+// A received replacement can contain several products.  Warehouse staff decide
+// each line independently; the customer still receives one consolidated parcel.
+async function inspectReturnItem(returnId, itemId, input, actorUserId, database = pool) {
+  returnId = validId(returnId, 'return ID');
+  itemId = validId(itemId, 'return item ID');
+  const decision = input?.decision;
+  if (!['approved', 'rejected'].includes(decision)) throw fault(400, 'RETURN_VALIDATION', 'Choose approve or reject for this product.');
+  const reason = cleanText(input?.reason, 'Inspection reason', 500, decision === 'rejected');
+  const client = await database.connect();
+  try {
+    await client.query('BEGIN');
+    const request = await client.query('SELECT * FROM return_requests WHERE id = $1 FOR UPDATE', [returnId]);
+    if (!request.rows[0]) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
+    if (request.rows[0].request_type !== RETURN_TYPES.replacement) throw fault(409, 'RETURN_ITEM_INSPECTION_UNAVAILABLE', 'Per-product replacement inspection is available for size exchanges only.');
+    if (request.rows[0].status !== 'received') throw fault(409, 'RETURN_TRANSITION_INVALID', 'Products can be inspected only after the return is received.');
+    if (request.rows[0].pending_operation) throw fault(409, 'REPLACEMENT_SHIPMENT_RECONCILIATION_REQUIRED', 'A shipment operation is already pending.');
+    const updated = await client.query(`UPDATE return_items SET inspection_status = $1, inspection_reason = $2,
+       inspected_at = NOW(), inspected_by = $3 WHERE id = $4 AND return_request_id = $5 AND inspection_status = 'pending'
+       RETURNING id`, [decision, reason, actorUserId || null, itemId, returnId]);
+    if (!updated.rows.length) throw fault(409, 'RETURN_ITEM_ALREADY_INSPECTED', 'This product has already been inspected.');
+    await client.query(`INSERT INTO return_request_audit (return_request_id, order_id, actor_user_id, action, reason, metadata)
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb)`, [returnId, request.rows[0].order_id, actorUserId || null,
+      decision === 'approved' ? 'ITEM_REPLACEMENT_APPROVED' : 'ITEM_REPLACEMENT_REJECTED', reason,
+      JSON.stringify({ returnItemId: itemId })]);
+    await client.query('COMMIT');
+  } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
+  finally { client.release(); }
+  return formatReturn(await findReturn(database, returnId, null, true));
+}
+
+async function replacementOutboundPayload(database, returnId, env = process.env, api = shiprocket) {
+  const result = await database.query(`SELECT rr.return_number, rr.order_id, u.email AS customer_email, oa.*, ri.id AS return_item_id,
+      ri.quantity, ri.inspection_status, ri.replacement_size, oi.product_id, oi.product_name, oi.sku, oi.variant_id, oi.size, oi.unit_price,
+      (SELECT id FROM orders WHERE return_request_id = rr.id) AS outbound_order_id,
+      (SELECT pv.sku FROM product_variants pv JOIN sizes s ON s.id = pv.size_id
+        WHERE pv.product_id = oi.product_id AND LOWER(s.name) = LOWER(ri.replacement_size)
+        AND pv.color_id IS NOT DISTINCT FROM (SELECT color_id FROM product_variants WHERE id = oi.variant_id)
+        ORDER BY pv.id LIMIT 1) AS replacement_sku
+    FROM return_requests rr JOIN orders o ON o.id = rr.order_id JOIN users u ON u.id = rr.user_id
+    JOIN order_addresses oa ON oa.order_id = o.id JOIN return_items ri ON ri.return_request_id = rr.id
+    JOIN order_items oi ON oi.id = ri.order_item_id WHERE rr.id = $1 ORDER BY ri.created_at`, [returnId]);
+  const rows = result.rows;
+  if (!rows.length) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
+  if (rows.some(row => !['approved', 'rejected'].includes(row.inspection_status))) throw fault(409, 'RETURN_INSPECTION_PENDING', 'Inspect every returned product before creating the replacement shipment.');
+  const customer = splitName(cleanText(rows[0].full_name, 'Customer name', 255, true));
+  if (!rows[0].customer_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rows[0].customer_email)) throw fault(409, 'RETURN_CUSTOMER_EMAIL_REQUIRED', 'Add and verify an email address before shipping.');
+  await resolveReturnWarehouse(api, env);
+  const items = rows.map(row => ({
+    sku: cleanText(row.inspection_status === 'approved'
+      ? (row.replacement_sku || `${row.product_id}-${row.replacement_size}`)
+      : (row.sku || row.variant_id || row.return_item_id), 'Item SKU', 100, true),
+    name: cleanText(`${row.product_name}${row.inspection_status === 'approved' ? ` - replacement size ${row.replacement_size}` : ` - returned item`}`, 'Product name', 255, true),
+    units: Number(row.quantity), selling_price: Number(row.unit_price),
+    requestedSize: row.inspection_status === 'approved' ? row.replacement_size : row.size,
+    inspectionStatus: row.inspection_status, productId: row.product_id, returnItemId: row.return_item_id
+  }));
+  const weight = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_WEIGHT_KG'));
+  const length = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_LENGTH_CM'));
+  const breadth = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_BREADTH_CM'));
+  const height = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_HEIGHT_CM'));
+  if (![weight, length, breadth, height].every(value => Number.isFinite(value) && value > 0)) throw fault(503, 'RETURN_WAREHOUSE_NOT_CONFIGURED', 'Return package measurements are not configured.');
+  return { rows, items, payload: {
+    order_id: rows[0].outbound_order_id || `${rows[0].return_number}-OUT`, order_date: indiaOrderDate(), pickup_location: requiredEnv(env, 'SHIPROCKET_PICKUP_LOCATION'),
+    billing_customer_name: customer.first, billing_last_name: customer.last,
+    billing_address: cleanText(rows[0].address_line1, 'Delivery address', 255, true),
+    billing_address_2: [rows[0].address_line2, rows[0].landmark].filter(Boolean).join(', ').slice(0, 255),
+    billing_city: cleanText(rows[0].city, 'Delivery city', 100, true), billing_state: cleanText(rows[0].state, 'Delivery state', 100, true),
+    billing_pincode: normalizePincode(rows[0].postal_code, 'RETURN_ADDRESS_REVIEW', 'The saved delivery pincode needs review.'), billing_country: 'India',
+    billing_email: rows[0].customer_email, billing_phone: normalizePhone(rows[0].phone), shipping_is_billing: true,
+    order_items: items.map(({ sku, name, units, selling_price }) => ({ sku, name, units, selling_price })), payment_method: 'Prepaid',
+    sub_total: Number(rupees(items.reduce((sum, item) => sum + moneyPaise(item.selling_price) * item.units, 0))), total_discount: 0,
+    shipping_charges: 0, length, breadth, height, weight
+  }};
+}
+
+function inspectionDecisions(input) {
+  if (!Array.isArray(input?.items) || input.items.length > 50) throw fault(400, 'RETURN_VALIDATION', 'Submit inspection decisions for every product.');
+  const seen = new Set();
+  return input.items.map(item => {
+    const itemId = validId(item?.itemId, 'return item ID').toLowerCase();
+    if (seen.has(itemId)) throw fault(400, 'RETURN_VALIDATION', 'Each product can have only one inspection decision.');
+    seen.add(itemId);
+    if (!['approved', 'rejected'].includes(item?.decision)) throw fault(400, 'RETURN_VALIDATION', 'Choose approve or reject for every product.');
+    return { itemId, decision: item.decision, reason: cleanText(item.reason, 'Inspection reason', 500, true) };
+  });
+}
+
+async function submitReplacementInspection(returnId, input, actorUserId, dependencies = {}) {
+  const decisions = inspectionDecisions(input);
+  return createReplacementShipment(returnId, actorUserId, { ...dependencies, decisions });
+}
+
+async function createReplacementShipment(returnId, actorUserId, { database = pool, api = shiprocket, env = process.env, decisions = null } = {}) {
+  returnId = validId(returnId, 'return ID');
+  const client = await database.connect();
+  let request;
+  const reservations = [];
+  const attemptId = crypto.randomUUID();
+  let remote;
+  let remoteCreated = false;
+  let providerStarted = false;
+  try {
+    await client.query('BEGIN');
+    const found = await client.query('SELECT * FROM return_requests WHERE id = $1 FOR UPDATE', [returnId]);
+    request = found.rows[0];
+    if (!request) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
+    if (request.request_type !== RETURN_TYPES.replacement) throw fault(409, 'RETURN_TRANSITION_INVALID', 'Only size exchanges can be shipped.');
+    if (request.pending_operation) throw fault(409, 'REPLACEMENT_SHIPMENT_RECONCILIATION_REQUIRED', 'A replacement shipment operation is already pending reconciliation.');
+    if (request.shiprocket_outbound_shipment_id) { await client.query('COMMIT'); return formatReturn(await findReturn(database, returnId, null, true)); }
+    if (request.status !== 'received') throw fault(409, 'RETURN_TRANSITION_INVALID', 'Inspection can be submitted only after the return reaches the warehouse.');
+    const products = await client.query('SELECT id, inspection_status, inspection_reason FROM return_items WHERE return_request_id = $1 ORDER BY id FOR UPDATE', [returnId]);
+    if (!products.rows.length) throw fault(409, 'RETURN_INSPECTION_PENDING', 'This request has no products to inspect.');
+    if (decisions) {
+      if (decisions.some(item => !products.rows.some(row => row.id === item.itemId))) throw fault(400, 'RETURN_VALIDATION', 'A product does not belong to this return request.');
+      for (const item of products.rows) {
+        const decision = decisions.find(entry => entry.itemId === item.id);
+        if (item.inspection_status !== 'pending') {
+          if (decision && (decision.decision !== item.inspection_status || decision.reason !== item.inspection_reason)) throw fault(409, 'RETURN_ITEM_ALREADY_INSPECTED', 'A saved inspection decision cannot be changed.');
+          continue;
+        }
+        if (!decision) throw fault(400, 'RETURN_INSPECTION_PENDING', 'Choose approve or reject and enter a reason for every product.');
+        await client.query(`UPDATE return_items SET inspection_status = $1, inspection_reason = $2, inspected_at = NOW(), inspected_by = $3
+          WHERE id = $4 AND return_request_id = $5`, [decision.decision, decision.reason, actorUserId || null, item.id, returnId]);
+        await client.query(`INSERT INTO return_request_audit (return_request_id, order_id, actor_user_id, action, reason, metadata)
+          VALUES ($1,$2,$3,$4,$5,$6::jsonb)`, [returnId, request.order_id, actorUserId || null,
+          decision.decision === 'approved' ? 'ITEM_REPLACEMENT_APPROVED' : 'ITEM_REPLACEMENT_REJECTED', decision.reason, JSON.stringify({ returnItemId: item.id })]);
+      }
+    } else if (products.rows.some(item => item.inspection_status === 'pending')) {
+      throw fault(409, 'RETURN_INSPECTION_PENDING', 'Inspect every returned product before creating the replacement shipment.');
+    }
+    // Reserve the replacement sizes atomically before contacting the provider.
+    // Rejected originals never add or subtract sellable stock.
+    const stock = await client.query(`SELECT psd.id, psd.product_id, psd.size_id, SUM(ri.quantity)::integer AS quantity
+      FROM return_items ri JOIN order_items oi ON oi.id = ri.order_item_id
+      JOIN sizes s ON LOWER(s.name) = LOWER(ri.replacement_size)
+      JOIN product_size_details psd ON psd.product_id = oi.product_id AND psd.size_id = s.id
+      WHERE ri.return_request_id = $1 AND ri.inspection_status = 'approved'
+      GROUP BY psd.id, psd.product_id, psd.size_id ORDER BY psd.id`, [returnId]);
+    const approved = await client.query(`SELECT ri.id FROM return_items ri JOIN order_items oi ON oi.id = ri.order_item_id
+      LEFT JOIN product_variants pv ON pv.id = oi.variant_id
+      LEFT JOIN product_size_details original ON original.product_id = oi.product_id AND original.size_id = pv.size_id
+      LEFT JOIN sizes s ON LOWER(s.name) = LOWER(ri.replacement_size)
+      LEFT JOIN product_size_details replacement ON replacement.product_id = oi.product_id AND replacement.size_id = s.id
+      WHERE ri.return_request_id = $1 AND ri.inspection_status = 'approved' AND (original.id IS NULL OR replacement.id IS NULL)`, [returnId]);
+    if (approved.rows.length) throw fault(409, 'REPLACEMENT_STOCK_UNAVAILABLE', 'Returned or replacement inventory needs review.');
+    for (const item of stock.rows) {
+      const reserved = await client.query(`UPDATE product_size_details SET stock_quantity = stock_quantity - $1, updated_at = NOW()
+        WHERE id = $2 AND is_active = TRUE AND inventory_configured = TRUE AND stock_quantity >= $1
+        RETURNING stock_quantity + $1 AS quantity_before, stock_quantity AS quantity_after`, [item.quantity, item.id]);
+      if (!reserved.rows.length) throw fault(409, 'REPLACEMENT_STOCK_UNAVAILABLE', 'A replacement size is out of stock. No shipment was created.');
+      reservations.push(item);
+      await inventory.recordMovement(client, { inventoryId: item.id, productId: item.product_id, sizeId: item.size_id,
+        movementType: 'ORDER_RESERVED', quantityChange: -item.quantity, quantityBefore: reserved.rows[0].quantity_before,
+        quantityAfter: reserved.rows[0].quantity_after, returnId, createdBy: actorUserId || null,
+        reason: 'Reserved for inspected size replacement', idempotencyKey: `REPLACEMENT_RESERVED:${attemptId}:${item.id}` });
+    }
+    await afterSalesOrders.ensureOrder(client, returnId, actorUserId);
+    await client.query("UPDATE return_requests SET pending_operation = 'replacement_create', operation_started_at = NOW(), updated_at = NOW() WHERE id = $1", [returnId]);
+    await client.query('COMMIT');
+  } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
+  finally { client.release(); }
+
+  try {
+    const outbound = await replacementOutboundPayload(database, returnId, env, api);
+    providerStarted = true;
+    remote = providerIdentifiers(await api.request('/orders/create/adhoc', { method: 'POST', body: outbound.payload }));
+    remoteCreated = true;
+    const finalize = await database.connect();
+    try {
+      await finalize.query('BEGIN');
+      await finalize.query('SELECT id FROM return_requests WHERE id = $1 FOR UPDATE', [returnId]);
+      // Only approved products are restocked and exchanged; rejected products are
+      // simply sent back to the customer in this same outbound parcel.
+      for (const item of outbound.items.filter(item => item.inspectionStatus === 'approved')) {
+        const original = await finalize.query(`UPDATE product_size_details psd SET stock_quantity = stock_quantity + $1, updated_at = NOW()
+          WHERE psd.product_id = $2 AND psd.size_id = (SELECT size_id FROM product_variants WHERE id = (SELECT variant_id FROM order_items WHERE id = (SELECT order_item_id FROM return_items WHERE id = $3)))
+          RETURNING id, product_id, size_id, stock_quantity - $1 AS quantity_before, stock_quantity AS quantity_after`, [item.units, item.productId, item.returnItemId]);
+        if (!original.rows.length) throw fault(409, 'REPLACEMENT_STOCK_UNAVAILABLE', 'Returned inventory needs review.');
+        const restored = original.rows[0];
+        await inventory.recordMovement(finalize, { inventoryId: restored.id, productId: restored.product_id, sizeId: restored.size_id,
+          movementType: 'RETURN_RESTOCKED', quantityChange: item.units, quantityBefore: restored.quantity_before,
+          quantityAfter: restored.quantity_after, returnId, createdBy: actorUserId || null, reason: 'Replacement inspection approved',
+          idempotencyKey: `REPLACEMENT_RESTOCKED:${returnId}:${item.returnItemId}` });
+      }
+      await afterSalesOrders.saveShipment(finalize, returnId, remote, outbound.payload);
+      await finalize.query(`UPDATE return_requests SET shiprocket_outbound_order_id = $1, shiprocket_outbound_shipment_id = $2,
+        outbound_awb = $3, outbound_status = 'created', outbound_created_at = NOW(), pending_operation = NULL, operation_started_at = NULL,
+        status = 'approved', approved_at = COALESCE(approved_at, NOW()), refund_status = 'not_applicable', last_error_code = NULL,
+        updated_at = NOW() WHERE id = $4`, [remote.orderId, remote.shipmentId, remote.awb, returnId]);
+      await finalize.query(`INSERT INTO return_request_audit (return_request_id, order_id, actor_user_id, action, metadata)
+        VALUES ($1,$2,$3,'REPLACEMENT_OUTBOUND_CREATED',$4::jsonb)`, [returnId, request.order_id, actorUserId || null,
+        JSON.stringify({ shiprocketOrderId: remote.orderId, shiprocketShipmentId: remote.shipmentId })]);
+      await finalize.query('COMMIT');
+    } catch (error) { await finalize.query('ROLLBACK').catch(() => {}); throw error; } finally { finalize.release(); }
+  } catch (error) {
+    const uncertain = remoteCreated || (providerStarted && (error.uncertain !== false));
+    if (uncertain) {
+      await database.query(`UPDATE return_requests SET last_error_code = 'REPLACEMENT_SHIPMENT_RECONCILIATION_REQUIRED',
+        shiprocket_outbound_order_id = COALESCE(shiprocket_outbound_order_id, $2),
+        shiprocket_outbound_shipment_id = COALESCE(shiprocket_outbound_shipment_id, $3), updated_at = NOW()
+        WHERE id = $1 AND pending_operation = 'replacement_create'`, [returnId, remote?.orderId || null, remote?.shipmentId || null]).catch(() => {});
+      throw fault(409, 'REPLACEMENT_SHIPMENT_RECONCILIATION_REQUIRED', 'Inspection decisions are saved. Check Shiprocket before retrying; the outbound shipment may already exist.');
+    }
+    const release = await database.connect();
+    try {
+      await release.query('BEGIN');
+      await release.query('SELECT id FROM return_requests WHERE id = $1 FOR UPDATE', [returnId]);
+      for (const item of reservations) {
+        const restored = await release.query(`UPDATE product_size_details SET stock_quantity = stock_quantity + $1, updated_at = NOW()
+          WHERE id = $2 RETURNING stock_quantity - $1 AS quantity_before, stock_quantity AS quantity_after`, [item.quantity, item.id]);
+        if (!restored.rows.length) throw fault(409, 'REPLACEMENT_STOCK_UNAVAILABLE', 'Reserved stock needs review.');
+        await inventory.recordMovement(release, { inventoryId: item.id, productId: item.product_id, sizeId: item.size_id,
+          movementType: 'ORDER_CANCELLED', quantityChange: item.quantity, quantityBefore: restored.rows[0].quantity_before,
+          quantityAfter: restored.rows[0].quantity_after, returnId, createdBy: actorUserId || null,
+          reason: 'Replacement shipment creation failed; reservation released', idempotencyKey: `REPLACEMENT_RELEASED:${attemptId}:${item.id}` });
+      }
+      await release.query(`UPDATE return_requests SET pending_operation = NULL, operation_started_at = NULL, last_error_code = $2,
+        updated_at = NOW() WHERE id = $1 AND pending_operation = 'replacement_create'`, [returnId, error.code || 'REPLACEMENT_SHIPMENT_FAILED']);
+      await release.query('COMMIT');
+    } catch (releaseError) { await release.query('ROLLBACK').catch(() => {}); throw releaseError; }
+    finally { release.release(); }
+    throw error;
+  }
   return formatReturn(await findReturn(database, returnId, null, true));
 }
 
@@ -830,7 +1083,7 @@ async function processShiprocketWebhook(payload, headers, database = pool, env =
   const providerOrderId = Number(payload.sr_order_id);
   const channelOrderId = typeof payload.order_id === 'string' ? payload.order_id.slice(0, 50) : null;
   const next = mappedWebhookStatus(payload);
-  if (!next || (!awb && !Number.isSafeInteger(providerOrderId) && !channelOrderId)) return { ignored: true, duplicate: false };
+  if (!awb && !Number.isSafeInteger(providerOrderId) && !channelOrderId) return { ignored: true, duplicate: false };
   const eventId = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
   const client = await database.connect();
   try {
@@ -838,13 +1091,27 @@ async function processShiprocketWebhook(payload, headers, database = pool, env =
     const claim = await client.query('INSERT INTO return_webhook_events (event_id) VALUES ($1) ON CONFLICT DO NOTHING RETURNING event_id', [eventId]);
     if (!claim.rows.length) { await client.query('COMMIT'); return { ignored: false, duplicate: true }; }
     const found = await client.query(
-      `SELECT * FROM return_requests WHERE ($1::text IS NOT NULL AND return_awb = $1)
-       OR ($2::bigint IS NOT NULL AND shiprocket_return_order_id = $2)
-       OR ($3::text IS NOT NULL AND return_number = $3) FOR UPDATE`,
+      `SELECT * FROM return_requests WHERE ($1::text IS NOT NULL AND (return_awb = $1 OR outbound_awb = $1))
+       OR ($2::bigint IS NOT NULL AND (shiprocket_return_order_id = $2 OR shiprocket_outbound_order_id = $2))
+       OR ($3::text IS NOT NULL AND ($3 = return_number OR $3 = return_number || '-OUT'
+         OR id = (SELECT return_request_id FROM orders WHERE id::text = $3 AND order_type <> 'normal'))) FOR UPDATE`,
       [awb, Number.isSafeInteger(providerOrderId) ? providerOrderId : null, channelOrderId]
     );
     const row = found.rows[0];
     if (!row) { await client.query('COMMIT'); return { ignored: true, duplicate: false }; }
+    const isOutboundEvent = (awb && row.outbound_awb === awb) ||
+      (Number.isSafeInteger(providerOrderId) && Number(row.shiprocket_outbound_order_id) === providerOrderId) ||
+      (channelOrderId && (channelOrderId === `${row.return_number}-OUT` || (channelOrderId !== row.return_number && UUID.test(channelOrderId))));
+    if (isOutboundEvent) {
+      const providerLabel = webhookStatusLabel(payload);
+      if (!providerLabel && !next) { await client.query('COMMIT'); return { ignored: true, duplicate: false }; }
+      await client.query(`UPDATE return_requests SET outbound_status = $1, outbound_awb = COALESCE(outbound_awb, $2),
+        updated_at = NOW() WHERE id = $3`, [providerLabel, awb, row.id]);
+      await client.query('UPDATE return_webhook_events SET return_request_id = $1 WHERE event_id = $2', [row.id, eventId]);
+      await client.query('COMMIT');
+      return { ignored: false, duplicate: false };
+    }
+    if (!next) { await client.query('COMMIT'); return { ignored: true, duplicate: false }; }
     const terminal = ['rejected','cancelled','refunded'].includes(row.status);
     const canAdvance = next === 'cancelled' || next === 'pickup_failed' || (STATUS_RANK[next] != null && STATUS_RANK[next] >= (STATUS_RANK[row.status] ?? -1));
     if (!terminal && canAdvance) {
@@ -876,5 +1143,5 @@ module.exports = {
   RETURN_REASONS, RETURN_TYPES, DEFECT_WINDOW_MS, RETURN_WINDOW_MS, ACTIVE_STATUSES, evaluateEligibility, refundableItems, returnShippingDeductionPaise,
   validateRequest, createLocalReturn, getEligibility, createReturn, provisionReturn, listCustomerReturns, listAdminReturns,
   findReturn, formatReturn, approveReturn, rejectReturn, initiateRefund, grantEligibilityOverride, listEligibilityOverrideHistory,
-  mappedWebhookStatus, processShiprocketWebhook, returnPayload, resolveReturnWarehouse
+  inspectReturnItem, submitReplacementInspection, createReplacementShipment, mappedWebhookStatus, processShiprocketWebhook, returnPayload, resolveReturnWarehouse
 };

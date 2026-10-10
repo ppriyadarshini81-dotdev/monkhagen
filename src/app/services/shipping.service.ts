@@ -26,4 +26,7 @@ export class ShippingService {
       responseType: 'blob'
     });
   }
+  getTracking(orderId: string): Observable<ShipmentResult> {
+    return this.http.get<ShipmentResult>(`${this.api}/${orderId}/tracking`);
+  }
 }

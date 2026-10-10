@@ -1058,15 +1058,6 @@
   }
 }
 .mh-admin-returns{display:grid;gap:24px}
-.mh-admin-return-card { border: 1px solid #e3e0da; border-radius: 14px; padding: 20px; background: #fff; }
-.mh-admin-return-card header, .mh-admin-return-card footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.mh-admin-return-card header div, .mh-admin-return-grid > div, .mh-admin-return-items div { display: grid; gap: 4px; }
-.mh-admin-return-card small { color: #777; text-transform: uppercase; letter-spacing: .08em; }
-.mh-admin-return-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; padding: 18px 0; margin: 18px 0; border-block: 1px solid #eee; }
-.mh-admin-return-grid span, .mh-admin-return-items span { color: #6f6f69; font-size: 12px; }
-.mh-admin-return-items { display: grid; gap: 12px; margin-bottom: 18px; }
-.mh-admin-return-card footer { justify-content: flex-end; }
-@media (max-width:900px){.mh-admin-return-grid{grid-template-columns:1fr 1fr}}@media(max-width:720px){.mh-admin-returns{gap:14px}.mh-admin-return-card{min-width:0;padding:16px}.mh-admin-return-card header{align-items:flex-start}.mh-admin-return-card header>div{min-width:0}.mh-admin-return-card strong,.mh-admin-return-card span{overflow-wrap:anywhere}.mh-admin-return-grid{grid-template-columns:1fr;gap:12px}.mh-admin-return-card footer{align-items:stretch;flex-wrap:wrap}.mh-admin-return-card footer .mh-btn{flex:1 1 100%}}
 .mh-admin-reviews__filters { display: grid; grid-template-columns: minmax(220px, 1fr) 160px 160px auto; gap: 10px; margin: 20px 0; }
 .mh-admin-reviews__filters input, .mh-admin-reviews__filters select { min-height: 42px; padding: 9px 11px; border: 1px solid var(--mh-border); border-radius: 6px; background: var(--mh-bg); color: var(--mh-text); }
 .mh-admin-review-card { margin: 14px 0; padding: 22px; border: 1px solid var(--mh-border); border-radius: 12px; background: var(--mh-bg); }

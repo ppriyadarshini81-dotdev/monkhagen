@@ -65,7 +65,7 @@ export class AccountOrdersComponent implements OnInit {
     ] }
   ];
   returnReasons: ReturnEligibility['reasons'] = [];
-  returnRows: Array<{ orderItemId: string; productName: string; imageUrl: string | null; size: string | null; color: string | null; unitPrice: number; replacementSizes: string[]; replacementSize: string; replacementReasonDetail: string; replacementNotes: string; expandedReasonGroup: string; selected: boolean; quantity: number; max: number; reason: string; comments: string }> = [];
+  returnRows: Array<{ orderItemId: string; productName: string; imageUrl: string | null; size: string | null; color: string | null; unitPrice: number; replacementSizes: string[]; replacementSize: string; replacementSizeServerError: string; replacementReasonDetail: string; replacementNotes: string; expandedReasonGroup: string; selected: boolean; quantity: number; max: number; reason: string; comments: string }> = [];
   cancellationEligibility: CancellationEligibility | null = null;
   cancellationLoading = false;
   cancellationOrder: Order | null = null;
@@ -229,7 +229,7 @@ export class AccountOrdersComponent implements OnInit {
       return {
       orderItemId: item.orderItemId, productName: item.productName, imageUrl: orderItem?.imageUrl || null,
       size: item.size, color: item.color, unitPrice: orderItem?.unitPrice || 0, replacementSizes: item.replacementSizes || [],
-      replacementSize: '', replacementReasonDetail: '', replacementNotes: '', expandedReasonGroup: '', selected: false,
+      replacementSize: '', replacementSizeServerError: '', replacementReasonDetail: '', replacementNotes: '', expandedReasonGroup: '', selected: false,
       quantity: 1, max: item.remainingQuantity, reason: '', comments: ''
       };
     });
@@ -243,10 +243,10 @@ export class AccountOrdersComponent implements OnInit {
     selected.selected = !selected.selected;
     selected.quantity = 1;
     selected.reason = selected.selected ? 'size_issue' : '';
-    if (!selected.selected) { selected.replacementSize = ''; selected.replacementReasonDetail = ''; selected.replacementNotes = ''; selected.expandedReasonGroup = ''; }
+    if (!selected.selected) { selected.replacementSize = ''; selected.replacementSizeServerError = ''; selected.replacementReasonDetail = ''; selected.replacementNotes = ''; selected.expandedReasonGroup = ''; }
   }
 
-  selectReplacementSize(row: typeof this.returnRows[number], size: string): void { row.replacementSize = size; }
+  selectReplacementSize(row: typeof this.returnRows[number], size: string): void { row.replacementSize = size; row.replacementSizeServerError = ''; }
 
   toggleReplacementReasonGroup(row: typeof this.returnRows[number], group: string): void {
     row.expandedReasonGroup = row.expandedReasonGroup === group ? '' : group;
@@ -278,7 +278,8 @@ export class AccountOrdersComponent implements OnInit {
       return;
     }
     if (this.returnRequestType === 'replacement' && selected.some(row => !row.replacementSize || !row.replacementReasonDetail)) {
-      this.returnValidationAttempted = true;
+      this.returnValidationAttempted = false;
+      setTimeout(() => { this.returnValidationAttempted = true; });
       return;
     }
     this.returnSubmitting = true;
@@ -306,7 +307,12 @@ export class AccountOrdersComponent implements OnInit {
       },
       error: error => {
         this.returnSubmitting = false;
-        this.returnError = error?.error?.message || 'We could not create the return request. Please try again.';
+        const response = error?.error;
+        if (this.returnRequestType === 'replacement' && response?.field === 'replacementSize' && response?.orderItemId) {
+          const row = this.returnRows.find(candidate => candidate.orderItemId === response.orderItemId);
+          if (row) { row.replacementSizeServerError = response.message || 'This size is no longer available for this product.'; this.returnError = ''; return; }
+        }
+        this.returnError = response?.message || 'We could not create the return request. Please try again.';
       }
     });
   }

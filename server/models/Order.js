@@ -23,7 +23,9 @@ function formatItem(row) {
     color: row.color || null,
     quantity: row.quantity,
     unitPrice: Number(row.unit_price),
-    totalPrice: Number(row.total_price)
+    totalPrice: Number(row.total_price),
+    imageUrl: row.image_url || null, fulfillmentType: row.fulfillment_type || 'normal',
+    returnItemId: row.return_item_id || null, inspectionReason: row.inspection_reason || null
   };
 }
 
@@ -47,6 +49,9 @@ function formatOrder(row, items = [], address = null) {
     id: row.id,
     orderNumber: row.order_number,
     userId: row.user_id,
+    orderType: row.order_type || 'normal', sourceOrderId: row.source_order_id || null,
+    sourceOrderNumber: row.source_order_number || null, returnId: row.return_request_id || null,
+    returnNumber: row.return_number || null, createdBy: row.created_by || null,
     subtotal: Number(row.subtotal),
     discountAmount: Number(row.discount_amount),
     shippingAmount: Number(row.shipping_amount),
@@ -67,7 +72,8 @@ function formatOrder(row, items = [], address = null) {
 
 async function enrichOrder(row) {
   const [itemsRes, addrRes] = await Promise.all([
-    pool.query('SELECT * FROM order_items WHERE order_id = $1', [row.id]),
+    pool.query(`SELECT oi.*, (SELECT image_url FROM product_images WHERE product_id = oi.product_id
+      ORDER BY is_primary DESC, display_order, created_at LIMIT 1) AS image_url FROM order_items oi WHERE order_id = $1`, [row.id]),
     pool.query('SELECT * FROM order_addresses WHERE order_id = $1', [row.id])
   ]);
   return formatOrder(row, itemsRes.rows.map(formatItem), formatAddress(addrRes.rows[0]));
@@ -121,25 +127,29 @@ const Order = {
 
   async findByUser(userId, { limit = 100, offset = 0 } = {}) {
     const { rows } = await pool.query(
-      'SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3', [userId, limit, offset]
+      "SELECT * FROM orders WHERE user_id = $1 AND order_type = 'normal' ORDER BY created_at DESC LIMIT $2 OFFSET $3", [userId, limit, offset]
     );
     return Promise.all(rows.map(enrichOrder));
   },
 
-  async findAll({ limit = 100, offset = 0 } = {}) {
-    const { rows } = await pool.query(`SELECT o.*, json_build_object(
+  async findAll({ limit = 100, offset = 0, afterSales = false } = {}) {
+    const { rows } = await pool.query(`SELECT o.*, original.order_number AS source_order_number, rr.return_number, json_build_object(
       'shiprocketOrderId', s.shiprocket_order_id,
       'shiprocketShipmentId', s.shiprocket_shipment_id,
       'shippingStatus', COALESCE(s.shipping_status, 'not_created'),
       'awbCode', COALESCE(s.awb_code, o.awb_number),
       'courierName', COALESCE(s.courier_name, o.courier_name),
       'pickupStatus', COALESCE(s.pickup_status, 'pending'),
+      'trackingStatus', s.tracking_status, 'trackingUrl', s.tracking_url,
+      'pendingOperation', s.pending_operation,
       'lastErrorCode', COALESCE(s.last_error_code, o.fulfillment_hold_reason)
     ) AS shipment, json_build_object(
       'cancelledByCustomer', c.id IS NOT NULL, 'cancelledAt', c.cancelled_at, 'reason', c.reason,
       'shiprocketStatus', c.shiprocket_status, 'refundStatus', c.refund_status, 'refundId', c.razorpay_refund_id
     ) AS cancellation FROM orders o
     LEFT JOIN shipments s ON s.order_id = o.id LEFT JOIN order_cancellations c ON c.order_id = o.id
+    LEFT JOIN orders original ON original.id = o.source_order_id LEFT JOIN return_requests rr ON rr.id = o.return_request_id
+    WHERE o.order_type ${afterSales ? "<> 'normal'" : "= 'normal'"}
     ORDER BY o.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]);
     return Promise.all(rows.map(async row => ({ ...await enrichOrder(row), shipment: row.shipment,
       cancellation: row.cancellation?.cancelledByCustomer ? row.cancellation : null })));
@@ -154,6 +164,7 @@ const Order = {
       await client.query('BEGIN');
       const found = await client.query('SELECT * FROM orders WHERE id = $1 FOR UPDATE', [id]);
       if (found.rows[0]) {
+        if (found.rows[0].order_type && found.rows[0].order_type !== 'normal') throw inventory.error(409, 'Manage this order through Returns & Replacements.');
         validateTransition(found.rows[0], status);
         if (status === 'shipped' && found.rows[0].order_status !== status) {
           const shipment = await client.query("SELECT order_id FROM shipments WHERE order_id = $1 AND awb_code IS NOT NULL AND pickup_status = 'scheduled'", [id]);

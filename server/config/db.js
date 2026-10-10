@@ -525,6 +525,13 @@ async function initSchema(database = pool) {
       approved_at       TIMESTAMPTZ,
       completed_at      TIMESTAMPTZ,
 
+      shiprocket_outbound_order_id BIGINT,
+      shiprocket_outbound_shipment_id BIGINT,
+      outbound_awb      VARCHAR(100),
+      outbound_status   VARCHAR(80),
+      outbound_tracking_url TEXT,
+      outbound_created_at TIMESTAMPTZ,
+
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -556,6 +563,13 @@ async function initSchema(database = pool) {
       reason              TEXT,
 
       replacement_size    VARCHAR(50),
+
+      inspection_status   VARCHAR(30) NOT NULL DEFAULT 'pending'
+                          CHECK (inspection_status IN ('pending', 'approved', 'rejected')),
+
+      inspection_reason   VARCHAR(500),
+      inspected_at        TIMESTAMPTZ,
+      inspected_by        UUID REFERENCES users(id) ON DELETE SET NULL,
 
       refund_amount       NUMERIC(10,2) NOT NULL DEFAULT 0
                           CHECK (refund_amount >= 0),
@@ -834,6 +848,9 @@ async function applyOrderCancellationsMigration(database = pool) {
 async function applyEmailOtpMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '022_email_verification_otps.sql'), 'utf8')); }
 async function applyNewsletterSubscribersMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '023_newsletter_subscribers.sql'), 'utf8')); }
 async function applyReturnEligibilityPolicyMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '024_return_eligibility_policy.sql'), 'utf8')); }
+async function applyReturnItemReplacementSizesMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '025_return_item_replacement_sizes.sql'), 'utf8')); }
+async function applyReturnItemInspectionMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '026_return_item_inspection_and_replacement_shipping.sql'), 'utf8')); }
+async function applyAfterSalesOrdersMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '027_after_sales_orders.sql'), 'utf8')); }
 
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
@@ -903,10 +920,13 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const emailOtpApplied = await runMigration('022_email_verification_otps', applyEmailOtpMigration);
     const newsletterSubscribersApplied = await runMigration('023_newsletter_subscribers', applyNewsletterSubscribersMigration);
     const returnEligibilityPolicyApplied = await runMigration('024_return_eligibility_policy', applyReturnEligibilityPolicyMigration);
+    const returnItemReplacementSizesApplied = await runMigration('025_return_item_replacement_sizes', applyReturnItemReplacementSizesMigration);
+    const returnItemInspectionApplied = await runMigration('026_return_item_inspection_and_replacement_shipping', applyReturnItemInspectionMigration);
+    const afterSalesOrdersApplied = await runMigration('027_after_sales_orders', applyAfterSalesOrdersMigration);
 
     console.log(
       baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied || financialLedgerApplied || analyticsDashboardApplied || sizeInventoryApplied || codRefundDestinationApplied || financialEventActorApplied || addressEmailApplied
-      || orderCancellationsApplied || emailOtpApplied || newsletterSubscribersApplied || returnEligibilityPolicyApplied ? 'Database migrations applied successfully'
+      || orderCancellationsApplied || emailOtpApplied || newsletterSubscribersApplied || returnEligibilityPolicyApplied || returnItemReplacementSizesApplied || returnItemInspectionApplied || afterSalesOrdersApplied ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
   } catch (err) {
@@ -939,5 +959,8 @@ module.exports = {
   applyEmailOtpMigration,
   applyNewsletterSubscribersMigration,
   applyReturnEligibilityPolicyMigration,
+  applyReturnItemReplacementSizesMigration,
+  applyReturnItemInspectionMigration,
+  applyAfterSalesOrdersMigration,
   runMigration
 };

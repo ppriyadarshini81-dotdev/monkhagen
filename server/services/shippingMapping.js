@@ -79,6 +79,11 @@ function assertFulfillmentSafe(order) {
   if (['cancelled', 'returned'].includes(order.order_status)) {
     throw shippingError(409, 'ORDER_NOT_SHIPPABLE', 'This order is not eligible for shipment creation.');
   }
+  if (['replacement', 'rejected_return'].includes(order.order_type)) {
+    if (order.source_order_id && order.return_request_id && Number(order.total_amount) === 0 &&
+        order.after_sales_return_status === 'approved' && !order.after_sales_pending_operation) return;
+    throw shippingError(409, 'ORDER_FULFILLMENT_HELD', 'The linked inspection must be completed before this outbound order can ship.');
+  }
   if (order.payment_method === 'cod' && ['pending', 'paid'].includes(order.payment_status)) return;
   if (order.payment_method !== 'razorpay' || order.payment_status !== 'paid' ||
       !order.razorpay_order_id || !order.razorpay_payment_id || !order.paid_at) {

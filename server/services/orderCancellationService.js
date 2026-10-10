@@ -12,6 +12,7 @@ function fmt(row) { return { eligible: row.status === 'cancelled', status: row.s
   cancelledAt: row.cancelled_at || null, refundStatus: row.refund_status, refundId: row.razorpay_refund_id || null,
   shiprocketStatus: row.shiprocket_status }; }
 function eligible(order, shipment, cancellation) {
+  if (order?.order_type && order.order_type !== 'normal') return { eligible: false, reason: 'AFTER_SALES_ORDER', message: 'Manage this shipment in the original return request.' };
   if (cancellation?.status === 'cancelled') return { eligible: false, reason: 'ALREADY_CANCELLED', message: 'This order has already been cancelled.' };
   if (cancellation?.status) return { eligible: false, reason: 'CANCELLATION_IN_PROGRESS', message: 'Cancellation is already being confirmed.' };
   if (!order || order.order_status === 'cancelled') return { eligible: false, reason: 'ALREADY_CANCELLED', message: 'This order has already been cancelled.' };

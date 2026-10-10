@@ -71,8 +71,9 @@ const Shipment = {
 
   async order(client, orderId) {
     const { rows } = await client.query(
-      `SELECT o.*, u.email AS customer_email FROM orders o
-       JOIN users u ON u.id = o.user_id WHERE o.id = $1`, [orderId]
+      `SELECT o.*, u.email AS customer_email, rr.status AS after_sales_return_status,
+        rr.pending_operation AS after_sales_pending_operation FROM orders o
+       JOIN users u ON u.id = o.user_id LEFT JOIN return_requests rr ON rr.id = o.return_request_id WHERE o.id = $1`, [orderId]
     );
     return rows[0] || null;
   },
