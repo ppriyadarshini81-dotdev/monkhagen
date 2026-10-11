@@ -14,7 +14,7 @@ Set these backend environment variables locally. Variable names only are listed 
 | `SHIPROCKET_TIMEOUT_MS` | Optional request/body timeout, defaults to 15 seconds; accepted range 1–60 seconds |
 | `SHIPROCKET_PICKUP_LOCATION` | Exact name of an existing pickup location in your Shiprocket account |
 | `SHIPROCKET_PRODUCT_TAX_PERCENT` | Product GST percentage sent in each item; configured as `5` |
-| `SHIPROCKET_PACKAGE_PROFILES` | JSON array of quantity ranges, actual weight in kg and length/breadth/height in cm; see `.env.example` |
+| `SHIPROCKET_PACKAGE_PROFILES` | JSON array of quantity ranges, actual weight in kg and length/breadth/height in cm; configure in `.env` |
 | `SHIPROCKET_PACKAGE_WEIGHT_KG` | Legacy fallback weight in kilograms for callers without item quantities |
 | `SHIPROCKET_PACKAGE_LENGTH_CM` | Legacy fallback length in centimetres |
 | `SHIPROCKET_PACKAGE_BREADTH_CM` | Legacy fallback breadth in centimetres |

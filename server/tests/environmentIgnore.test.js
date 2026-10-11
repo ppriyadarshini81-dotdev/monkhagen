@@ -6,7 +6,8 @@ const workspace = path.join(__dirname, '..', '..');
 
 test('environment variants and Vercel local configuration are ignored without creating files', () => {
   const names = ['.env', '.env.local', '.env.production', '.env.production.local', '.env.development',
-    '.env.backup', 'server/.env', 'server/.env.staging', 'credentials.env', '.vercel/project.json'];
+    '.env.backup', '.env.example', 'server/.env', 'server/.env.staging', 'server/.env.example',
+    'credentials.env', '.vercel/project.json'];
   const ignored = execFileSync('git', ['check-ignore', '--no-index', '--stdin'], {
     cwd: workspace, input: names.join('\n') + '\n', encoding: 'utf8'
   }).trim().split(/\r?\n/);
