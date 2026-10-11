@@ -433,7 +433,7 @@
         <p class="mh-return-notice" *ngIf="r.cancellationPending">Cancellation is being confirmed with Shiprocket.</p>
         <footer class="mh-customer-return__foot">
           <span *ngIf="r.refundAmount > 0"><small>Refund</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><em>{{ returnStatusLabel(r.refundStatus) }}</em></span>
-          <span *ngIf="r.requestType === 'replacement'" class="mh-return-footnote">Replacement is confirmed after inspection and stock review.</span>
+          <span *ngIf="r.requestType === 'replacement'" class="mh-return-footnote">Replacement is confirmed after inspection.</span>
           <div><button type="button" class="mh-return-details-button" (click)="openReturnDetails(r)">View details</button></div>
         </footer>
       </article>

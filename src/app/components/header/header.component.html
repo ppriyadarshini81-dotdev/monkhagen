@@ -18,10 +18,11 @@
       <div class="mh-nav__mobileonly">
         <ng-container *ngIf="user$ | async as user; else mobileLogin">
           <span class="mh-nav__hi">Hi, {{ user.name }}</span>
-          <a routerLink="/account/profile" (click)="closeMenu()">My Account</a>
-          <a routerLink="/account/orders" (click)="closeMenu()">Orders</a>
-          <a routerLink="/account/returns" (click)="closeMenu()">Returns</a>
+          <a routerLink="/account/profile" (click)="closeMenu()">Profile</a>
           <a routerLink="/account/addresses" (click)="closeMenu()">Addresses</a>
+          <a routerLink="/account/orders" (click)="closeMenu()">My Orders</a>
+          <a routerLink="/account/returns" (click)="closeMenu()">Returns/Replacement</a>
+          <a routerLink="/account/credits" (click)="closeMenu()">Credits</a>
           <button type="button" class="mh-nav__logout" (click)="logout()">Logout</button>
         </ng-container>
         <ng-template #mobileLogin>
