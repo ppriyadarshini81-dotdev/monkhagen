@@ -13,17 +13,23 @@ Set these backend environment variables locally. Variable names only are listed 
 | `SHIPROCKET_BASE_URL` | Documented Shiprocket API origin; defaults to the official HTTPS origin when blank |
 | `SHIPROCKET_TIMEOUT_MS` | Optional request/body timeout, defaults to 15 seconds; accepted range 1–60 seconds |
 | `SHIPROCKET_PICKUP_LOCATION` | Exact name of an existing pickup location in your Shiprocket account |
-| `SHIPROCKET_PACKAGE_WEIGHT_KG` | Actual packed-order weight in kilograms |
-| `SHIPROCKET_PACKAGE_LENGTH_CM` | Packed-order length in centimetres |
-| `SHIPROCKET_PACKAGE_BREADTH_CM` | Packed-order breadth in centimetres |
-| `SHIPROCKET_PACKAGE_HEIGHT_CM` | Packed-order height in centimetres |
+| `SHIPROCKET_PRODUCT_TAX_PERCENT` | Product GST percentage sent in each item; configured as `5` |
+| `SHIPROCKET_PACKAGE_PROFILES` | JSON array of quantity ranges, actual weight in kg and length/breadth/height in cm; see `.env.example` |
+| `SHIPROCKET_PACKAGE_WEIGHT_KG` | Legacy fallback weight in kilograms for callers without item quantities |
+| `SHIPROCKET_PACKAGE_LENGTH_CM` | Legacy fallback length in centimetres |
+| `SHIPROCKET_PACKAGE_BREADTH_CM` | Legacy fallback breadth in centimetres |
+| `SHIPROCKET_PACKAGE_HEIGHT_CM` | Legacy fallback height in centimetres |
 | `SHIPROCKET_WEBHOOK_SECRET` | Strong private value configured as Shiprocket's tracking webhook `x-api-key` |
 
 Existing `DB_*`, `JWT_*`, `RAZORPAY_*`, and `SMTP_*` configuration is reused. No new npm packages are required: the integration uses Node's native `fetch`, `AbortController`, and test runner, plus the existing `pg`, Express, and rate limiter.
 
-Restart the backend after setting `.env`. Package defaults describe **one entire packed order**, not one product. Only configure automatic defaults if they accurately describe the orders you fulfill. Otherwise leave them blank and supply measurements per order through the admin create-shipment request. No guessed warehouse name or measurements are used.
+Restart the backend after changing configuration. New shipments select actual packed weight and dimensions from the merchant's `SHIPROCKET_PACKAGE_PROFILES` environment configuration, by summing the saved product quantities. `server/config/shippingPackages.js` validates the environment value and contains no merchant measurements. This applies to forward orders, requested reverse-return units, and consolidated replacement/rejected-return parcels. See [quantity-based packing](quantity-based-shipping.md) for the five configured tiers. Explicit admin measurements override selected fields; saved measurements remain stable on retries. The fixed package environment variables are legacy fallbacks for callers without item quantities, and are not required for these quantity-based shipments. The existing pickup location is still required.
 
 ## Database and startup
+
+Product prices remain GST-inclusive. Each product line sent to Shiprocket contains `tax: 5`, from `SHIPROCKET_PRODUCT_TAX_PERCENT=5` in the backend environment, with its original inclusive `selling_price`. The request subtotal is the product subtotal after the existing order discount. Customer payment amounts are unchanged. Normal, reverse-return, and replacement/rejected-return payloads all forward the configured item percentage.
+
+Customer and admin invoice downloads retrieve the Shiprocket PDF for the saved Shiprocket order ID. GST component calculations and invoice formatting belong to Shiprocket. The application has no custom GST settings page, tax database migration, rate/snapshot engine, credit-note generator or PDF renderer. Tax changes apply to newly sent payloads; an existing provider order must be corrected through Shiprocket's supported order-update workflow to change its already-saved tax data. Never create a duplicate shipment to correct an invoice.
 
 `server/migrations/001_shipments.sql` adds `shipments`. `server/config/db.js` records it in `schema_migrations` and applies it transactionally under an advisory migration lock. The file is repeatable and can also be applied through your normal PostgreSQL migration tooling. Startup waits for pending migrations before listening or processing shipping work; completed migrations are skipped on later starts.
 

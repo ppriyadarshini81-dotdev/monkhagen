@@ -11,7 +11,7 @@ describe('HomeComponent banner carousel', () => {
     const categories = jasmine.createSpyObj<CategoryService>('CategoryService', ['getCategories']);
     products.getProducts.and.returnValue(of([]));
     categories.getCategories.and.returnValue(of([]));
-    return new HomeComponent(products, categories);
+    return new HomeComponent(products, categories, {} as never);
   }
 
   it('includes all five configured images and a duplicate for seamless looping', () => {

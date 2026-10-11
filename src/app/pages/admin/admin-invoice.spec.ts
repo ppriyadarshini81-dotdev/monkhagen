@@ -8,7 +8,7 @@ describe('AdminComponent invoices', () => {
   let shipping: jasmine.SpyObj<ShippingService>;
   let component: AdminComponent;
   let anchorClick: jasmine.Spy;
-  const order = { id: 'order-1', orderNumber: 'MH-1', shipment: { shiprocketOrderId: 101 } } as Order;
+  const order = { id: 'order-1', orderNumber: 'MH-1', shipment:{shiprocketOrderId:101} } as Order;
 
   beforeEach(() => {
     shipping = jasmine.createSpyObj<ShippingService>('ShippingService', ['createShipment', 'getInvoice']);
@@ -36,12 +36,31 @@ describe('AdminComponent invoices', () => {
     expect(window.open).not.toHaveBeenCalled();
   });
 
-  it('shows a friendly provider error and ignores orders without a Shiprocket mapping', () => {
+  it('shows a friendly invoice error and ignores orders without a Shiprocket mapping', () => {
     shipping.getInvoice.and.returnValue(throwError(() => new Error('private provider response')));
     component.downloadInvoice(order);
     expect(component.invoiceError).toBe('Invoice is not available yet. Please try again later.');
     expect(window.open).not.toHaveBeenCalled();
-    component.downloadInvoice({ ...order, shipment: { ...order.shipment!, shiprocketOrderId: null } });
+    component.downloadInvoice({ ...order, shipment:undefined });
     expect(shipping.getInvoice).toHaveBeenCalledTimes(1);
+  });
+  it('downloads the COD invoice without initiating shipment creation',()=>{
+    shipping.getInvoice.and.returnValue(new Subject<HttpResponse<Blob>>());
+    component.downloadInvoice({...order,paymentMethod:'cod',paymentStatus:'pending'});
+    expect(shipping.getInvoice).toHaveBeenCalledOnceWith('order-1');expect(shipping.createShipment).not.toHaveBeenCalled();
+  });
+
+  it('allows the administrator to create a shipment for a paid order without a pending operation', () => {
+    const ready = { ...order, paymentStatus: 'paid', shipment: { shippingStatus: 'pending',
+      lastErrorCode: null, pendingOperation: null } } as Order;
+    shipping.createShipment.and.returnValue(new Subject());
+    expect(component.canRetryShipment(ready)).toBeTrue();
+    component.retryShipment(ready);
+    expect(shipping.createShipment).toHaveBeenCalledOnceWith(ready.id);
+  });
+
+  it('blocks creation while an earlier shipping operation requires reconciliation', () => {
+    const pending = { ...order, paymentStatus: 'paid', shipment: { pendingOperation: 'create' } } as Order;
+    expect(component.canRetryShipment(pending)).toBeFalse();
   });
 });

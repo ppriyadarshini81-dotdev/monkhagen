@@ -124,7 +124,7 @@ async function aggregate(start, end, database = pool) {
         SELECT *,CASE WHEN user_id IS NULL THEN 'visitor:'||visitor_id::text ELSE 'user:'||user_id::text END AS identity
         FROM analytics_sessions WHERE started_at >= $1 AND started_at < $2 AND NOT is_internal
       ), visitors AS (
-        SELECT identity,MAX(user_id) AS user_id, BOOL_OR(user_id IS NOT NULL) AS logged_in FROM scoped GROUP BY identity
+        SELECT identity, BOOL_OR(user_id IS NOT NULL) AS logged_in FROM scoped GROUP BY identity
       ) SELECT
         (SELECT COUNT(*) FROM scoped)::int AS sessions,
         COUNT(*)::int AS visitors,

@@ -6,6 +6,7 @@ const {
   approveReturn, rejectReturn, initiateRefund, processShiprocketWebhook, resolveReturnWarehouse
 } = require('../services/returnService');
 const { shippingError } = require('../config/shiprocket');
+const { environment: packingEnvironment } = require('./helpers/shippingPackageFixtures');
 
 const ORDER = '10000000-0000-4000-8000-000000000001';
 const ITEM = '20000000-0000-4000-8000-000000000001';
@@ -26,6 +27,19 @@ test('exact seven-day delivery eligibility uses delivered_at and supports remain
     assert.equal(result.items[0].remainingQuantity, 1);
   }
   assert.equal(evaluateEligibility(order(RETURN_WINDOW_MS + 1), items(), NOW).reason, 'WINDOW_CLOSED');
+});
+
+test('existing requests are flagged even for partial quantities, and cancelled requests release the flag within the window', () => {
+  const partial = evaluateEligibility(order(0), items(1), NOW);
+  assert.equal(partial.hasExistingRequest, true);
+  assert.equal(partial.eligible, true);
+  const full = evaluateEligibility(order(0), items(2), NOW);
+  assert.equal(full.hasExistingRequest, true);
+  assert.equal(full.eligible, false);
+  const cancelled = evaluateEligibility(order(0), items(0), NOW);
+  assert.equal(cancelled.hasExistingRequest, false);
+  assert.equal(cancelled.eligible, true);
+  assert.equal(evaluateEligibility(order(RETURN_WINDOW_MS + 1), items(0), NOW).eligible, false);
 });
 
 test('defect reports close immediately after the exact 48-hour delivery boundary', () => {
@@ -144,6 +158,7 @@ test('same idempotency key replays the local return and a conflicting body is re
 });
 
 const env = {
+  ...packingEnvironment,
   SHIPROCKET_PACKAGE_WEIGHT_KG: '0.5', SHIPROCKET_PACKAGE_LENGTH_CM: '20', SHIPROCKET_PACKAGE_BREADTH_CM: '15', SHIPROCKET_PACKAGE_HEIGHT_CM: '5',
   SHIPROCKET_PICKUP_LOCATION: 'work'
 };
@@ -172,8 +187,22 @@ test('Shiprocket return payload uses customer pickup and the saved forward picku
   assert.equal(payload.pickup_phone, '9876543210');
   assert.equal(payload.shipping_address, 'Kabir Apparels Warehouse');
   assert.equal(payload.shipping_pincode, 110001);
-  assert.deepEqual(payload.order_items[0], { sku: 'TEE-M-BLUE', name: 'Original tee', units: 1, selling_price: 100, discount: 10, qc_enable: false, qc_size: 'M' });
+  assert.deepEqual(payload.order_items[0], { sku: 'TEE-M-BLUE', name: 'Original tee', units: 1, selling_price: 100, tax: 5, discount: 10, qc_enable: false, qc_size: 'M' });
   assert.equal(Object.hasOwn(payload, 'request_pickup'), false);
+  assert.equal(payload.weight, 0.3);
+  assert.equal(payload.length, 27);
+  assert.equal(payload.breadth, 33);
+  assert.equal(payload.height, 2.6);
+});
+
+test('a partial return packs only requested units, summed across product lines', async () => {
+  const product = { sku: 'TEE', name: 'Original tee', size: 'M', unitPrice: '100.00' };
+  const payload = await returnPayload(payloadDatabase({ items: [
+    { ...product, quantity: 2, refundAmount: '180.00' },
+    { ...product, quantity: 1, refundAmount: '90.00' }
+  ] }), RETURN, { ...packingEnvironment, SHIPROCKET_PICKUP_LOCATION: 'work' }, pickupApi());
+  assert.equal(payload.weight, 0.83);
+  assert.equal(payload.height, 5.08);
 });
 
 test('Shiprocket return payload rejects invalid customer and saved-location pincodes', async () => {

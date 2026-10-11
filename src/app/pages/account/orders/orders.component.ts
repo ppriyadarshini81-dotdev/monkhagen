@@ -12,7 +12,7 @@ import { FEATURE_FLAGS } from '../../../config/feature-flags';
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './orders.component.html',
-  styleUrl: './orders.component.css'
+  styleUrls: ['./orders.component.css', './orders-return-state.css']
 })
 export class AccountOrdersComponent implements OnInit {
   readonly codEnabled = FEATURE_FLAGS.cashOnDelivery;
@@ -111,7 +111,7 @@ export class AccountOrdersComponent implements OnInit {
 
   private loadDeliveredEligibility(orders: Order[]): void {
     for (const order of orders) {
-      if (this.orderStage(order) !== 4 || this.isCancelled(order) || this.returnEligibilityByOrderId[order.id]) continue;
+      if (this.orderStage(order) !== 4 || this.isCancelled(order)) continue;
       this.account.getReturnEligibility(order.id).subscribe({
         next: eligibility => { this.returnEligibilityByOrderId[order.id] = eligibility; },
         error: () => { this.returnEligibilityByOrderId[order.id] = undefined; }
@@ -120,6 +120,15 @@ export class AccountOrdersComponent implements OnInit {
   }
 
   returnEligibilityFor(order: Order): ReturnEligibility | undefined { return this.returnEligibilityByOrderId[order.id]; }
+
+  hasReturnRequest(order: Order): boolean {
+    const eligibility = this.returnEligibilityFor(order);
+    return Boolean(eligibility?.hasExistingRequest) || Boolean(eligibility?.items.some(item => item.returnedQuantity > 0));
+  }
+
+  canRequestReturn(order: Order): boolean {
+    return Boolean(this.returnEligibilityFor(order)?.eligible) && !this.hasReturnRequest(order) && !this.returnSubmitting;
+  }
 
   openReturnChoices(order: Order): void {
     const eligibility = this.returnEligibilityFor(order);
@@ -137,6 +146,7 @@ export class AccountOrdersComponent implements OnInit {
   }
 
   private showReturnChoices(order: Order, eligibility: ReturnEligibility): void {
+    if (!eligibility.eligible || eligibility.hasExistingRequest || eligibility.items.some(item => item.returnedQuantity > 0)) return;
     this.returnChoiceOrder = order;
     this.returnChoiceEligibility = eligibility;
     queueMicrotask(() => this.returnChoiceDialog?.nativeElement.showModal());
@@ -169,7 +179,7 @@ export class AccountOrdersComponent implements OnInit {
     this.returnEligibility = null;
     this.returnEligibilityLoading = true;
     this.account.getReturnEligibility(order.id).subscribe({
-      next: eligibility => { this.returnEligibility = eligibility; this.returnEligibilityLoading = false; },
+      next: eligibility => { this.returnEligibility = eligibility; this.returnEligibilityByOrderId[order.id] = eligibility; this.returnEligibilityLoading = false; },
       error: error => {
         this.returnEligibility = { orderId: order.id, eligible: false, reason: 'UNAVAILABLE',
           message: error?.error?.message || 'Return availability could not be checked.', returnUntil: null,
@@ -270,7 +280,8 @@ export class AccountOrdersComponent implements OnInit {
   }
 
   submitReturn(): void {
-    if (!this.returnOrder || !this.returnIdempotencyKey || this.returnSubmitting) return;
+    const order = this.returnOrder;
+    if (!order || !this.returnIdempotencyKey || this.returnSubmitting) return;
     const selected = this.returnRows.filter(row => row.selected);
     if (!selected.length) { this.returnError = 'Select at least one item.'; return; }
     if (selected.some(row => !row.reason || row.quantity < 1 || row.quantity > row.max || (row.reason === 'other' && !row.comments.trim()) || (this.returnRequestType === 'defect' && !row.comments.trim()))) {
@@ -285,7 +296,7 @@ export class AccountOrdersComponent implements OnInit {
     this.returnSubmitting = true;
     this.returnError = '';
     this.account.createReturn({
-      orderId: this.returnOrder.id,
+      orderId: order.id,
       idempotencyKey: this.returnIdempotencyKey,
       requestType: this.returnRequestType,
       items: selected.map(row => {
@@ -299,6 +310,13 @@ export class AccountOrdersComponent implements OnInit {
     }).subscribe({
       next: result => {
         this.returnSubmitting = false;
+        const eligibility = this.returnEligibilityByOrderId[order.id] || this.returnEligibility;
+        if (eligibility) {
+          const requested = { ...eligibility, hasExistingRequest: true };
+          this.returnEligibilityByOrderId[order.id] = requested;
+          this.returnEligibility = requested;
+        }
+        this.loadDeliveredEligibility([order]);
         this.returnMessage = result.pickupDelayed
           ? 'We received your return request, but pickup scheduling is taking longer than expected.'
           : 'Your return request has been created and pickup is being scheduled.';
@@ -388,6 +406,9 @@ export class AccountOrdersComponent implements OnInit {
         this.invoiceError = 'Invoice is not available yet. Please try again later.';
       }
     });
+  }
+  invoiceHint(order:Order):string {
+    return order.invoiceAvailable?'Download your invoice':'Your invoice is not available yet. Contact support for assistance.';
   }
 
   clearDetails(): void {

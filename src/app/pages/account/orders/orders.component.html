@@ -61,21 +61,23 @@
         <div [class.is-complete]="orderStage(order) >= 4"><span></span><small>Delivered</small></div>
       </div>
       <div class="mh-return-window" *ngIf="orderStage(order) === 4 && returnEligibilityFor(order) as eligibility">
-        <ng-container *ngIf="eligibility.eligible; else expiredReturnWindow">
+        <ng-container *ngIf="hasReturnRequest(order); else returnWindowAvailability"><strong>Already requested</strong> &middot; <a routerLink="/account/returns">View return &amp; replacement</a></ng-container>
+        <ng-template #returnWindowAvailability><ng-container *ngIf="eligibility.eligible; else expiredReturnWindow">
           <span aria-hidden="true">✓</span> Exchange/Return available till <strong>{{ eligibility.returnUntil | date: 'd MMM' }}</strong>
         </ng-container>
-        <ng-template #expiredReturnWindow>Return and replacement window has ended. <a routerLink="/contact/email">Contact support</a> for help.</ng-template>
+        <ng-template #expiredReturnWindow>{{ eligibility.message || 'Return and replacement window has ended.' }} <a routerLink="/contact/email">Contact support</a> for help.</ng-template></ng-template>
       </div>
 
       <footer class="mh-customer-order__foot">
         <span class="mh-delivery-state"><i></i>{{ isCancelled(order) ? 'Cancelled' : deliveryLabel(order) }}</span>
         <div>
-          <button *ngIf="order.invoiceAvailable && !isCancelled(order)" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button>
+          <button *ngIf="!isCancelled(order)" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!order.invoiceAvailable || !!invoiceLoadingOrderId" [attr.title]="invoiceHint(order)" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button>
           <button type="button" class="mh-order-action mh-order-action--quiet" (click)="openDetails(order)">View details</button>
-          <button *ngIf="orderStage(order) === 4 && returnEligibilityFor(order)?.eligible" type="button" class="mh-order-action mh-order-action--quiet" (click)="openReturnChoices(order)">Return &amp; Replace</button>
+          <button *ngIf="orderStage(order) === 4 && !isCancelled(order)" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!canRequestReturn(order) || returnChoiceLoadingOrderId === order.id" (click)="openReturnChoices(order)">Return &amp; Replace</button>
           <button *ngIf="!isCancelled(order)" type="button" class="mh-order-action mh-order-action--primary" (click)="openTracking(order)">Track order <span aria-hidden="true">&#8594;</span></button>
         </div>
       </footer>
+      <p class="mh-invoice-state" *ngIf="!order.invoiceAvailable && !isCancelled(order)">Invoice not available yet. <a routerLink="/contact/email">Contact support</a> for assistance.</p>
     </article>
     <nav class="mh-pagination" *ngIf="page > 0 || hasNextPage" aria-label="Orders pages"><button type="button" [disabled]="page === 0" (click)="changePage(-1)">← Previous</button><span>Page {{ page + 1 }}</span><button type="button" [disabled]="!hasNextPage" (click)="changePage(1)">Next →</button></nav>
   </div>
@@ -126,16 +128,18 @@
         <ng-template #returnAvailability>
         <span *ngIf="returnEligibilityLoading">Checking return availability...</span>
         <ng-container *ngIf="!returnEligibilityLoading && returnEligibility as eligibility">
+          <strong class="mh-return-requested-label" *ngIf="hasReturnRequest(order)">Already requested</strong>
+          <span *ngIf="hasReturnRequest(order)">Follow your request in <a routerLink="/account/returns" (click)="closeDetails()">Returns &amp; Replacements</a>.</span>
           <ng-container *ngFor="let type of eligibility.requestTypes">
-            <strong *ngIf="type.eligible">{{ type.message }}</strong>
+            <strong *ngIf="type.eligible && !hasReturnRequest(order)">{{ type.message }}</strong>
           </ng-container>
           <span *ngIf="eligibility.defectReportingEnded">Defect reporting window ended. <a routerLink="/contact/email">Contact support</a> for late defect claims.</span>
-          <span *ngIf="!eligibility.eligible">{{ eligibility.message }}</span>
+          <span *ngIf="!eligibility.eligible && !hasReturnRequest(order)">{{ eligibility.message }}</span>
         </ng-container>
         </ng-template>
       </section>
     </div>
-    <footer class="mh-customer-dialog__foot"><small>{{ isCancelled(order) ? 'Order cancelled' : (isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order))) }}</small><div><button *ngIf="orderStage(order) < 3 && order.status !== 'cancelled'" type="button" class="mh-order-action mh-order-action--danger" [disabled]="cancellationLoading" (click)="openCancellation(order)">{{ cancellationLoading ? 'Checking cancellation...' : 'Cancel order' }}</button><button *ngIf="!isCancelled(order) && returnEligibility?.eligible" type="button" class="mh-order-action mh-order-action--quiet" (click)="openReturnChoices(order)">Return &amp; Replace</button><button *ngIf="order.invoiceAvailable" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!!invoiceLoadingOrderId" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button *ngIf="!isCancelled(order)" type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
+    <footer class="mh-customer-dialog__foot"><small>{{ isCancelled(order) ? 'Order cancelled' : (isPendingCod(order) ? 'Cash on delivery · Payment pending' : ('Payment verified via ' + paymentMethodLabel(order))) }}</small><div><button *ngIf="orderStage(order) < 3 && order.status !== 'cancelled'" type="button" class="mh-order-action mh-order-action--danger" [disabled]="cancellationLoading" (click)="openCancellation(order)">{{ cancellationLoading ? 'Checking cancellation...' : 'Cancel order' }}</button><button *ngIf="!isCancelled(order) && orderStage(order) === 4" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="returnEligibilityLoading || !canRequestReturn(order) || returnChoiceLoadingOrderId === order.id" (click)="openReturnChoices(order)">Return &amp; Replace</button><button *ngIf="!isCancelled(order)" type="button" class="mh-order-action mh-order-action--quiet" [disabled]="!order.invoiceAvailable || !!invoiceLoadingOrderId" [attr.title]="invoiceHint(order)" (click)="downloadInvoice(order)">{{ invoiceLoadingOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}</button><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeDetails()">Close</button><button *ngIf="!isCancelled(order)" type="button" class="mh-order-action mh-order-action--primary" (click)="trackFromDetails(order)">Track order</button></div></footer>
   </ng-container>
 </dialog>
 

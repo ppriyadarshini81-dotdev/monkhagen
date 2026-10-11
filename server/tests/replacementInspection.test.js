@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { submitReplacementInspection, approveReturn, rejectReturn, inspectReturnItem } = require('../services/returnService');
 const { shippingError } = require('../config/shiprocket');
+const { environment: packingEnvironment } = require('./helpers/shippingPackageFixtures');
 
 const RETURN = '40000000-0000-4000-8000-000000000001';
 const ORDER = '10000000-0000-4000-8000-000000000001';
@@ -10,7 +11,7 @@ const OTHER = '20000000-0000-4000-8000-000000000002';
 const FOREIGN = '20000000-0000-4000-8000-000000000003';
 const PRODUCT = '60000000-0000-4000-8000-000000000001';
 const OUTBOUND = '80000000-0000-4000-8000-000000000001';
-const env = { SHIPROCKET_PICKUP_LOCATION: 'work', SHIPROCKET_PACKAGE_WEIGHT_KG: '0.5',
+const env = { ...packingEnvironment, SHIPROCKET_PICKUP_LOCATION: 'work', SHIPROCKET_PACKAGE_WEIGHT_KG: '0.5',
   SHIPROCKET_PACKAGE_LENGTH_CM: '20', SHIPROCKET_PACKAGE_BREADTH_CM: '15', SHIPROCKET_PACKAGE_HEIGHT_CM: '5' };
 const decisions = (first = 'approved', second = 'rejected') => ({ items: [
   { itemId: ITEM, decision: first, reason: first === 'approved' ? 'Passed inspection' : 'Fabric damaged' },
@@ -104,6 +105,11 @@ test('mixed inspection submits one warehouse-to-customer order, replaces approve
   assert.equal(f.calls[0].pickup_location, 'work');
   assert.equal(f.calls[0].billing_address, 'Customer Home');
   assert.equal(f.calls[0].payment_method, 'Prepaid');
+  assert.equal(f.calls[0].weight, 0.57);
+  assert.equal(f.calls[0].length, 29.21);
+  assert.equal(f.calls[0].breadth, 33.02);
+  assert.equal(f.calls[0].height, 3.81);
+  assert.ok(f.calls[0].order_items.every(item => item.tax === 5));
   assert.equal(f.calls[0].order_id, OUTBOUND);
   assert.equal(f.state.outboundOrder.order_type, 'replacement');
   assert.equal(f.state.shipment.orderId, OUTBOUND);
@@ -131,6 +137,8 @@ test('all rejected products still ship originals back, with reasons and no sella
   assert.ok(result.items.every(item => item.inspectionStatus === 'rejected' && item.inspectionReason));
   assert.equal(f.state.stock, 5); assert.equal(f.state.originalStock, 1);
   assert.equal(f.state.outboundOrder.order_type, 'rejected_return');
+  assert.equal(f.calls[0].weight, 0.57);
+  assert.equal(f.calls[0].height, 3.81);
 });
 
 test('incomplete, duplicate, foreign product and reasonless submissions cannot save partial decisions or call Shiprocket', async () => {

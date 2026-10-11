@@ -3,13 +3,15 @@ import { Subject, of, throwError } from 'rxjs';
 import { Order } from '../../../models/account.model';
 import { AccountService } from '../../../services/account.service';
 import { AccountOrdersComponent } from './orders.component';
+import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 
 describe('AccountOrdersComponent', () => {
   let account: jasmine.SpyObj<AccountService>;
   let component: AccountOrdersComponent;
   let anchorClick: jasmine.Spy;
 
-  const order = { id: 'order-1', orderNumber: 'MH-1', invoiceAvailable: true } as Order;
+  const order = { id: 'order-1', orderNumber: 'MH-1', invoiceAvailable: true,items:[] } as unknown as Order;
 
   beforeEach(() => {
     account = jasmine.createSpyObj<AccountService>('AccountService',
@@ -47,6 +49,24 @@ describe('AccountOrdersComponent', () => {
     component.downloadInvoice({ ...order, invoiceAvailable: false });
     expect(account.getInvoice).toHaveBeenCalledTimes(1);
   });
+  it('keeps the unavailable invoice button visible and disabled with a support explanation',async()=>{
+    account.getOrders.and.returnValue(of([{...order,status:'confirmed',paymentMethod:'razorpay',invoiceAvailable:false}]));
+    await TestBed.configureTestingModule({imports:[AccountOrdersComponent],providers:[{provide:AccountService,useValue:account},provideRouter([])]}).compileComponents();
+    const fixture=TestBed.createComponent(AccountOrdersComponent);fixture.detectChanges();
+    const element=fixture.nativeElement as HTMLElement;
+    const button=Array.from(element.querySelectorAll('button')).find(b=>b.textContent?.includes('Download invoice'));
+    expect(button).toBeDefined();expect(button?.disabled).toBeTrue();expect(button?.title).toContain('Contact support');
+    expect(element.querySelector('.mh-invoice-state')?.textContent).toContain('Invoice not available yet');
+    expect(account.getInvoice).not.toHaveBeenCalled();fixture.destroy();
+  });
+  it('enables a Shiprocket invoice for a COD order without requiring payment collection',async()=>{
+    account.getOrders.and.returnValue(of([{...order,status:'confirmed',paymentMethod:'cod',paymentStatus:'pending',invoiceAvailable:true}]));
+    await TestBed.configureTestingModule({imports:[AccountOrdersComponent],providers:[{provide:AccountService,useValue:account},provideRouter([])]}).compileComponents();
+    const fixture=TestBed.createComponent(AccountOrdersComponent);fixture.detectChanges();
+    const element=fixture.nativeElement as HTMLElement;
+    const button=Array.from(element.querySelectorAll('button')).find(b=>b.textContent?.includes('Download invoice'));
+    expect(button).toBeDefined();expect(button?.disabled).toBeFalse();expect(element.querySelector('.mh-invoice-state')).toBeNull();fixture.destroy();
+  });
 
   it('keeps return reasons and submission state after the order-details dialog closes', () => {
     component.returnEligibility = {
@@ -54,7 +74,7 @@ describe('AccountOrdersComponent', () => {
       requestTypes: [{ code: 'return', label: 'Return item', eligible: true, message: 'Return item is available.' }],
       reasons: [{ code: 'size_issue', label: 'Size issue' }],
       items: [{ orderItemId: 'item-1', productName: 'Test tee', sku: 'TEE-1', size: 'M', color: 'Black',
-        purchasedQuantity: 1, returnedQuantity: 0, remainingQuantity: 1 }]
+        purchasedQuantity: 1, returnedQuantity: 0, remainingQuantity: 1, replacementSizes: ['M','L'] }]
     };
     component.openReturn(order);
     component.clearDetails();

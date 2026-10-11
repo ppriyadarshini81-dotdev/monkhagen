@@ -575,7 +575,7 @@ export class AdminComponent implements OnInit, DoCheck {
 
   canRetryShipment(order: Order): boolean {
     return order.paymentStatus === 'paid' &&
-      !order.shipment?.shiprocketShipmentId;
+      !order.shipment?.shiprocketShipmentId && !order.shipment?.pendingOperation;
   }
 
   retryShipment(order: Order): void {

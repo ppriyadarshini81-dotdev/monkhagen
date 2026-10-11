@@ -7,6 +7,7 @@ const ledger = require('./financialLedgerService');
 const codRefunds = require('./codRefundService');
 const inventory = require('./inventoryService');
 const afterSalesOrders = require('./afterSalesOrderService');
+const { packageDetails, productTaxPercent } = require('./shippingMapping');
 const { outboundStage, adminCategory, ADMIN_CATEGORY_SQL } = require('./returnWorkflow');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -103,6 +104,7 @@ function evaluateEligibility(order, items, now = Date.now(), overrideTypes = [])
     purchasedQuantity: Number(item.quantity), returnedQuantity: Number(item.returned_quantity || 0),
     remainingQuantity: Math.max(0, Number(item.quantity) - Number(item.returned_quantity || 0))
   }));
+  const hasExistingRequest = Boolean(order.has_existing_return_request) || availableItems.some(item => item.returnedQuantity > 0);
   const override = new Set(overrideTypes || []);
   const normalEligible = current <= returnUntilMs || override.has(RETURN_TYPES.return);
   const replacementEligible = current <= returnUntilMs || override.has(RETURN_TYPES.replacement);
@@ -117,13 +119,13 @@ function evaluateEligibility(order, items, now = Date.now(), overrideTypes = [])
   ];
   const eligible = availableItems.some(item => item.remainingQuantity > 0) && requestTypes.some(type => type.eligible);
   if (!eligible) {
-    return { eligible: false, reason: availableItems.some(item => item.remainingQuantity > 0) ? 'WINDOW_CLOSED' : 'FULLY_RETURNED',
+    return { eligible: false, hasExistingRequest, reason: availableItems.some(item => item.remainingQuantity > 0) ? 'WINDOW_CLOSED' : 'FULLY_RETURNED',
       message: availableItems.some(item => item.remainingQuantity > 0) ? 'The return and replacement windows have closed.' : 'All purchased quantities already have a return request.',
       deliveredAt: new Date(deliveredAt).toISOString(), returnUntil: new Date(returnUntilMs).toISOString(), defectUntil: new Date(defectUntilMs).toISOString(),
       defectReportingEnded: current > defectUntilMs && !override.has(RETURN_TYPES.defect), requestTypes, items: availableItems };
   }
   return {
-    eligible, reason: null, message: null,
+    eligible, hasExistingRequest, reason: null, message: null,
     deliveredAt: new Date(deliveredAt).toISOString(), returnUntil: new Date(returnUntilMs).toISOString(), defectUntil: new Date(defectUntilMs).toISOString(),
     defectReportingEnded: current > defectUntilMs && !override.has(RETURN_TYPES.defect), requestTypes, items: availableItems
   };
@@ -131,9 +133,11 @@ function evaluateEligibility(order, items, now = Date.now(), overrideTypes = [])
 
 async function loadOrderAndItems(client, userId, orderId, lock = false) {
   const order = await client.query(
-    `SELECT o.*, u.email AS customer_email FROM orders o JOIN users u ON u.id = o.user_id
+    `SELECT o.*, u.email AS customer_email,
+       EXISTS (SELECT 1 FROM return_requests rr WHERE rr.order_id = o.id AND rr.status = ANY($3::varchar[])) AS has_existing_return_request
+     FROM orders o JOIN users u ON u.id = o.user_id
      WHERE o.id = $1 AND o.user_id = $2 ${lock ? 'FOR UPDATE OF o' : ''}`,
-    [orderId, userId]
+    [orderId, userId, ACTIVE_STATUSES]
   );
   if (!order.rows[0]) return { order: null, items: [] };
   const items = await client.query(
@@ -423,18 +427,15 @@ async function returnPayload(database, returnId, env = process.env, api = shipro
   if (!row.customer_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.customer_email)) throw fault(409, 'RETURN_CUSTOMER_EMAIL_REQUIRED', 'Add and verify an email address before pickup can be scheduled.');
   const customer = splitName(cleanText(row.full_name, 'Customer name', 255, true));
   const warehouse = await resolveReturnWarehouse(api, env);
+  const tax = productTaxPercent(env);
   const items = row.items.map(item => {
     const gross = moneyPaise(item.unitPrice) * Number(item.quantity);
     const net = moneyPaise(item.refundAmount);
     return { sku: cleanText(item.sku || item.variantId || item.id, 'Item SKU', 100, true),
       name: cleanText(item.name, 'Product name', 255, true), units: Number(item.quantity),
-      selling_price: Number(item.unitPrice), discount: Number(rupees(gross - net)), qc_enable: false, qc_size: item.size || '' };
+      selling_price: Number(item.unitPrice), tax, discount: Number(rupees(gross - net)), qc_enable: false, qc_size: item.size || '' };
   });
-  const weight = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_WEIGHT_KG'));
-  const length = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_LENGTH_CM'));
-  const breadth = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_BREADTH_CM'));
-  const height = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_HEIGHT_CM'));
-  if (![weight, length, breadth, height].every(value => Number.isFinite(value) && value > 0)) throw fault(503, 'RETURN_WAREHOUSE_NOT_CONFIGURED', 'Return package measurements are not configured.');
+  const { weight, length, breadth, height } = packageDetails({}, env, items);
   return {
     order_id: row.return_number, order_date: indiaOrderDate(),
     pickup_customer_name: customer.first, pickup_last_name: customer.last,
@@ -757,11 +758,8 @@ async function replacementOutboundPayload(database, returnId, env = process.env,
     requestedSize: row.inspection_status === 'approved' ? row.replacement_size : row.size,
     inspectionStatus: row.inspection_status, productId: row.product_id, returnItemId: row.return_item_id
   }));
-  const weight = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_WEIGHT_KG'));
-  const length = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_LENGTH_CM'));
-  const breadth = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_BREADTH_CM'));
-  const height = Number(requiredEnv(env, 'SHIPROCKET_PACKAGE_HEIGHT_CM'));
-  if (![weight, length, breadth, height].every(value => Number.isFinite(value) && value > 0)) throw fault(503, 'RETURN_WAREHOUSE_NOT_CONFIGURED', 'Return package measurements are not configured.');
+  const { weight, length, breadth, height } = packageDetails({}, env, items);
+  const tax = productTaxPercent(env);
   return { rows, items, payload: {
     order_id: rows[0].outbound_order_id || `${rows[0].return_number}-OUT`, order_date: indiaOrderDate(), pickup_location: requiredEnv(env, 'SHIPROCKET_PICKUP_LOCATION'),
     billing_customer_name: customer.first, billing_last_name: customer.last,
@@ -770,7 +768,7 @@ async function replacementOutboundPayload(database, returnId, env = process.env,
     billing_city: cleanText(rows[0].city, 'Delivery city', 100, true), billing_state: cleanText(rows[0].state, 'Delivery state', 100, true),
     billing_pincode: normalizePincode(rows[0].postal_code, 'RETURN_ADDRESS_REVIEW', 'The saved delivery pincode needs review.'), billing_country: 'India',
     billing_email: rows[0].customer_email, billing_phone: normalizePhone(rows[0].phone), shipping_is_billing: true,
-    order_items: items.map(({ sku, name, units, selling_price }) => ({ sku, name, units, selling_price })), payment_method: 'Prepaid',
+    order_items: items.map(({ sku, name, units, selling_price }) => ({ sku, name, units, selling_price, tax })), payment_method: 'Prepaid',
     sub_total: Number(rupees(items.reduce((sum, item) => sum + moneyPaise(item.selling_price) * item.units, 0))), total_discount: 0,
     shipping_charges: 0, length, breadth, height, weight
   }};
@@ -857,7 +855,7 @@ async function createReplacementShipment(returnId, actorUserId, { database = poo
         quantityAfter: reserved.rows[0].quantity_after, returnId, createdBy: actorUserId || null,
         reason: 'Reserved for inspected size replacement', idempotencyKey: `REPLACEMENT_RESERVED:${attemptId}:${item.id}` });
     }
-    await afterSalesOrders.ensureOrder(client, returnId, actorUserId);
+    const afterSales = await afterSalesOrders.ensureOrder(client, returnId, actorUserId);
     await client.query("UPDATE return_requests SET pending_operation = 'replacement_create', operation_started_at = NOW(), updated_at = NOW() WHERE id = $1", [returnId]);
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }

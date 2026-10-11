@@ -2,7 +2,8 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createShippingService } = require('../services/shippingService');
 const { shippingError } = require('../config/shiprocket');
-const { buildOrderPayload, packageDetails, serviceabilityInput, normalizeCouriers, normalizeTracking } = require('../services/shippingMapping');
+const { buildOrderPayload, packageDetails, packageForItems, serviceabilityInput, normalizeCouriers, normalizeTracking } = require('../services/shippingMapping');
+const { environment: packingEnvironment } = require('./helpers/shippingPackageFixtures');
 
 const ORDER_ID = '10000000-0000-4000-8000-000000000001';
 const USER_ID = '20000000-0000-4000-8000-000000000001';
@@ -17,7 +18,7 @@ const address = { full_name: 'Test Customer', address_line1: '123 Test Street', 
   postal_code: '110001', country: 'India', phone: '+91 9876543210', email: 'delivery@example.test' };
 const items = [{ id: 'line-1', variant_id: 'variant-1', product_name: 'Test Tee', quantity: 1, unit_price: '1499', sku: 'TEE-M-BLACK' }];
 
-function setup({ order = orderFixture(), request, downloadInvoice, row: initial, environment } = {}) {
+function setup({ order = orderFixture(), request, downloadInvoice, row: initial, environment = packingEnvironment } = {}) {
   let row = initial || null;
   let locked = false;
   const calls = [];
@@ -51,7 +52,7 @@ function setup({ order = orderFixture(), request, downloadInvoice, row: initial,
 }
 
 test('maps immutable order snapshots, INR totals, variant SKUs and package units', () => {
-  const body = buildOrderPayload(orderFixture(), address, items, parcel);
+  const body = buildOrderPayload(orderFixture(), address, items, parcel, packingEnvironment);
   assert.equal(body.order_id, ORDER_ID);
   assert.equal(body.order_date, '2026-09-13 09:30');
   assert.equal(body.payment_method, 'Prepaid');
@@ -65,23 +66,24 @@ test('maps immutable order snapshots, INR totals, variant SKUs and package units
   assert.equal(body.billing_country, 'India');
   assert.equal(body.sub_total, 1499);
   assert.equal(body.shipping_charges, 99);
-  assert.deepEqual(body.order_items[0], { name: 'Test Tee', sku: 'TEE-M-BLACK', units: 1, selling_price: 1499 });
+  assert.deepEqual(body.order_items[0], { name: 'Test Tee', sku: 'TEE-M-BLACK', units: 1, selling_price: 1499, tax: 5 });
   assert.equal(body.weight, 0.5);
   assert.equal(body.length, 25);
-  const codPayload = buildOrderPayload({ ...orderFixture(), payment_method: 'cod', payment_status: 'pending' }, address, items, parcel);
+  assert.equal(body.order_items[0].tax, 5);
+  const codPayload = buildOrderPayload({ ...orderFixture(), payment_method: 'cod', payment_status: 'pending' }, address, items, parcel, packingEnvironment);
   assert.equal(codPayload.payment_method, 'COD');
   assert.equal(codPayload.sub_total, 1499);
   assert.equal(codPayload.shipping_charges, 99);
-  assert.throws(() => buildOrderPayload({ ...orderFixture(), total_amount: 1 }, address, items, parcel));
+  assert.throws(() => buildOrderPayload({ ...orderFixture(), total_amount: 1 }, address, items, parcel, packingEnvironment));
 });
 
 test('shipment payload uses the delivery email, not an account or store fallback email', () => {
-  const phoneOnlyAccount = buildOrderPayload({ ...orderFixture(), customer_email: null }, address, items, parcel);
-  const accountEmailDiffers = buildOrderPayload({ ...orderFixture(), customer_email: 'account@example.test' }, address, items, parcel);
+  const phoneOnlyAccount = buildOrderPayload({ ...orderFixture(), customer_email: null }, address, items, parcel, packingEnvironment);
+  const accountEmailDiffers = buildOrderPayload({ ...orderFixture(), customer_email: 'account@example.test' }, address, items, parcel, packingEnvironment);
 
   assert.equal(phoneOnlyAccount.billing_email, 'delivery@example.test');
   assert.equal(accountEmailDiffers.billing_email, 'delivery@example.test');
-  assert.throws(() => buildOrderPayload(orderFixture(), { ...address, email: null }, items, parcel),
+  assert.throws(() => buildOrderPayload(orderFixture(), { ...address, email: null }, items, parcel, packingEnvironment),
     error => error.code === 'SHIPPING_VALIDATION');
 });
 
@@ -121,6 +123,72 @@ test('configuration and serviceability inputs are validated without guessing pac
   assert.throws(() => serviceabilityInput({ pickup_postcode: 'invalid', delivery_postcode: '560001', weight: 1, cod: 0 }));
   assert.throws(() => serviceabilityInput({ pickup_postcode: '110001', delivery_postcode: '560001', weight: 1, cod: 'false' }));
   assert.equal(serviceabilityInput({ pickup_postcode: '110001', delivery_postcode: '560001', weight: '0.5', cod: '1' }).cod, 1);
+});
+
+test('packing counts units across products, applies the 5+ tier, and rejects invalid quantities', () => {
+  assert.deepEqual(packageForItems([{ quantity: '2' }, { quantity: 1 }], packingEnvironment), { weight: 0.83, length: 29.21, breadth: 33.02, height: 5.08 });
+  assert.deepEqual(packageForItems([{ units: 4 }], packingEnvironment), { weight: 1.1, length: 30.5, breadth: 33.02, height: 7.15 });
+  assert.deepEqual(packageForItems([{ quantity: 5 }], packingEnvironment), packageForItems([{ quantity: 20 }], packingEnvironment));
+  for (const quantity of [0, -1, 1.5, true, null, 'invalid']) assert.throws(() => packageForItems([{ quantity }]));
+  assert.throws(() => packageForItems([]));
+  assert.throws(() => packageForItems([{ quantity: Number.MAX_SAFE_INTEGER }, { quantity: 1 }]));
+  const oldEnvironment = { ...packingEnvironment, SHIPROCKET_PICKUP_LOCATION: 'work', SHIPROCKET_PACKAGE_WEIGHT_KG: '9', SHIPROCKET_PACKAGE_LENGTH_CM: '99' };
+  assert.equal(packageDetails({}, oldEnvironment, [{ quantity: 1 }]).weight, 0.3);
+  assert.equal(packageDetails({ height: 6 }, oldEnvironment, [{ quantity: 1 }]).height, 6);
+});
+
+test('Shiprocket product tax is an environment percentage while prices and payment totals stay inclusive', () => {
+  const discounted = { ...orderFixture(), discount_amount: '149.90', total_amount: '1448.10' };
+  const body = buildOrderPayload(discounted, address, items, parcel, packingEnvironment);
+  assert.equal(body.order_items[0].tax, 5);
+  assert.equal(body.order_items[0].selling_price, 1499);
+  assert.equal(body.sub_total, 1349.1);
+  assert.equal(body.total_discount, 149.9);
+  assert.equal(body.shipping_charges, 99);
+  assert.equal(buildOrderPayload(orderFixture(), address, items, parcel, { SHIPROCKET_PRODUCT_TAX_PERCENT: '18' }).order_items[0].tax, 18);
+});
+
+test('missing product tax configuration cannot silently create an order without tax', async () => {
+  const fixture = setup({ environment: {} });
+  await assert.rejects(fixture.service.createShipment(ORDER_ID, parcel), error => error.code === 'SHIPROCKET_NOT_CONFIGURED');
+  assert.equal(fixture.calls.length, 0);
+  assert.equal(fixture.getRow().shipping_status, 'needs_configuration');
+  assert.equal(fixture.getRow().pending_operation ?? null, null);
+});
+
+test('new shipments send and persist quantity-based measurements for every tier without fixed package env', async () => {
+  const expected = [
+    [1, 0.3, 27, 33, 2.6], [2, 0.57, 29.21, 33.02, 3.81],
+    [3, 0.83, 29.21, 33.02, 5.08], [4, 1.1, 30.5, 33.02, 7.15],
+    [5, 1.45, 33.02, 33.02, 8.9], [10, 1.45, 33.02, 33.02, 8.9]
+  ];
+  for (const [quantity, weight, length, breadth, height] of expected) {
+    const total = 1499 * quantity;
+    const fixture = setup({ order: { ...orderFixture(), subtotal: total, shipping_amount: 0, total_amount: total } });
+    fixture.repository.details = async () => ({ address, items: [{ ...items[0], quantity }] });
+    await fixture.service.createShipment(ORDER_ID, { pickup_location: 'work' });
+    const payload = fixture.calls[0].options.body;
+    assert.ok(payload.order_items.every(item => item.tax === 5));
+    for (const [key, value] of Object.entries({ weight, length, breadth, height })) {
+      assert.equal(payload[key], value, `quantity ${quantity}: ${key}`);
+      assert.equal(fixture.getRow()[`package_${key}`], value);
+    }
+    await fixture.service.createShipment(ORDER_ID);
+    assert.equal(fixture.calls.length, 1);
+  }
+});
+
+test('a saved parcel survives a definitive create failure and subsequent retry', async () => {
+  let fail = true;
+  const fixture = setup({ request: async () => {
+    if (fail) throw shippingError(502, 'SHIPROCKET_REQUEST_FAILED', 'Temporary provider failure');
+    return { order_id: 101, shipment_id: 202 };
+  } });
+  await assert.rejects(fixture.service.createShipment(ORDER_ID, parcel));
+  fail = false;
+  await fixture.service.createShipment(ORDER_ID);
+  assert.equal(fixture.calls[1].options.body.weight, parcel.weight);
+  assert.equal(fixture.calls[1].options.body.height, parcel.height);
 });
 
 test('serviceability exposes only normalized courier information', () => {

@@ -201,6 +201,7 @@ export interface ReturnPayload {
 export interface ReturnEligibility {
   orderId: string;
   eligible: boolean;
+  hasExistingRequest?: boolean;
   reason: string | null;
   message: string | null;
   deliveredAt?: string;
