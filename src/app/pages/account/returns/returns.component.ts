@@ -59,7 +59,13 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
   }
   applyStatusFilter(): void { this.loadReturns(0); }
 
-  canCancelReturn(item: ReturnRequest): boolean { return ['requested', 'return_created', 'shiprocket_failed'].includes(item.status) && !item.cancellationPending; }
+  requestTypeLabel(request: ReturnRequest): string {
+    if (request.requestType === 'replacement') return 'Size replacement requested';
+    if (request.requestType === 'defect') return 'Defective item return requested';
+    return 'Return requested';
+  }
+
+  canCancelReturn(item: ReturnRequest): boolean { return ['requested', 'return_created', 'shiprocket_failed'].includes(item.status) && !item.cancellationPending && !(item.status === 'requested' && item.pickupDelayed); }
   openReturnDetails(item: ReturnRequest): void { this.selectedReturn = item; queueMicrotask(() => this.returnDetailsDialog?.nativeElement.showModal()); }
   closeReturnDetails(): void { this.returnDetailsDialog?.nativeElement.close(); }
   clearReturnDetails(): void { this.selectedReturn = null; }
@@ -98,8 +104,9 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
   }
 
   requestStatusLabel(request: ReturnRequest): string {
+    if (request.defectPhotoReviewPending) return 'Awaiting photo review';
     if (request.replacementShipmentPending) return 'Outbound shipment needs review';
-    if (request.requestType === 'replacement' && request.shiprocketOutboundOrderId) return 'Outbound shipment ' + (request.outboundStatus || 'created').toLowerCase();
+    if (request.shiprocketOutboundOrderId) return 'Outbound shipment ' + (request.outboundStatus || 'created').toLowerCase();
     return this.statusLabel(request.status);
   }
 
@@ -115,7 +122,7 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
   itemTrackingStage(request: ReturnRequest, item: ReturnRequest['items'][number]): number {
     const stage = this.returnStage(request.status);
     if (stage < 4) return stage;
-    if (request.requestType !== 'replacement') {
+    if (request.requestType !== 'replacement' && item.inspectionStatus !== 'rejected') {
       if (['refund_initiated', 'refunded'].includes(request.status)) return 5;
       return request.status === 'approved' ? 4 : 3;
     }
@@ -124,21 +131,26 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
   }
 
   itemTrackingOutcome(request: ReturnRequest, item: ReturnRequest['items'][number]): string {
-    if (request.requestType !== 'replacement') return 'Refund';
-    return item.inspectionStatus === 'rejected' ? 'Original item return' : 'Replacement';
+    return item.inspectionStatus === 'rejected' ? 'Original item return' : request.requestType === 'replacement' ? 'Replacement' : 'Refund';
   }
 
   itemJourneyTitle(request: ReturnRequest, item: ReturnRequest['items'][number]): string {
+    if (request.defectPhotoReviewPending) return 'Awaiting admin photo review';
     if (this.returnStage(request.status) < 4) return this.statusLabel(request.status);
     if (!item.inspectionStatus || item.inspectionStatus === 'pending') return 'Awaiting inspection';
-    return item.inspectionStatus === 'approved' ? 'Replacement approved' : 'Replacement rejected';
+    return item.inspectionStatus === 'approved' ? (request.requestType === 'replacement' ? 'Replacement approved' : 'Return approved')
+      : (request.requestType === 'replacement' ? 'Replacement rejected' : 'Return rejected');
   }
 
   itemJourneyDetail(request: ReturnRequest, item: ReturnRequest['items'][number]): string {
+    if (request.defectPhotoReviewPending) return 'Your photos are awaiting review. Pickup is arranged after admin review.';
     if (this.returnStage(request.status) < 4) {
       return request.returnAwb ? `Shared return shipment · AWB ${request.returnAwb}` : 'All selected products are travelling together to Monk Hagen.';
     }
     if (!item.inspectionStatus || item.inspectionStatus === 'pending') return 'Warehouse inspection is pending for this product.';
+    if (request.requestType !== 'replacement' && item.inspectionStatus === 'approved') {
+      return `${request.refundAmount ? 'Refund after shipping deduction: ₹' + request.refundAmount : 'No refund payable after shipping deduction'}${item.inspectionReason ? ' · ' + item.inspectionReason : ''}`;
+    }
     const shipment = request.outboundAwb ? `AWB ${request.outboundAwb}` : (request.outboundStatus || 'Outbound shipment is being prepared');
     return item.inspectionStatus === 'approved'
       ? `Replacement size ${item.replacementSize || 'selected'} · ${shipment}`

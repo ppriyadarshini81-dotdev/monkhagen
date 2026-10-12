@@ -6,12 +6,14 @@ const { evaluateEligibility, listAdminReturns } = require('../services/returnSer
 const { eligible } = require('../services/orderCancellationService');
 
 test('return tabs keep waiting requests, inspection/refund actions and action-free tasks distinct', () => {
+  assert.equal(adminCategory({ status: 'requested', defect_photo_evidence: {}, defect_photo_review: null }), 'inspection_required');
   for (const status of ['requested', 'return_created', 'shiprocket_failed', 'pickup_scheduled', 'picked_up', 'in_transit', 'pickup_failed'])
     assert.equal(adminCategory({ status }), 'requested');
   assert.equal(adminCategory({ status: 'received' }), 'inspection_required');
   assert.equal(adminCategory({ status: 'approved', payment_method: 'cod', refund_destination_status: 'PROCESSING' }), 'inspection_required');
   assert.equal(adminCategory({ status: 'approved', pending_operation: 'refund' }), 'inspection_required');
   assert.equal(adminCategory({ status: 'refund_initiated' }), 'completed');
+  assert.equal(adminCategory({ status: 'approved', request_type: 'return', refund_status: 'not_applicable', refund_amount: 0 }), 'completed');
   for (const status of ['refunded', 'cancelled', 'rejected']) assert.equal(adminCategory({ status }), 'completed');
 });
 

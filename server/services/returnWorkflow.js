@@ -12,6 +12,7 @@ function outboundStage(order = {}) {
 // The return task can be closed while its outbound order continues through the
 // dedicated fulfillment tab. Failed/pending provider operations remain visible.
 function adminCategory(row) {
+  if (row.status === 'requested' && row.defect_photo_evidence && !row.defect_photo_review) return 'inspection_required';
   if (['cancelled', 'rejected', 'refunded'].includes(row.status)) return 'completed';
   if (['requested', 'return_created', 'shiprocket_failed', 'pickup_scheduled', 'picked_up', 'in_transit', 'pickup_failed'].includes(row.status)) return 'requested';
   if (row.status === 'received' || row.pending_operation ||
@@ -22,10 +23,14 @@ function adminCategory(row) {
         (outboundStage(row.outbound_order) < 2)) return 'outbound';
     return 'completed';
   }
+  if (['return', 'defect'].includes(row.request_type) && row.status === 'approved' && row.refund_status === 'not_applicable' && Number(row.refund_amount) === 0) return 'completed';
   return row.status === 'approved' || row.status === 'manual_required' ? 'inspection_required' : 'completed';
 }
 
 const ADMIN_CATEGORY_SQL = `CASE
+  WHEN rr.status='requested'
+    AND EXISTS (SELECT 1 FROM return_request_audit a WHERE a.return_request_id=rr.id AND a.action='DEFECT_PHOTOS_ATTACHED')
+    AND NOT EXISTS (SELECT 1 FROM return_request_audit a WHERE a.return_request_id=rr.id AND a.action='DEFECT_PHOTO_REVIEWED') THEN 'inspection_required'
   WHEN rr.status IN ('cancelled','rejected','refunded') THEN 'completed'
   WHEN rr.status IN ('requested','return_created','shiprocket_failed','pickup_scheduled','picked_up','in_transit','pickup_failed') THEN 'requested'
   WHEN rr.status = 'received' OR rr.pending_operation IS NOT NULL
@@ -36,6 +41,7 @@ const ADMIN_CATEGORY_SQL = `CASE
       OR (child.order_status NOT IN ('shipped','delivered') AND s.pickup_status IS DISTINCT FROM 'scheduled'
         AND LOWER(COALESCE(s.shipping_status,'')) NOT IN ('shipped','out_for_delivery','delivered')) THEN 'outbound'
     ELSE 'completed' END
+  WHEN rr.request_type IN ('return','defect') AND rr.status='approved' AND rr.refund_status='not_applicable' AND rr.refund_amount=0 THEN 'completed'
   WHEN rr.status IN ('approved','manual_required') THEN 'inspection_required'
   ELSE 'completed' END`;
 

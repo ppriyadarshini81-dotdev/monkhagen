@@ -420,7 +420,7 @@
     <div class="mh-returns-list" *ngIf="returnTab !== 'outbound_orders'">
       <article class="mh-customer-return" *ngFor="let r of returns">
         <header class="mh-customer-return__head">
-          <div><span>{{ r.requestType === 'replacement' ? 'Size replacement' : r.requestType === 'defect' ? 'Issue report' : 'Return request' }}</span><h3>#{{ r.returnNumber }}</h3><small>Order #{{ r.orderNumber || r.orderId }} &middot; Requested {{ r.requestedAt | date:'dd MMMM y, h:mm a' }}</small><small>{{ r.customer?.name || 'Customer' }} &middot; {{ r.customer?.email || r.customer?.phone || 'Contact unavailable' }}</small></div>
+          <div><span>{{ r.requestType === 'replacement' ? 'Size replacement requested' : r.requestType === 'defect' ? 'Defective item return requested' : 'Return requested' }}</span><h3>#{{ r.returnNumber }}</h3><small>Order #{{ r.orderNumber || r.orderId }} &middot; Requested {{ r.requestedAt | date:'dd MMMM y, h:mm a' }}</small><small>{{ r.customer?.name || 'Customer' }} &middot; {{ r.customer?.email || r.customer?.phone || 'Contact unavailable' }}</small></div>
           <span [class]="'mh-return-state mh-return-state--' + returnStatusClass(r.status)">{{ r.cancellationPending ? 'Cancellation pending' : requestStatusLabel(r) }}</span>
         </header>
         <section class="mh-customer-return__products">
@@ -432,7 +432,7 @@
         <p class="mh-return-notice" *ngIf="r.pickupDelayed">Return creation needs attention. Check the request details before retrying.</p>
         <p class="mh-return-notice" *ngIf="r.cancellationPending">Cancellation is being confirmed with Shiprocket.</p>
         <footer class="mh-customer-return__foot">
-          <span *ngIf="r.refundAmount > 0"><small>Refund</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><em>{{ returnStatusLabel(r.refundStatus) }}</em></span>
+          <span *ngIf="r.requestType !== 'replacement'"><small>Refund after shipping</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><em>{{ r.refundAmount ? returnStatusLabel(r.refundStatus) : 'No refund payable' }}</em></span>
           <span *ngIf="r.requestType === 'replacement'" class="mh-return-footnote">Replacement is confirmed after inspection.</span>
           <div><button type="button" class="mh-return-details-button" (click)="openReturnDetails(r)">View details</button></div>
         </footer>
@@ -638,16 +638,17 @@
           <span>Reason: {{ returnStatusLabel(item.reason || '') }}</span>
           <span *ngIf="item.comments">{{ item.comments }}</span>
           <span *ngIf="r.requestType === 'replacement'">Requested replacement size: {{ item.replacementSize || 'Not recorded' }}</span>
+          <div class="mh-defect-evidence" *ngIf="item.defectPhotos?.length"><strong>Customer item photos</strong><div><a *ngFor="let photo of item.defectPhotos; index as index" [href]="photo.url" target="_blank" rel="noopener noreferrer"><img [src]="photo.url" [alt]="'Defect photo ' + (index + 1) + ' for ' + item.productName" /><span>View photo {{ index + 1 }}</span></a></div></div>
           <section class="mh-product-journey" [class.is-approved]="item.inspectionStatus === 'approved'" [class.is-rejected]="item.inspectionStatus === 'rejected'"><i></i><div><strong>{{ itemJourneyTitle(r, item) }}</strong><span>{{ itemJourneyDetail(r, item) }}</span></div></section>
         </div>
-        <div class="mh-return-progress" [class.mh-return-progress--outbound]="r.requestType === 'replacement'" *ngIf="r.status !== 'rejected' && r.status !== 'cancelled'" role="group" [attr.aria-label]="'Tracking for ' + item.productName">
+        <div class="mh-return-progress" [class.mh-return-progress--outbound]="r.requestType === 'replacement' || item.inspectionStatus === 'rejected'" *ngIf="r.status !== 'rejected' && r.status !== 'cancelled'" role="group" [attr.aria-label]="'Tracking for ' + item.productName">
           <div [class.done]="itemTrackingStage(r, item) >= 0"><span></span><small>Requested</small></div>
           <div [class.done]="itemTrackingStage(r, item) >= 1"><span></span><small>Scheduled</small></div>
           <div [class.done]="itemTrackingStage(r, item) >= 2"><span></span><small>Pickup</small></div>
           <div [class.done]="itemTrackingStage(r, item) >= 3"><span></span><small>In transit</small></div>
           <div [class.done]="itemTrackingStage(r, item) >= 4"><span></span><small>Inspected</small></div>
           <div [class.done]="itemTrackingStage(r, item) >= 5"><span></span><small>{{ itemTrackingOutcome(r, item) }}</small></div>
-          <ng-container *ngIf="r.requestType === 'replacement'">
+          <ng-container *ngIf="r.requestType === 'replacement' || item.inspectionStatus === 'rejected'">
             <div [class.done]="itemTrackingStage(r, item) >= 6"><span></span><small>Courier assigned</small></div>
             <div [class.done]="itemTrackingStage(r, item) >= 7"><span></span><small>Outbound scheduled</small></div>
             <div [class.done]="itemTrackingStage(r, item) >= 8"><span></span><small>Dispatched</small></div>
@@ -655,12 +656,12 @@
             <div [class.done]="itemTrackingStage(r, item) >= 10"><span></span><small>Delivered to you</small></div>
           </ng-container>
         </div>
-        <section class="mh-return-inspection" *ngIf="r.requestType === 'replacement'">
-          <div><small>Warehouse inspection</small><strong>{{ item.inspectionStatus === 'approved' ? 'Approved for replacement' : item.inspectionStatus === 'rejected' ? 'Rejected - return original item' : 'Awaiting inspection' }}</strong><span *ngIf="item.inspectedAt">{{ item.inspectedAt | date:'medium' }}</span><span *ngIf="item.inspectionReason">{{ item.inspectionReason }}</span></div>
+        <section class="mh-return-inspection">
+          <div><small>Warehouse inspection</small><strong>{{ item.inspectionStatus === 'approved' ? (r.requestType === 'replacement' ? 'Approved for replacement' : 'Approved for refund') : item.inspectionStatus === 'rejected' ? 'Rejected - return original item' : 'Awaiting inspection' }}</strong><span *ngIf="item.inspectedAt">{{ item.inspectedAt | date:'medium' }}</span><span *ngIf="item.inspectionReason">{{ item.inspectionReason }}</span></div>
           <p *ngIf="r.status !== 'received' && (!item.inspectionStatus || item.inspectionStatus === 'pending')">Approve or reject this product after the return reaches the warehouse.</p>
           <div class="mh-return-inspection__form" *ngIf="!item.inspectionStatus || item.inspectionStatus === 'pending'">
             <div class="mh-return-inspection__actions" role="group" [attr.aria-label]="'Inspection decision for ' + item.productName">
-              <button type="button" class="mh-inspection-choice" [class.is-approved]="inspectionDrafts[item.id]?.decision === 'approved'" [attr.aria-pressed]="inspectionDrafts[item.id]?.decision === 'approved'" [disabled]="!!returnBusyId || !canInspectReplacementItem(r, item)" (click)="inspectionDrafts[item.id].decision = 'approved'">Approve replacement</button>
+              <button type="button" class="mh-inspection-choice" [class.is-approved]="inspectionDrafts[item.id]?.decision === 'approved'" [attr.aria-pressed]="inspectionDrafts[item.id]?.decision === 'approved'" [disabled]="!!returnBusyId || !canInspectReplacementItem(r, item)" (click)="inspectionDrafts[item.id].decision = 'approved'">{{ r.requestType === 'replacement' ? 'Approve replacement' : 'Approve refund' }}</button>
               <button type="button" class="mh-inspection-choice" [class.is-rejected]="inspectionDrafts[item.id]?.decision === 'rejected'" [attr.aria-pressed]="inspectionDrafts[item.id]?.decision === 'rejected'" [disabled]="!!returnBusyId || !canInspectReplacementItem(r, item)" (click)="inspectionDrafts[item.id].decision = 'rejected'">Reject &amp; return original</button>
             </div>
             <label [for]="'inspection-reason-' + item.id">Inspection reason <span>Shown to the customer</span></label>
@@ -670,19 +671,21 @@
       </article>
     </section>
     <p class="mh-return-dialog__customer">{{ r.customer?.name || 'Customer' }} &middot; {{ r.customer?.email || r.customer?.phone || 'Contact unavailable' }}</p>
-    <section class="mh-return-dialog__summary"><div><small>Request status</small><strong>{{ requestStatusLabel(r) }}</strong></div><div><small>Refund</small><strong>{{ r.refundAmount ? ('&#8377;' + r.refundAmount) : 'Not applicable' }}</strong></div></section>
+    <section class="mh-return-dialog__summary"><div><small>Request status</small><strong>{{ requestStatusLabel(r) }}</strong></div><div *ngIf="r.requestType !== 'replacement'"><small>Eligible item amount</small><strong>&#8377;{{ r.refundAmount + r.returnShippingDeduction | number:'1.2-2' }}</strong><small>Return shipping deduction</small><strong>&minus;&#8377;{{ r.returnShippingDeduction | number:'1.2-2' }}</strong><small>Refund after shipping</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong></div></section>
       <div class="mh-cod-refund-summary" *ngIf="r.paymentMethod === 'cod'">
         <div><small>COD refund destination</small>
           <strong *ngIf="r.refundDestination.provided; else destinationNeeded">{{ r.refundDestination.method === 'UPI' ? 'UPI' : 'Bank transfer' }} &middot; {{ r.refundDestination.masked }}</strong>
           <ng-template #destinationNeeded><strong>Waiting for customer details</strong></ng-template>
-          <span>{{ r.refundDestination.provided ? statusLabel(r.refundDestination.status) : 'The customer can submit details from Returns after approval.' }}</span>
+          <span>{{ r.refundDestination.provided ? statusLabel(r.refundDestination.status) : 'The customer can submit bank/UPI details for a COD refund.' }}</span>
           <span *ngIf="r.refundDestination.transactionReference">Reference: {{ r.refundDestination.transactionReference }}</span>
         </div>
       </div>
 
     <section class="mh-return-operations">
-      <p *ngIf="r.status === 'received' && r.requestType === 'replacement'">Choose approve or reject and add a reason for each product. Submit once to create one outbound order with approved replacements and rejected originals.</p>
-        <p *ngIf="r.requestType === 'replacement' && r.status !== 'received' && !r.shiprocketOutboundOrderId && r.status !== 'cancelled' && r.status !== 'rejected'">Submission becomes available after warehouse receipt is confirmed.</p>
+      <section class="mh-return-inspection" *ngIf="r.defectPhotoReviewPending"><h3>Review defective-item photos</h3><p>Review the submitted photos before Shiprocket creates the return pickup order. The refund decision is made during warehouse inspection.</p><label>Photo review reason<textarea [(ngModel)]="photoReviewReason" maxlength="500" rows="3" [disabled]="!!returnBusyId" placeholder="Required when rejecting the photos"></textarea></label><div class="mh-return-inspection__actions"><button type="button" class="mh-inspection-choice" [disabled]="!!returnBusyId" (click)="reviewDefectPhotos(r, 'approved')">Approve photos &amp; arrange return</button><button type="button" class="mh-inspection-choice" [disabled]="!!returnBusyId || !photoReviewReason.trim()" (click)="reviewDefectPhotos(r, 'rejected')">Reject photos &amp; arrange return</button></div></section>
+      <p *ngIf="r.defectPhotoReview">Photo review: {{ r.defectPhotoReview.decision }}<span *ngIf="r.defectPhotoReview.reason"> &middot; {{ r.defectPhotoReview.reason }}</span></p>
+      <p *ngIf="r.status === 'received'">Choose approve or reject and add a reason for each product. {{ r.requestType === 'replacement' ? 'Approved replacements and rejected originals share one outbound order.' : 'Approved items are refunded after the shipping deduction. Rejected originals are shipped back with tracking.' }}</p>
+        <p *ngIf="r.status !== 'received' && !r.approvedAt && !r.shiprocketOutboundOrderId && r.status !== 'cancelled' && r.status !== 'rejected'">Submission becomes available after warehouse receipt is confirmed.</p>
         <p class="mh-return-dialog__error" *ngIf="r.replacementShipmentPending">Shipment creation needs reconciliation. Check Shiprocket before submitting again.</p>
         <p *ngIf="r.shiprocketOutboundOrderId">Outbound order #{{ r.outboundOrder?.orderNumber }} &middot; Shiprocket #{{ r.shiprocketOutboundOrderId }} &middot; {{ r.outboundAwb ? ('AWB ' + r.outboundAwb) : 'Awaiting courier assignment' }}</p>
 
@@ -693,7 +696,7 @@
   <footer class="mh-return-dialog__foot">
     <button class="mh-btn mh-btn--ghost" type="button" *ngIf="r.status === 'shiprocket_failed'" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'retry')">Retry return creation</button>
     <button class="mh-btn mh-btn--ghost" type="button" *ngIf="returnRejectLabel(r) as rejectLabel" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'reject')">{{ rejectLabel }}</button>
-    <button class="mh-btn mh-btn--gold" type="button" *ngIf="r.requestType === 'replacement' && !r.shiprocketOutboundOrderId && r.status !== 'cancelled' && r.status !== 'rejected'" [disabled]="!!returnBusyId || !canSubmitInspection(r)" (click)="submitInspection(r)">{{ returnBusyId === r.id ? 'Submitting...' : 'Submit inspection' }}</button>
+    <button class="mh-btn mh-btn--gold" type="button" *ngIf="!r.approvedAt && !r.shiprocketOutboundOrderId && r.status !== 'cancelled' && r.status !== 'rejected' || r.status === 'received'" [disabled]="!!returnBusyId || !canSubmitInspection(r)" (click)="submitInspection(r)">{{ returnBusyId === r.id ? 'Submitting...' : 'Submit inspection' }}</button>
     <button class="mh-btn mh-btn--gold" type="button" *ngIf="canApproveReturn(r)" [disabled]="!!returnBusyId" (click)="actOnReturn(r, 'approve')">Receive & approve</button>
     <button class="mh-btn mh-btn--ghost" type="button" *ngIf="canRevealCodRefund(r)" [disabled]="!!returnBusyId" (click)="revealCodRefund(r)">View refund details</button>
     <button class="mh-btn mh-btn--gold" type="button" *ngIf="canStartCodRefund(r)" [disabled]="!!returnBusyId" (click)="startCodRefund(r)">{{ r.refundDestination.status === 'FAILED' ? 'Retry COD refund' : 'Start COD refund' }}</button>

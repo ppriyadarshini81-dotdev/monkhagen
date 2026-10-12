@@ -161,8 +161,14 @@ async function getEligibility(userId, orderId, database = pool, now = Date.now) 
   const overrides = source.order ? await database.query(`SELECT request_type FROM return_eligibility_overrides
     WHERE order_id = $1 AND user_id = $2 AND used_at IS NULL`, [orderId, userId]) : { rows: [] };
   const eligibility = evaluateEligibility(source.order, source.items, now, overrides.rows.map(row => row.request_type));
+  const refundItems = source.order && source.items.length ? refundableItems(source.order, source.items) : [];
+  eligibility.items = eligibility.items.map(item => {
+    const original = refundItems.find(row => row.id === item.orderItemId);
+    return { ...item, refundableUnitAmounts: original ? Array.from({ length: item.remainingQuantity }, (_, offset) =>
+      Number(rupees(original.refundFor(item.returnedQuantity + offset, 1)))) : [] };
+  });
   const permitted = new Set(eligibility.requestTypes?.filter(type => type.eligible).map(type => type.code) || []);
-  return { orderId, hasReturnHistory: Boolean(source.order?.has_return_history || eligibility.hasExistingRequest), reasons: RETURN_REASONS.filter(reason =>
+  return { orderId, shippingDeductionAmount: Number(rupees(returnShippingDeductionPaise())), hasReturnHistory: Boolean(source.order?.has_return_history || eligibility.hasExistingRequest), reasons: RETURN_REASONS.filter(reason =>
     (DEFECT_REASONS.has(reason.code) && permitted.has(RETURN_TYPES.defect)) ||
     (NORMAL_REASONS.has(reason.code) && permitted.has(RETURN_TYPES.return)) ||
     (reason.code === 'size_issue' && permitted.has(RETURN_TYPES.replacement))), ...eligibility };
@@ -207,6 +213,7 @@ function validateRequest(body = {}) {
   if (!Object.values(RETURN_TYPES).includes(requestType)) throw fault(400, 'RETURN_VALIDATION', 'Select a valid request type.');
   const legacyReplacementSize = requestType === RETURN_TYPES.replacement ? cleanText(body.replacementSize, 'Replacement size', 50) : null;
   const comments = cleanText(body.comments, 'Comments', 500);
+  const refundDestination = body.refundDestination ? codRefunds.validateDestination(body.refundDestination) : null;
   if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 50) throw fault(400, 'RETURN_VALIDATION', 'Select between 1 and 50 order items.');
   const seen = new Set();
   const items = body.items.map(item => {
@@ -216,16 +223,25 @@ function validateRequest(body = {}) {
     seen.add(orderItemId);
     if (!Number.isSafeInteger(item.quantity) || item.quantity < 1 || item.quantity > 100) throw fault(400, 'RETURN_VALIDATION', 'Return quantity must be a whole number between 1 and 100.');
     if (!REASON_CODES.has(item.reason)) throw fault(400, 'RETURN_VALIDATION', 'Select a valid return reason.');
-    const explanation = cleanText(item.comments, 'Reason explanation', 250, item.reason === 'other' || (requestType === RETURN_TYPES.defect && DEFECT_REASONS.has(item.reason)));
+    const explanation = cleanText(item.comments, 'Reason explanation', 250, item.reason === 'other' || DEFECT_REASONS.has(item.reason));
     const replacementSize = requestType === RETURN_TYPES.replacement
       ? cleanText(item.replacementSize || legacyReplacementSize, 'Replacement size', 50, true) : null;
-    return { orderItemId, quantity: item.quantity, reason: item.reason, comments: explanation, replacementSize };
+    let photoIds;
+    if (requestType === RETURN_TYPES.defect) {
+      if (!Array.isArray(item.photoIds) || item.photoIds.length < 1 || item.photoIds.length > 2) throw fault(400, 'DEFECT_PHOTOS_REQUIRED', 'Upload at least one photo and at most two photos for every defective item.');
+      photoIds = item.photoIds.map(id => validId(id, 'defect photo ID'));
+      if (new Set(photoIds).size !== photoIds.length) throw fault(400, 'DEFECT_PHOTOS_REQUIRED', 'Choose different photos for this product.');
+    }
+    return { orderItemId, quantity: item.quantity, reason: item.reason, comments: explanation, replacementSize,
+      ...(photoIds ? { photoIds } : {}) };
   });
   if (requestType === RETURN_TYPES.defect && items.some(item => !DEFECT_REASONS.has(item.reason))) throw fault(400, 'RETURN_VALIDATION', 'Defect reports must use a defect, damage, or wrong-product reason.');
-  if (requestType === RETURN_TYPES.return && items.some(item => !NORMAL_REASONS.has(item.reason))) throw fault(400, 'RETURN_VALIDATION', 'Use Report a defect for damaged or wrong-product claims.');
   if (requestType === RETURN_TYPES.replacement && items.some(item => item.reason !== 'size_issue' || !item.replacementSize)) throw fault(400, 'RETURN_VALIDATION', 'Each size replacement needs a selected item, Size issue reason, and replacement size.');
-  const canonical = JSON.stringify({ orderId, requestType, items: [...items].sort((a, b) => a.orderItemId.localeCompare(b.orderItemId)), comments });
-  return { orderId, idempotencyKey, requestType, replacementSize: items.length === 1 ? items[0].replacementSize : null, items, comments, requestHash: crypto.createHash('sha256').update(canonical).digest('hex') };
+  const canonical = JSON.stringify({ orderId, requestType, items: [...items].sort((a, b) => a.orderItemId.localeCompare(b.orderItemId)), comments,
+    ...(refundDestination ? { refundDestination } : {}) });
+  return { orderId, idempotencyKey, requestType, refundDestination: body.refundDestination || null,
+    replacementSize: items.length === 1 ? items[0].replacementSize : null, items, comments,
+    requestHash: crypto.createHash('sha256').update(canonical).digest('hex') };
 }
 function returnNumber() { return `R-${crypto.randomUUID().replace(/-/g, '')}`; }
 
@@ -249,7 +265,10 @@ function formatReturn(row) {
     pickupDelayed: row.status === 'shiprocket_failed' || (row.status === 'requested' && row.pending_operation === 'create'),
     cancellationPending: row.pending_operation === 'cancel',
     customer: row.customer_name == null ? undefined : { name: row.customer_name, email: row.customer_email, phone: row.customer_phone },
-    paymentMethod: row.payment_method || null, items: row.items || [], requestedAt: row.requested_at,
+    paymentMethod: row.payment_method || null, items: (row.items || []).map(item => ({ ...item,
+      defectPhotos: row.defect_photo_evidence?.items?.find(entry => entry.orderItemId === item.orderItemId)?.photos?.map(photo => ({ id: photo.id, url: photo.url })) || [] })), requestedAt: row.requested_at,
+    defectPhotoReviewPending: Boolean(row.defect_photo_evidence && !row.defect_photo_review && row.status === 'requested'),
+    defectPhotoReview: row.defect_photo_review || null,
     refundDestination: codRefunds.summary({
       payment_method: row.payment_method, return_status: row.status, return_refund_status: row.refund_status,
       destination_id: row.refund_destination_id, method: row.refund_destination_method,
@@ -269,6 +288,8 @@ async function findReturn(database, id, userId = null, admin = false) {
   if (!admin) params.push(userId);
   const result = await database.query(
     `SELECT rr.*, o.order_number, o.payment_method, u.name AS customer_name, u.email AS customer_email, u.phone AS customer_phone,
+       (SELECT a.metadata FROM return_request_audit a WHERE a.return_request_id=rr.id AND a.action='DEFECT_PHOTOS_ATTACHED' ORDER BY a.created_at DESC,a.id DESC LIMIT 1) AS defect_photo_evidence,
+       (SELECT a.metadata FROM return_request_audit a WHERE a.return_request_id=rr.id AND a.action='DEFECT_PHOTO_REVIEWED' ORDER BY a.created_at DESC,a.id DESC LIMIT 1) AS defect_photo_review,
        (SELECT json_build_object('id', child.id, 'orderNumber', child.order_number, 'orderType', child.order_type,
          'sourceOrderId', child.source_order_id, 'returnId', child.return_request_id, 'status', child.order_status,
          'holdReason', child.fulfillment_hold_reason, 'shiprocketOrderId', s.shiprocket_order_id,
@@ -318,6 +339,12 @@ async function createLocalReturn(userId, input, database = pool, now = Date.now)
         : input.requestType === RETURN_TYPES.replacement ? 'The 7-day size replacement window has closed.' : 'The 7-day return window has closed.';
       throw fault(409, input.requestType === RETURN_TYPES.defect ? 'DEFECT_WINDOW_CLOSED' : 'WINDOW_CLOSED', message);
     }
+    // Keep the selected option as the request type. Defect-related reasons
+    // still use their existing reporting window within the Return Item flow.
+    if (input.requestType === RETURN_TYPES.return && input.items.some(item => DEFECT_REASONS.has(item.reason)) &&
+        !eligibility.requestTypes.some(type => type.code === RETURN_TYPES.defect && type.eligible)) {
+      throw fault(409, 'DEFECT_WINDOW_CLOSED', 'Defect reporting window ended. Contact support for late defect claims.');
+    }
     const byId = new Map(refundableItems(source.order, source.items).map(item => [item.id, item]));
     const selected = input.items.map(item => {
       const purchased = byId.get(item.orderItemId);
@@ -344,6 +371,9 @@ async function createLocalReturn(userId, input, database = pool, now = Date.now)
     const shippingDeductionPaise = input.requestType === RETURN_TYPES.return
       ? Math.min(totalPaise, returnShippingDeductionPaise()) : 0;
     const eligibleRefundPaise = input.requestType === RETURN_TYPES.replacement ? 0 : totalPaise - shippingDeductionPaise;
+    if (source.order.payment_method === 'cod' && input.requestType !== RETURN_TYPES.replacement && eligibleRefundPaise > 0 && !input.refundDestination) {
+      throw fault(400, 'COD_REFUND_DESTINATION_REQUIRED', 'Enter bank or UPI details to receive your COD refund after inspection.');
+    }
     const override = overrides.rows[0] || null;
     const inserted = await client.query(
       `INSERT INTO return_requests
@@ -359,6 +389,11 @@ async function createLocalReturn(userId, input, database = pool, now = Date.now)
         [inserted.rows[0].id, item.orderItemId, item.quantity, item.reason, item.comments, item.replacementSize, rupees(item.refundPaise)]
       );
     }
+    if (input.refundDestination && source.order.payment_method === 'cod' && input.requestType !== RETURN_TYPES.replacement) {
+      await codRefunds.saveBeforeInspection(client, { id: inserted.rows[0].id, order_id: input.orderId,
+        user_id: userId, payment_method: source.order.payment_method }, input.refundDestination);
+    }
+    if (input.requestType === RETURN_TYPES.defect) await require('./defectPhotoService').attach(client, userId, input.orderId, selected, inserted.rows[0].id);
     if (override) await client.query('UPDATE return_eligibility_overrides SET used_at = NOW() WHERE id = $1', [override.id]);
     await client.query(`INSERT INTO return_request_audit (return_request_id, order_id, actor_user_id, action, reason, metadata)
       VALUES ($1,$2,$3,$4,$5,$6::jsonb)`, [inserted.rows[0].id, input.orderId, userId, 'REQUEST_SUBMITTED', null,
@@ -475,7 +510,9 @@ async function provisionReturn(returnId, { database = pool, api = shiprocket, en
   const claim = await database.query(
     `UPDATE return_requests SET pending_operation = 'create', operation_started_at = NOW(), attempt_count = attempt_count + 1,
        last_error_code = NULL, updated_at = NOW() WHERE id = $1 AND shiprocket_return_shipment_id IS NULL
-       AND pending_operation IS NULL AND status IN ('requested','shiprocket_failed') RETURNING id`, [returnId]
+       AND pending_operation IS NULL AND status IN ('requested','shiprocket_failed')
+       AND (NOT EXISTS (SELECT 1 FROM return_request_audit a WHERE a.return_request_id=return_requests.id AND a.action='DEFECT_PHOTOS_ATTACHED')
+         OR EXISTS (SELECT 1 FROM return_request_audit a WHERE a.return_request_id=return_requests.id AND a.action='DEFECT_PHOTO_REVIEWED')) RETURNING id`, [returnId]
   );
   if (!claim.rows.length) return findReturn(database, returnId, null, true);
   try {
@@ -507,7 +544,7 @@ async function createReturn(userId, body = {}, database = pool, dependencies = {
   const notifier = notificationsFor(database, dependencies.notifications);
   const input = validateRequest(body);
   const local = await createLocalReturn(userId, input, database, dependencies.now || Date.now);
-  if (local.created) await provisionReturn(local.row.id, { database, api: dependencies.api || shiprocket,
+  if (local.created && input.requestType !== RETURN_TYPES.defect) await provisionReturn(local.row.id, { database, api: dependencies.api || shiprocket,
     env: dependencies.env || process.env, notifications: notifier });
   await notifySafely(() => notifier.returnRequested(local.row.id));
   return formatReturn(await findReturn(database, local.row.id, userId));
@@ -594,7 +631,7 @@ async function rejectReturn(returnId, { database = pool, api = shiprocket, confi
       throw fault(409, 'RETURN_CANCELLATION_UNAVAILABLE', 'This return is already moving and cannot be cancelled. Review it after warehouse receipt.');
     }
     if (row.status === 'received') {
-      if (row.request_type === RETURN_TYPES.replacement) throw fault(409, 'RETURN_ITEM_INSPECTION_REQUIRED', 'Approve or reject each replacement product and submit one outbound shipment.');
+      if (Object.values(RETURN_TYPES).includes(row.request_type)) throw fault(409, 'RETURN_ITEM_INSPECTION_REQUIRED', 'Inspect each product and submit its decision before refunding or returning it to the customer.');
       await client.query(
         `UPDATE return_requests SET status = 'rejected', rejected_at = NOW(), refund_status = 'not_applicable',
            pending_operation = NULL, operation_started_at = NULL, updated_at = NOW() WHERE id = $1`, [returnId]
@@ -673,7 +710,7 @@ async function approveReturn(returnId, database = pool, notifications = null) {
     const row = found.rows[0];
     if (!row) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
     if (!['received','approved','refund_initiated','refunded'].includes(row.status)) throw fault(409, 'RETURN_TRANSITION_INVALID', 'The return must be received before it can be approved.');
-    if (row.request_type === RETURN_TYPES.replacement) throw fault(409, 'RETURN_ITEM_INSPECTION_REQUIRED', 'Submit the inspection decision for each replacement product.');
+    if (Object.values(RETURN_TYPES).includes(row.request_type)) throw fault(409, 'RETURN_ITEM_INSPECTION_REQUIRED', 'Submit the inspection decision for each product.');
     if (!row.inventory_restored_at) {
       const items = await client.query(
         `SELECT psd.id AS inventory_id, psd.product_id, psd.size_id,
@@ -740,7 +777,7 @@ async function inspectReturnItem(returnId, itemId, input, actorUserId, database 
 }
 
 async function replacementOutboundPayload(database, returnId, env = process.env, api = shiprocket) {
-  const result = await database.query(`SELECT rr.return_number, rr.order_id, u.email AS customer_email, oa.*, ri.id AS return_item_id,
+  const result = await database.query(`SELECT rr.return_number, rr.request_type, rr.order_id, u.email AS customer_email, oa.*, ri.id AS return_item_id,
       ri.quantity, ri.inspection_status, ri.replacement_size, oi.product_id, oi.product_name, oi.sku, oi.variant_id, oi.size, oi.unit_price,
       (SELECT id FROM orders WHERE return_request_id = rr.id) AS outbound_order_id,
       (SELECT pv.sku FROM product_variants pv JOIN sizes s ON s.id = pv.size_id
@@ -749,7 +786,8 @@ async function replacementOutboundPayload(database, returnId, env = process.env,
         ORDER BY pv.id LIMIT 1) AS replacement_sku
     FROM return_requests rr JOIN orders o ON o.id = rr.order_id JOIN users u ON u.id = rr.user_id
     JOIN order_addresses oa ON oa.order_id = o.id JOIN return_items ri ON ri.return_request_id = rr.id
-    JOIN order_items oi ON oi.id = ri.order_item_id WHERE rr.id = $1 ORDER BY ri.created_at`, [returnId]);
+    JOIN order_items oi ON oi.id = ri.order_item_id WHERE rr.id = $1
+      AND (rr.request_type='replacement' OR ri.inspection_status='rejected') ORDER BY ri.created_at`, [returnId]);
   const rows = result.rows;
   if (!rows.length) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
   if (rows.some(row => !['approved', 'rejected'].includes(row.inspection_status))) throw fault(409, 'RETURN_INSPECTION_PENDING', 'Inspect every returned product before creating the replacement shipment.');
@@ -794,11 +832,17 @@ function inspectionDecisions(input) {
 }
 
 async function submitReplacementInspection(returnId, input, actorUserId, dependencies = {}) {
+  returnId = validId(returnId, 'return ID');
+  const database = dependencies.database || pool;
+  const row = (await database.query('SELECT * FROM return_requests WHERE id = $1', [returnId])).rows[0];
+  if (row && row.request_type !== RETURN_TYPES.replacement) {
+    return require('./returnInspectionService').submit(returnId, input, actorUserId, dependencies);
+  }
   const decisions = inspectionDecisions(input);
   return createReplacementShipment(returnId, actorUserId, { ...dependencies, decisions });
 }
 
-async function createReplacementShipment(returnId, actorUserId, { database = pool, api = shiprocket, env = process.env, decisions = null } = {}) {
+async function createReplacementShipment(returnId, actorUserId, { database = pool, api = shiprocket, env = process.env, decisions = null, rejectedOnly = false } = {}) {
   returnId = validId(returnId, 'return ID');
   const client = await database.connect();
   let request;
@@ -812,7 +856,7 @@ async function createReplacementShipment(returnId, actorUserId, { database = poo
     const found = await client.query('SELECT * FROM return_requests WHERE id = $1 FOR UPDATE', [returnId]);
     request = found.rows[0];
     if (!request) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
-    if (request.request_type !== RETURN_TYPES.replacement) throw fault(409, 'RETURN_TRANSITION_INVALID', 'Only size exchanges can be shipped.');
+    if (request.request_type !== RETURN_TYPES.replacement && !rejectedOnly) throw fault(409, 'RETURN_TRANSITION_INVALID', 'Only inspected outbound items can be shipped.');
     if (request.pending_operation) throw fault(409, 'REPLACEMENT_SHIPMENT_RECONCILIATION_REQUIRED', 'A replacement shipment operation is already pending reconciliation.');
     if (request.shiprocket_outbound_shipment_id) { await client.query('COMMIT'); return formatReturn(await findReturn(database, returnId, null, true)); }
     if (request.status !== 'received') throw fault(409, 'RETURN_TRANSITION_INVALID', 'Inspection can be submitted only after the return reaches the warehouse.');
@@ -838,13 +882,13 @@ async function createReplacementShipment(returnId, actorUserId, { database = poo
     }
     // Reserve the replacement sizes atomically before contacting the provider.
     // Rejected originals never add or subtract sellable stock.
-    const stock = await client.query(`SELECT psd.id, psd.product_id, psd.size_id, SUM(ri.quantity)::integer AS quantity
+    const stock = rejectedOnly ? { rows: [] } : await client.query(`SELECT psd.id, psd.product_id, psd.size_id, SUM(ri.quantity)::integer AS quantity
       FROM return_items ri JOIN order_items oi ON oi.id = ri.order_item_id
       JOIN sizes s ON LOWER(s.name) = LOWER(ri.replacement_size)
       JOIN product_size_details psd ON psd.product_id = oi.product_id AND psd.size_id = s.id
       WHERE ri.return_request_id = $1 AND ri.inspection_status = 'approved'
       GROUP BY psd.id, psd.product_id, psd.size_id ORDER BY psd.id`, [returnId]);
-    const approved = await client.query(`SELECT ri.id FROM return_items ri JOIN order_items oi ON oi.id = ri.order_item_id
+    const approved = rejectedOnly ? { rows: [] } : await client.query(`SELECT ri.id FROM return_items ri JOIN order_items oi ON oi.id = ri.order_item_id
       LEFT JOIN product_variants pv ON pv.id = oi.variant_id
       LEFT JOIN product_size_details original ON original.product_id = oi.product_id AND original.size_id = pv.size_id
       LEFT JOIN sizes s ON LOWER(s.name) = LOWER(ri.replacement_size)
@@ -893,8 +937,9 @@ async function createReplacementShipment(returnId, actorUserId, { database = poo
       await afterSalesOrders.saveShipment(finalize, returnId, remote, outbound.payload);
       await finalize.query(`UPDATE return_requests SET shiprocket_outbound_order_id = $1, shiprocket_outbound_shipment_id = $2,
         outbound_awb = $3, outbound_status = 'created', outbound_created_at = NOW(), pending_operation = NULL, operation_started_at = NULL,
-        status = 'approved', approved_at = COALESCE(approved_at, NOW()), refund_status = 'not_applicable', last_error_code = NULL,
-        updated_at = NOW() WHERE id = $4`, [remote.orderId, remote.shipmentId, remote.awb, returnId]);
+        status = 'approved', approved_at = COALESCE(approved_at, NOW()), refund_status = $5, last_error_code = NULL,
+        updated_at = NOW() WHERE id = $4`, [remote.orderId, remote.shipmentId, remote.awb, returnId,
+        rejectedOnly ? request.refund_status : 'not_applicable']);
       await finalize.query(`INSERT INTO return_request_audit (return_request_id, order_id, actor_user_id, action, metadata)
         VALUES ($1,$2,$3,'REPLACEMENT_OUTBOUND_CREATED',$4::jsonb)`, [returnId, request.order_id, actorUserId || null,
         JSON.stringify({ shiprocketOrderId: remote.orderId, shiprocketShipmentId: remote.shipmentId })]);
@@ -945,14 +990,15 @@ async function initiateRefund(returnId, { database = pool, gateway = getRazorpay
     );
     row = found.rows[0];
     if (!row) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
+    if (row.status === 'refunded' || row.refund_status === 'refunded') { await client.query('COMMIT'); return formatReturn(await findReturn(database, returnId, null, true)); }
+    if (row.status !== 'approved' || !['pending', 'manual_required'].includes(row.refund_status) || row.pending_operation) throw fault(409, 'RETURN_TRANSITION_INVALID', 'This return is not ready for a refund.');
+    if (moneyPaise(row.refund_amount) === 0) throw fault(409, 'RETURN_NO_REFUND', 'No refund is payable after inspection and shipping deduction.');
     if (row.payment_method === 'cod') {
       await client.query("UPDATE return_requests SET refund_status = 'manual_required', updated_at = NOW() WHERE id = $1", [returnId]);
       await client.query('COMMIT');
       await notifySafely(() => notifier.codRefundRequired(returnId));
       return formatReturn(await findReturn(database, returnId, null, true));
     }
-    if (row.status === 'refunded' || row.refund_status === 'refunded') { await client.query('COMMIT'); return formatReturn(await findReturn(database, returnId, null, true)); }
-    if (row.status !== 'approved' || row.refund_status !== 'pending' || row.pending_operation) throw fault(409, 'RETURN_TRANSITION_INVALID', 'This return is not ready for a refund.');
     if (!row.razorpay_payment_id) throw fault(409, 'RETURN_PAYMENT_REVIEW', 'The original payment needs manual review.');
     await client.query(
       `UPDATE return_requests SET status = 'refund_initiated', refund_status = 'processing', pending_operation = 'refund',
@@ -1117,7 +1163,7 @@ async function processShiprocketWebhook(payload, headers, database = pool, env =
       return { ignored: false, duplicate: false };
     }
     if (!next) { await client.query('COMMIT'); return { ignored: true, duplicate: false }; }
-    const terminal = ['rejected','cancelled','refunded'].includes(row.status);
+    const terminal = ['approved','refund_initiated','rejected','cancelled','refunded'].includes(row.status) || Boolean(row.inventory_restored_at);
     const canAdvance = next === 'cancelled' || next === 'pickup_failed' || (STATUS_RANK[next] != null && STATUS_RANK[next] >= (STATUS_RANK[row.status] ?? -1));
     if (!terminal && canAdvance) {
       const providerLabel = webhookStatusLabel(payload);
@@ -1148,5 +1194,5 @@ module.exports = {
   RETURN_REASONS, RETURN_TYPES, DEFECT_WINDOW_MS, RETURN_WINDOW_MS, ACTIVE_STATUSES, evaluateEligibility, refundableItems, returnShippingDeductionPaise,
   validateRequest, createLocalReturn, getEligibility, createReturn, provisionReturn, listCustomerReturns, listAdminReturns,
   findReturn, formatReturn, approveReturn, rejectReturn, initiateRefund, grantEligibilityOverride, listEligibilityOverrideHistory,
-  inspectReturnItem, submitReplacementInspection, createReplacementShipment, mappedWebhookStatus, processShiprocketWebhook, returnPayload, resolveReturnWarehouse
+  inspectionDecisions, inspectReturnItem, submitReplacementInspection, createReplacementShipment, mappedWebhookStatus, processShiprocketWebhook, returnPayload, resolveReturnWarehouse
 };

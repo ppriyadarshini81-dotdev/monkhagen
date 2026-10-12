@@ -379,6 +379,9 @@ exports.getReturns = asyncHandler(async (req, res) => {
 exports.createReturn = asyncHandler(async (req, res) => {
   res.status(201).json(await returns.createReturn(req.user.id, req.body));
 });
+exports.uploadDefectPhotos = asyncHandler(async (req, res) => {
+  res.status(201).json(await require('../services/defectPhotoService').upload(req.user.id, req.params.orderId, req.params.itemId, req.files));
+});
 
 exports.getReturnEligibility = asyncHandler(async (req, res) => {
   res.json(await returns.getEligibility(req.user.id, req.params.orderId));
@@ -396,7 +399,7 @@ exports.cancelReturn = asyncHandler(async (req, res) => {
     return res.status(409).json({ message: 'This return can no longer be cancelled because return initiation has started.' });
   }
   res.json(await returns.rejectReturn(req.params.returnId, {
-    database: pool, confirmedNoRemote: !row.shiprocket_return_order_id
+    database: pool, confirmedNoRemote: !row.shiprocket_return_order_id && row.pending_operation !== 'create'
   }));
 });
 

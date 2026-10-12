@@ -9,6 +9,7 @@ router.get('/eligibility-overrides', ctrl.eligibilityOverrideHistory);
 router.get('/', ctrl.list);
 router.get('/outbound-orders', ctrl.outboundOrders);
 router.get('/:returnId', ctrl.get);
+router.post('/:returnId/photo-review', ctrl.reviewDefectPhotos);
 router.post('/:returnId/items/:itemId/inspection', ctrl.inspectItem);
 router.post('/:returnId/submit-inspection', ctrl.submitInspection);
 router.post('/:returnId/replacement-shipment', ctrl.createReplacementShipment);

@@ -16,6 +16,9 @@ exports.get = asyncHandler(async (req, res) => {
   res.json(returns.formatReturn(row));
 });
 exports.approve = asyncHandler(async (req, res) => res.json(await returns.approveReturn(req.params.returnId)));
+exports.reviewDefectPhotos = asyncHandler(async (req, res) => res.json(await require('../services/defectPhotoService').review(
+  req.params.returnId, req.body, req.user.id
+)));
 exports.inspectItem = asyncHandler(async (req, res) => res.json(await returns.inspectReturnItem(
   req.params.returnId, req.params.itemId, req.body, req.user.id
 )));

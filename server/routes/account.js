@@ -32,6 +32,7 @@ router.get('/orders/:orderId/tracking',  ctrl.getTracking);
 router.get('/orders/:orderId/cancellation-eligibility', ctrl.getCancellationEligibility);
 router.post('/orders/:orderId/cancel', ctrl.cancelOrder);
 router.get('/orders/:orderId/return-eligibility', ctrl.getReturnEligibility);
+router.post('/orders/:orderId/items/:itemId/defect-photos', returnLimiter, require('../middleware/defectPhotoUpload'), ctrl.uploadDefectPhotos);
 router.get('/orders/:orderId/invoice', invoiceLimiter, ctrl.getInvoice);
 
 // Returns

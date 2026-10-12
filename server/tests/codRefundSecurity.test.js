@@ -13,6 +13,39 @@ const USER = '30000000-0000-4000-8000-000000000001';
 const ADMIN = '40000000-0000-4000-8000-000000000001';
 const environment = { COD_REFUND_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64') };
 
+test('COD destination saved before inspection is encrypted and does not initiate a refund or transfer', async () => {
+  const queries = [];
+  const client = { query: async (sql, values) => { queries.push({ sql, values }); return { rows: [] }; } };
+  await refunds.saveBeforeInspection(client, { id: RETURN, order_id: ORDER, user_id: USER, payment_method: 'cod' },
+    { method: 'UPI', upiId: 'buyer@bank', confirmUpiId: 'buyer@bank' }, environment);
+  assert.equal(queries.length, 1);
+  assert.ok(queries[0].sql.startsWith('INSERT INTO cod_refund_destinations'));
+  assert.equal(crypt.decrypt(queries[0].values[9], environment), 'buyer@bank');
+  assert.ok(!queries[0].values.includes('buyer@bank'));
+  await assert.rejects(refunds.saveBeforeInspection(client, { payment_method: 'razorpay' },
+    { method: 'UPI', upiId: 'buyer@bank', confirmUpiId: 'buyer@bank' }, environment));
+  assert.equal(queries.length, 1);
+});
+
+test('an early saved COD destination cannot start processing or be resubmitted before inspection approval', async () => {
+  for (const action of ['start', 'submit']) {
+    const writes = [];
+    const client = { query: async (sql, values) => {
+      if (String(sql).startsWith('SELECT rr.id')) return { rows: [{ id: RETURN, order_id: ORDER,
+        payment_method: 'cod', return_status: 'return_created', refund_amount: '1349.00',
+        destination_id: 'early', destination_status: 'PROVIDED' }] };
+      if (!['BEGIN', 'ROLLBACK'].includes(sql)) writes.push(sql);
+      return { rows: [] };
+    }, release() {} };
+    const database = { connect: async () => client };
+    const attempt = action === 'start' ? refunds.start(ADMIN, RETURN, { database })
+      : refunds.submit(USER, RETURN, { method: 'UPI', upiId: 'buyer@bank', confirmUpiId: 'buyer@bank' },
+        { database, environment, notifications: {} });
+    await assert.rejects(attempt, error => error.code === 'COD_REFUND_NOT_ELIGIBLE');
+    assert.equal(writes.length, 0);
+  }
+});
+
 test('AES-256-GCM uses a fresh IV, detects tampering and fails closed without a valid key', () => {
   const first = crypt.encrypt('buyer@bank', environment);
   const second = crypt.encrypt('buyer@bank', environment);

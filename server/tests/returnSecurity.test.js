@@ -13,6 +13,7 @@ const ITEM = '20000000-0000-4000-8000-000000000001';
 const OTHER = '20000000-0000-4000-8000-000000000002';
 const IDEM = '30000000-0000-4000-8000-000000000001';
 const RETURN = '40000000-0000-4000-8000-000000000001';
+const PHOTO = '90000000-0000-4000-8000-000000000001';
 const INVENTORY = '50000000-0000-4000-8000-000000000001';
 const PRODUCT = '60000000-0000-4000-8000-000000000001';
 const SIZE = '70000000-0000-4000-8000-000000000001';
@@ -129,15 +130,42 @@ test('each selected size-exchange item carries its own replacement size and cann
 test('a client cannot relabel a defect as a normal return to bypass the 48-hour policy', async () => {
   const relabelled = {
     orderId: ORDER, idempotencyKey: IDEM, requestType: RETURN_TYPES.return,
-    items: [{ orderItemId: ITEM, quantity: 1, reason: 'product_damaged', comments: 'The garment arrived torn.' }]
+    items: [{ orderItemId: ITEM, quantity: 1, reason: 'product_damaged', comments: 'The garment arrived torn.', photoIds: [PHOTO] }]
   };
-  assert.throws(() => validateRequest(relabelled), /Report a defect/);
+  for (const requestType of [RETURN_TYPES.return, RETURN_TYPES.defect]) {
+    const input = validateRequest({ ...relabelled, requestType });
+    assert.equal(input.requestType, requestType);
+    const db = localDatabase({ deliveredAt: new Date(NOW - DEFECT_WINDOW_MS - 1) });
+    await assert.rejects(createLocalReturn('customer', input, db, () => NOW), error => error.code === 'DEFECT_WINDOW_CLOSED');
+    assert.equal(db.queries.some(query => query.sql.startsWith('INSERT INTO return_requests')), false);
+  }
+});
 
-  const defect = validateRequest({ ...relabelled, requestType: RETURN_TYPES.defect });
-  await assert.rejects(
-    createLocalReturn('customer', defect, localDatabase({ deliveredAt: new Date(NOW - DEFECT_WINDOW_MS - 1) }), () => NOW),
-    error => error.code === 'DEFECT_WINDOW_CLOSED'
-  );
+test('the selected return option is saved independently of quality, damage and wrong-product reasons', async () => {
+  for (const reason of ['quality_issue', 'product_damaged', 'wrong_item']) {
+    for (const requestType of [RETURN_TYPES.return, RETURN_TYPES.defect]) {
+      const body = { orderId: ORDER, idempotencyKey: IDEM, requestType,
+        items: [{ orderItemId: ITEM, quantity: 1, reason, comments: 'Customer selected this reason.', photoIds: [PHOTO] }] };
+      const input = validateRequest(body);
+      assert.equal(input.requestType, requestType);
+      const db = localDatabase();
+      await createLocalReturn('customer', input, db, () => NOW);
+      const insert = db.queries.find(query => query.sql.startsWith('INSERT INTO return_requests'));
+      assert.equal(insert.params[8], requestType);
+      const audit = db.queries.find(query => query.sql.startsWith('INSERT INTO return_request_audit') && query.params[3] === 'REQUEST_SUBMITTED');
+      assert.equal(JSON.parse(audit.params[5]).requestType, requestType);
+    }
+  }
+});
+
+test('a return can contain quality and fit reasons without becoming a defective-item request', async () => {
+  const input = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, requestType: RETURN_TYPES.return,
+    items: [{ orderItemId: ITEM, quantity: 1, reason: 'quality_issue', comments: 'Poor quality product.' },
+      { orderItemId: OTHER, quantity: 1, reason: 'size_issue' }] });
+  const db = localDatabase({ additionalItem: true });
+  await createLocalReturn('customer', input, db, () => NOW);
+  assert.equal(db.queries.find(query => query.sql.startsWith('INSERT INTO return_requests')).params[8], RETURN_TYPES.return);
+  assert.equal(db.queries.filter(query => query.sql.startsWith('INSERT INTO return_items')).length, 2);
 });
 
 test('partial refund allocation uses original snapshots, allocates discount in paise, and excludes charges', () => {
@@ -161,6 +189,7 @@ function localDatabase({ owner = true, returned = 0, deliveredAt = new Date(NOW)
     if (String(sql).startsWith('SELECT oi.*')) return { rows: additionalItem
       ? [{ ...items(returned)[0], quantity: 1 }, { ...items()[0], id: OTHER, quantity: 1 }] : items(returned) };
     if (String(sql).startsWith('INSERT INTO return_requests')) return { rows: [{ id: RETURN, order_id: ORDER, request_hash: params[7], status: 'requested' }] };
+    if (String(sql).startsWith('SELECT id,metadata FROM return_request_audit')) return { rows: [{ id: PHOTO, metadata: { orderItemId: ITEM, url: 'https://media.example/test.png', key: 'test.png', mimeType: 'image/png' } }] };
     return { rows: [] };
   }, release() {} };
   return { queries, connect: async () => client };
@@ -204,7 +233,7 @@ test('same idempotency key replays the local return and a conflicting body is re
   const first = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] });
   const replay = localDatabase({ duplicate: { id: RETURN, request_hash: first.requestHash } });
   assert.equal((await createLocalReturn('customer', first, replay, () => NOW)).created, false);
-  const changed = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'quality_issue', comments: 'Stitching is damaged.' }] });
+  const changed = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'quality_issue', comments: 'Stitching is damaged.', photoIds: [PHOTO] }] });
   await assert.rejects(createLocalReturn('customer', changed, localDatabase({ duplicate: { id: RETURN, request_hash: first.requestHash } })), /different items/);
 });
 

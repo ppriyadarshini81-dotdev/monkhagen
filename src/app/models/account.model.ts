@@ -120,6 +120,7 @@ export interface PincodeLocation {
 }
 
 export interface ReturnItem {
+  defectPhotos?: Array<{ id: string; url: string }>;
   id: string;
   orderItemId: string;
   productName: string;
@@ -144,6 +145,8 @@ export interface ReturnRequest {
   returnNumber: string;
   reason: string;
   requestType: 'return' | 'defect' | 'replacement';
+  defectPhotoReviewPending?: boolean;
+  defectPhotoReview?: { decision: 'approved' | 'rejected'; reason: string } | null;
   requestedReplacementSize: string | null;
   returnShippingDeduction: number;
   comments: string | null;
@@ -195,7 +198,8 @@ export interface ReturnPayload {
   requestType: 'return' | 'defect' | 'replacement';
   replacementSize?: string;
   comments?: string;
-  items: { orderItemId: string; quantity: number; reason: string; comments?: string; replacementSize?: string }[];
+  refundDestination?: CodRefundDestinationPayload;
+  items: { orderItemId: string; quantity: number; reason: string; comments?: string; replacementSize?: string; photoIds?: string[] }[];
 }
 
 export interface ReturnEligibility {
@@ -203,6 +207,7 @@ export interface ReturnEligibility {
   eligible: boolean;
   hasExistingRequest?: boolean;
   hasReturnHistory?: boolean;
+  shippingDeductionAmount?: number;
   reason: string | null;
   message: string | null;
   deliveredAt?: string;
@@ -222,6 +227,7 @@ export interface ReturnEligibility {
     remainingQuantity: number;
     alreadyRequested?: boolean;
     replacementSizes: string[];
+    refundableUnitAmounts?: number[];
   }>;
 }
 

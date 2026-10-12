@@ -283,6 +283,7 @@ export class AdminComponent implements OnInit, DoCheck {
 
   openReturnDetails(request: AdminReturn): void {
     this.selectedReturn = request;
+    this.photoReviewReason = '';
     this.inspectionDrafts = Object.fromEntries(request.items.map(item => [item.id, { decision: item.inspectionStatus === 'pending' ? '' : (item.inspectionStatus || ''), reason: item.inspectionReason || '' }]));
     this.error = '';
     this.message = '';
@@ -292,13 +293,23 @@ export class AdminComponent implements OnInit, DoCheck {
     });
   }
   closeReturnDetails(): void { this.returnDetailsDialog?.nativeElement.close(); }
+  photoReviewReason = '';
+  reviewDefectPhotos(request: AdminReturn, decision: 'approved' | 'rejected'): void {
+    if (this.returnBusyId || !request.defectPhotoReviewPending) return;
+    if (decision === 'rejected' && !this.photoReviewReason.trim()) { this.error = 'Enter the reason for rejecting the photos.'; return; }
+    this.returnBusyId = request.id; this.error = '';
+    this.orderService.reviewDefectPhotos(request.id, decision, this.photoReviewReason.trim()).subscribe({
+      next: updated => { this.selectedReturn = updated; this.returnBusyId = ''; this.message = 'Photo review saved. Follow the return pickup status below.'; this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.error = error?.error?.message || 'Photo review could not be saved.'; }
+    });
+  }
   clearReturnDetails(): void { this.selectedReturn = null; this.inspectionDrafts = {}; }
   canInspectReplacementItem(request: AdminReturn, item: AdminReturn['items'][number]): boolean {
-    return request.requestType === 'replacement' && request.status === 'received' && !request.replacementShipmentPending && !request.shiprocketOutboundOrderId &&
+    return request.status === 'received' && !request.replacementShipmentPending && !request.shiprocketOutboundOrderId &&
       (!item.inspectionStatus || item.inspectionStatus === 'pending');
   }
   canSubmitInspection(request: AdminReturn): boolean {
-    return request.requestType === 'replacement' && request.status === 'received' && !request.replacementShipmentPending &&
+    return request.status === 'received' && !request.replacementShipmentPending &&
       !request.shiprocketOutboundOrderId && request.items.length > 0 && request.items.every(item =>
         item.inspectionStatus && item.inspectionStatus !== 'pending' ||
         (!!this.inspectionDrafts[item.id]?.decision && !!this.inspectionDrafts[item.id]?.reason.trim()));
@@ -311,7 +322,10 @@ export class AdminComponent implements OnInit, DoCheck {
     this.returnBusyId = request.id;
     this.error = ''; this.message = '';
     this.orderService.submitReplacementInspection(request.id, items).subscribe({
-      next: updated => { this.selectedReturn = updated; this.returnBusyId = ''; this.message = 'Inspection submitted. One outbound Shiprocket order has been created for all products.'; this.loadReturns(); },
+      next: updated => { this.selectedReturn = updated; this.returnBusyId = ''; this.message = updated.shiprocketOutboundOrderId
+        ? 'Inspection submitted. Track the outbound items from this request.'
+        : updated.refundStatus === 'processing' ? 'Inspection approved. Refund initiated to the original payment method.'
+        : updated.refundAmount ? 'Inspection approved. Refund details are ready for processing.' : 'Inspection completed. No refund is payable.'; this.loadReturns(); },
       error: error => { this.returnBusyId = ''; this.error = error?.error?.message || 'Could not submit inspection.'; this.loadReturns(); }
     });
   }
@@ -336,8 +350,9 @@ export class AdminComponent implements OnInit, DoCheck {
   }
 
   requestStatusLabel(request: AdminReturn): string {
+    if (request.defectPhotoReviewPending) return 'Awaiting photo review';
     if (request.replacementShipmentPending) return 'Outbound shipment needs review';
-    if (request.requestType === 'replacement' && request.shiprocketOutboundOrderId) return 'Outbound shipment ' + (request.outboundStatus || 'created').toLowerCase();
+    if (request.shiprocketOutboundOrderId) return 'Outbound shipment ' + (request.outboundStatus || 'created').toLowerCase();
     return this.returnStatusLabel(request.status);
   }
 
@@ -353,7 +368,7 @@ export class AdminComponent implements OnInit, DoCheck {
   itemTrackingStage(request: AdminReturn, item: AdminReturn['items'][number]): number {
     const stage = this.returnStage(request.status);
     if (stage < 4) return stage;
-    if (request.requestType !== 'replacement') {
+    if (request.requestType !== 'replacement' && item.inspectionStatus !== 'rejected') {
       if (['refund_initiated', 'refunded'].includes(request.status)) return 5;
       return request.status === 'approved' ? 4 : 3;
     }
@@ -362,21 +377,26 @@ export class AdminComponent implements OnInit, DoCheck {
   }
 
   itemTrackingOutcome(request: AdminReturn, item: AdminReturn['items'][number]): string {
-    if (request.requestType !== 'replacement') return 'Refund';
-    return item.inspectionStatus === 'rejected' ? 'Original item return' : 'Replacement';
+    return item.inspectionStatus === 'rejected' ? 'Original item return' : request.requestType === 'replacement' ? 'Replacement' : 'Refund';
   }
 
   itemJourneyTitle(request: AdminReturn, item: AdminReturn['items'][number]): string {
+    if (request.defectPhotoReviewPending) return 'Awaiting admin photo review';
     if (this.returnStage(request.status) < 4) return this.returnStatusLabel(request.status);
     if (!item.inspectionStatus || item.inspectionStatus === 'pending') return 'Awaiting inspection';
-    return item.inspectionStatus === 'approved' ? 'Replacement approved' : 'Replacement rejected';
+    return item.inspectionStatus === 'approved' ? (request.requestType === 'replacement' ? 'Replacement approved' : 'Return approved')
+      : (request.requestType === 'replacement' ? 'Replacement rejected' : 'Return rejected');
   }
 
   itemJourneyDetail(request: AdminReturn, item: AdminReturn['items'][number]): string {
+    if (request.defectPhotoReviewPending) return 'Review the customer photos before creating the return pickup order.';
     if (this.returnStage(request.status) < 4) {
       return request.returnAwb ? `Shared return shipment · AWB ${request.returnAwb}` : 'All selected products are travelling together to Monk Hagen.';
     }
     if (!item.inspectionStatus || item.inspectionStatus === 'pending') return 'Warehouse inspection is pending for this product.';
+    if (request.requestType !== 'replacement' && item.inspectionStatus === 'approved') {
+      return `${request.refundAmount ? 'Refund after shipping deduction: ₹' + request.refundAmount : 'No refund payable after shipping deduction'}${item.inspectionReason ? ' · ' + item.inspectionReason : ''}`;
+    }
     const shipment = request.outboundAwb ? `AWB ${request.outboundAwb}` : (request.outboundStatus || 'Outbound shipment is being prepared');
     return item.inspectionStatus === 'approved'
       ? `Replacement size ${item.replacementSize || 'selected'} · ${shipment}`
@@ -426,7 +446,7 @@ export class AdminComponent implements OnInit, DoCheck {
     });
   }
 
-  canApproveReturn(item: AdminReturn): boolean { return item.requestType !== 'replacement' && item.status === 'received'; }
+  canApproveReturn(item: AdminReturn): boolean { return false; }
   canRefundReturn(item: AdminReturn): boolean {
     return item.paymentMethod !== 'cod' && item.status === 'approved' && item.refundStatus === 'pending';
   }
@@ -479,7 +499,6 @@ export class AdminComponent implements OnInit, DoCheck {
     if (item.cancellationPending) return null;
     if (['requested','shiprocket_failed'].includes(item.status)) return 'Reject request';
     if (['return_created','pickup_scheduled','pickup_failed'].includes(item.status)) return 'Cancel return';
-    if (item.status === 'received' && item.requestType !== 'replacement') return 'Reject after inspection';
     return null;
   }
 

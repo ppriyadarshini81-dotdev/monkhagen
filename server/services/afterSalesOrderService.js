@@ -2,7 +2,7 @@ async function ensureOrder(client, returnId, actorUserId) {
   const result = await client.query(`INSERT INTO orders (user_id, order_number, subtotal, discount_amount, shipping_amount, total_amount,
     payment_method, payment_status, order_status, order_type, source_order_id, return_request_id, created_by, fulfillment_hold_reason)
     SELECT rr.user_id, 'AS-' || REPLACE(rr.id::text, '-', ''), 0, 0, 0, 0, 'razorpay', 'paid', 'confirmed',
-      CASE WHEN EXISTS (SELECT 1 FROM return_items ri WHERE ri.return_request_id = rr.id AND ri.inspection_status = 'approved')
+      CASE WHEN rr.request_type='replacement' AND EXISTS (SELECT 1 FROM return_items ri WHERE ri.return_request_id = rr.id AND ri.inspection_status = 'approved')
         THEN 'replacement' ELSE 'rejected_return' END, rr.order_id, rr.id, $2, 'AFTER_SALES_PROVIDER_PENDING'
     FROM return_requests rr WHERE rr.id = $1
     ON CONFLICT (return_request_id) WHERE return_request_id IS NOT NULL DO UPDATE SET updated_at = orders.updated_at
@@ -25,7 +25,8 @@ async function ensureOrder(client, returnId, actorUserId) {
       WHERE pv.product_id = oi.product_id AND LOWER(s.name) = LOWER(ri.replacement_size)
         AND pv.color_id IS NOT DISTINCT FROM (SELECT color_id FROM product_variants WHERE id = oi.variant_id)
       ORDER BY pv.id LIMIT 1) replacement ON TRUE
-    WHERE ri.return_request_id = $2
+    WHERE ri.return_request_id = $2 AND (ri.inspection_status='rejected' OR
+      (ri.inspection_status='approved' AND EXISTS (SELECT 1 FROM return_requests rr WHERE rr.id=$2 AND rr.request_type='replacement')))
     ON CONFLICT (return_item_id) WHERE return_item_id IS NOT NULL DO NOTHING`, [order.id, returnId]);
   return order;
 }

@@ -19,10 +19,11 @@ const decisions = (first = 'approved', second = 'rejected') => ({ items: [
 ] });
 
 // Transaction-aware fixture: rollbacks must undo every product decision and stock change.
-function fixture({ status = 'received', stock = 5, provider, finalizeFailure = false } = {}) {
-  let state = { request: { id: RETURN, order_id: ORDER, return_number: 'R-123', request_type: 'replacement', status,
+function fixture({ status = 'received', stock = 5, provider, finalizeFailure = false, requestType = 'replacement', amounts = [1499, 499], paymentMethod = 'razorpay' } = {}) {
+  let state = { request: { id: RETURN, order_id: ORDER, return_number: 'R-123', request_type: requestType, status,
+    payment_method: paymentMethod, razorpay_payment_id: 'pay_original', refund_amount: '0.00',
     pending_operation: null, refund_status: 'not_applicable' }, stock, originalStock: 1,
-    items: [ITEM, OTHER].map(id => ({ id, inspection_status: 'pending', inspection_reason: null })), audit: [], movements: [], outboundOrder: null, shipment: null };
+    items: [ITEM, OTHER].map((id, index) => ({ id, inspection_status: 'pending', inspection_reason: null, refund_amount: String(amounts[index]) })), audit: [], movements: [], outboundOrder: null, shipment: null };
   const calls = [];
   let snapshot;
   const query = async (sql, values = []) => {
@@ -35,7 +36,7 @@ function fixture({ status = 'received', stock = 5, provider, finalizeFailure = f
     if (sql.startsWith('SELECT id FROM return_requests')) return rows([{ id: RETURN }]);
     if (sql.startsWith('SELECT id, inspection_status')) return rows(state.items.map(item => ({ ...item })));
     if (sql.startsWith('INSERT INTO orders')) {
-      state.outboundOrder ||= { id: OUTBOUND, order_number: 'AS-123', order_type: state.items.some(item => item.inspection_status === 'approved') ? 'replacement' : 'rejected_return' };
+      state.outboundOrder ||= { id: OUTBOUND, order_number: 'AS-123', order_type: state.request.request_type === 'replacement' && state.items.some(item => item.inspection_status === 'approved') ? 'replacement' : 'rejected_return' };
       return rows([{ ...state.outboundOrder }]);
     }
     if (sql.startsWith('INSERT INTO order_addresses') || sql.startsWith('INSERT INTO order_items')) return rows([]);
@@ -61,6 +62,23 @@ function fixture({ status = 'received', stock = 5, provider, finalizeFailure = f
       const before = state.stock; state.stock += values[0];
       return rows([{ quantity_before: before, quantity_after: state.stock }]);
     }
+    if (sql.startsWith('UPDATE product_size_details SET stock_quantity=stock_quantity+')) {
+      const before = state.originalStock; state.originalStock += values[0];
+      return rows([{ quantity_before: before, quantity_after: state.originalStock }]);
+    }
+    if (sql.startsWith('UPDATE return_requests SET refund_amount=')) {
+      Object.assign(state.request, { refund_amount: values[1], return_shipping_deduction: values[2],
+        inventory_restored_at: new Date(), status: values[3], refund_status: values[4] }); return rows([]);
+    }
+    if (sql.startsWith('SELECT * FROM financial_transactions')) return rows([]);
+    if (sql.startsWith('INSERT INTO financial_transactions') || sql.startsWith('INSERT INTO financial_transaction_events')) return rows([]);
+    if (sql.startsWith("UPDATE return_requests SET status = 'refund_initiated'")) {
+      Object.assign(state.request, { status: 'refund_initiated', refund_status: 'processing', pending_operation: 'refund' }); return rows([]);
+    }
+    if (sql.startsWith('UPDATE return_requests SET razorpay_refund_id')) {
+      Object.assign(state.request, { razorpay_refund_id: values[0], pending_operation: null }); return rows([]);
+    }
+    if (sql.startsWith("UPDATE return_requests SET refund_status = 'manual_required'")) { state.request.refund_status = 'manual_required'; return rows([]); }
     if (sql.startsWith('UPDATE product_size_details psd')) {
       if (finalizeFailure) throw new Error('database finalization failed');
       const before = state.originalStock; state.originalStock += values[0];
@@ -69,14 +87,14 @@ function fixture({ status = 'received', stock = 5, provider, finalizeFailure = f
     if (sql.startsWith("UPDATE return_requests SET pending_operation = 'replacement_create'")) { state.request.pending_operation = 'replacement_create'; return rows([]); }
     if (sql.startsWith('UPDATE return_requests SET shiprocket_outbound_order_id')) {
       Object.assign(state.request, { shiprocket_outbound_order_id: values[0], shiprocket_outbound_shipment_id: values[1],
-        status: 'approved', pending_operation: null, outbound_status: 'created' }); return rows([]);
+        status: 'approved', pending_operation: null, outbound_status: 'created', refund_status: values[4] }); return rows([]);
     }
     if (sql.startsWith('UPDATE return_requests SET last_error_code')) {
       Object.assign(state.request, { last_error_code: 'REPLACEMENT_SHIPMENT_RECONCILIATION_REQUIRED',
         shiprocket_outbound_order_id: values[1], shiprocket_outbound_shipment_id: values[2] }); return rows([]);
     }
     if (sql.startsWith('UPDATE return_requests SET pending_operation = NULL')) { state.request.pending_operation = null; return rows([]); }
-    if (sql.startsWith('SELECT rr.return_number')) return rows(state.items.map(item => ({ ...item,
+    if (sql.startsWith('SELECT rr.return_number')) return rows(state.items.filter(item => state.request.request_type === 'replacement' || item.inspection_status === 'rejected').map(item => ({ ...item,
       return_item_id: item.id, return_number: 'R-123', product_id: PRODUCT, product_name: 'Original tee',
       outbound_order_id: state.outboundOrder?.id,
       sku: 'TEE-M-BLACK', replacement_sku: 'TEE-L-BLACK', size: 'M', replacement_size: 'L', quantity: 1, unit_price: '100.00',
@@ -95,7 +113,11 @@ function fixture({ status = 'received', stock = 5, provider, finalizeFailure = f
     calls.push(options.body);
     return provider ? provider(options.body) : { order_id: 11, shipment_id: 22 };
   } };
-  return { database, api, env, calls, get state() { return state; } };
+  const refunds = [];
+  const gateway = () => ({ razorpay: { payments: { refund: async (paymentId, payload) => {
+    refunds.push({ paymentId, ...payload }); return { id: 'rfnd_testreturn', status: 'pending' };
+  } } } });
+  return { database, api, env, calls, refunds, gateway, get state() { return state; } };
 }
 
 test('mixed inspection submits one warehouse-to-customer order, replaces approved sizes and returns rejected originals', async () => {
@@ -203,4 +225,75 @@ test('a second submission and individual inspection cannot race an active outbou
   await assert.rejects(inspectReturnItem(RETURN, OTHER, { decision: 'approved' }, 'admin', f.database), e => e.code === 'REPLACEMENT_SHIPMENT_RECONCILIATION_REQUIRED');
   release({ order_id: 11, shipment_id: 22 }); await first;
   assert.equal(f.calls.length, 1); assert.equal(f.state.stock, 4);
+});
+
+test('approved returns deduct shipping once and automatically refund only the net amount to the original payment', async () => {
+  const f = fixture({ requestType: 'return' });
+  const result = await submitReplacementInspection(RETURN, decisions('approved', 'approved'), 'admin', f);
+  assert.equal(result.refundAmount, 1848);
+  assert.equal(result.returnShippingDeduction, 150);
+  assert.equal(result.status, 'refund_initiated');
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.state.originalStock, 3);
+  assert.equal(f.refunds.length, 1);
+  assert.equal(f.refunds[0].paymentId, 'pay_original');
+  assert.equal(f.refunds[0].amount, 184800);
+  await submitReplacementInspection(RETURN, decisions('approved', 'approved'), 'admin', f);
+  assert.equal(f.refunds.length, 1);
+  assert.equal(f.state.originalStock, 3);
+});
+
+test('mixed returns refund approved items and ship only rejected originals back with reasons', async () => {
+  const f = fixture({ requestType: 'return' });
+  const result = await submitReplacementInspection(RETURN, decisions(), 'admin', f);
+  assert.equal(result.refundAmount, 1349);
+  assert.equal(result.returnShippingDeduction, 150);
+  assert.equal(f.refunds[0].amount, 134900);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].order_items.length, 1);
+  assert.equal(f.calls[0].order_items[0].sku, 'TEE-M-BLACK');
+  assert.equal(f.calls[0].weight, 0.3);
+  assert.equal(f.state.outboundOrder.order_type, 'rejected_return');
+  assert.equal(f.state.stock, 5);
+  assert.equal(f.state.originalStock, 2);
+});
+
+test('all rejected returns have no refund and return the original products without changing stock', async () => {
+  const f = fixture({ requestType: 'return' });
+  const result = await submitReplacementInspection(RETURN, decisions('rejected', 'rejected'), 'admin', f);
+  assert.equal(result.refundAmount, 0);
+  assert.equal(f.refunds.length, 0);
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.state.outboundOrder.order_type, 'rejected_return');
+  assert.equal(f.state.stock, 5);
+  assert.equal(f.state.originalStock, 1);
+  assert.ok(result.items.every(item => item.inspectionStatus === 'rejected' && item.inspectionReason));
+});
+
+test('a return below the shipping deduction never issues a zero or negative Razorpay refund', async () => {
+  const f = fixture({ requestType: 'return', amounts: [10, 10] });
+  const result = await submitReplacementInspection(RETURN, decisions('approved', 'approved'), 'admin', f);
+  assert.equal(result.refundAmount, 0);
+  assert.equal(result.returnShippingDeduction, 20);
+  assert.equal(f.refunds.length, 0);
+  assert.equal(f.calls.length, 0);
+});
+
+test('COD return approval does not call Razorpay and defective-item returns keep their existing deduction policy', async () => {
+  const cod = fixture({ requestType: 'return', paymentMethod: 'cod' });
+  const result = await submitReplacementInspection(RETURN, decisions('approved', 'approved'), 'admin', cod);
+  assert.equal(result.refundAmount, 1848); assert.equal(result.refundStatus, 'manual_required');
+  assert.equal(cod.refunds.length, 0);
+  const defect = fixture({ requestType: 'defect' });
+  const approved = await submitReplacementInspection(RETURN, decisions('approved', 'approved'), 'admin', defect);
+  assert.equal(approved.refundAmount, 1998); assert.equal(approved.returnShippingDeduction, 0);
+});
+
+test('return inspection cannot submit before receipt or save incomplete decisions', async () => {
+  for (const options of [{ status: 'return_created' }, { status: 'in_transit' }, {}]) {
+    const f = fixture({ ...options, requestType: 'return' });
+    await assert.rejects(submitReplacementInspection(RETURN, { items: [decisions().items[0]] }, 'admin', f));
+    assert.ok(f.state.items.every(item => item.inspection_status === 'pending'));
+    assert.equal(f.refunds.length, 0); assert.equal(f.calls.length, 0);
+  }
 });

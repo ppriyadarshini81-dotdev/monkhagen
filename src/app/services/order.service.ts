@@ -59,6 +59,8 @@ export interface Order {
 }
 
 export interface AdminReturn {
+  defectPhotoReviewPending?: boolean;
+  defectPhotoReview?: { decision: 'approved' | 'rejected'; reason: string } | null;
   id: string;
   orderId: string;
   orderNumber: string | null;
@@ -68,6 +70,7 @@ export interface AdminReturn {
   reason: string | null;
   comments: string | null;
   refundAmount: number;
+  returnShippingDeduction: number;
   refundStatus: string;
   paymentMethod: string;
   refundDestination: {
@@ -82,6 +85,7 @@ export interface AdminReturn {
   cancellationPending: boolean;
   requestedAt: string;
   receivedAt: string | null;
+  approvedAt?: string | null;
   customer?: { name: string | null; email: string | null; phone: string | null };
   shiprocketOutboundOrderId?: number | null;
   outboundAwb?: string | null;
@@ -92,7 +96,7 @@ export interface AdminReturn {
   outboundStage?: number;
   outboundOrder?: { id: string; orderNumber: string; orderType: 'replacement' | 'rejected_return'; status: string } | null;
   adminCategory?: string;
-  items: Array<{ id: string; imageUrl?: string | null; productName: string; sku: string | null; size: string | null; color: string | null; quantity: number; reason: string; comments: string | null; replacementSize?: string | null; inspectionStatus?: 'pending' | 'approved' | 'rejected'; inspectionReason?: string | null; inspectedAt?: string | null; refundAmount: number }>;
+  items: Array<{ id: string; imageUrl?: string | null; productName: string; sku: string | null; size: string | null; color: string | null; quantity: number; reason: string; comments: string | null; replacementSize?: string | null; inspectionStatus?: 'pending' | 'approved' | 'rejected'; inspectionReason?: string | null; inspectedAt?: string | null; refundAmount: number; defectPhotos?: Array<{ id: string; url: string }> }>;
 }
 
 export interface EligibilityOverride {
@@ -153,6 +157,9 @@ export class OrderService {
     return this.http.post<AdminReturn>(`/api/admin/returns/${returnId}/items/${itemId}/inspection`, { decision, reason });
   }
   createReplacementShipment(id: string): Observable<AdminReturn> { return this.http.post<AdminReturn>(`/api/admin/returns/${id}/replacement-shipment`, {}); }
+  reviewDefectPhotos(id: string, decision: 'approved' | 'rejected', reason: string): Observable<AdminReturn> {
+    return this.http.post<AdminReturn>(`/api/admin/returns/${id}/photo-review`, { decision, reason });
+  }
   submitReplacementInspection(id: string, items: Array<{ itemId: string; decision: 'approved' | 'rejected'; reason: string }>): Observable<AdminReturn> {
     return this.http.post<AdminReturn>(`/api/admin/returns/${id}/submit-inspection`, { items });
   }

@@ -99,6 +99,10 @@ export class AccountService {
   createReturn(payload: ReturnPayload): Observable<ReturnRequest> {
     return this.http.post<ReturnRequest>(`${this.api}/returns`, payload);
   }
+  uploadDefectPhotos(orderId: string, itemId: string, files: File[]): Observable<Array<{ id: string; url: string }>> {
+    const form = new FormData(); files.forEach(file => form.append('images', file));
+    return this.http.post<Array<{ id: string; url: string }>>(`${this.api}/orders/${orderId}/items/${itemId}/defect-photos`, form);
+  }
   cancelReturn(returnId: string): Observable<ReturnRequest> {
     return this.http.post<ReturnRequest>(`${this.api}/returns/${returnId}/cancel`, {});
   }

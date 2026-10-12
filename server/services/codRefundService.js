@@ -57,7 +57,7 @@ function summary(row) {
     method: provided ? row.method : null,
     masked: provided ? row.masked_destination : null,
     status: provided ? row.destination_status || row.status : null,
-    canEdit: provided && (row.destination_status || row.status) === 'PROVIDED',
+    canEdit: provided && ['approved', 'refund_initiated'].includes(returnStatus) && (row.destination_status || row.status) === 'PROVIDED',
     transactionReference: provided && ['COMPLETED','REDACTED'].includes(row.destination_status || row.status)
       ? row.transaction_reference || null : null,
     completedAt: provided ? row.destination_completed_at || row.completed_at || null : null
@@ -82,12 +82,29 @@ function assertCodEligible(row) {
   if (!row) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
   if (row.payment_method !== 'cod') throw fault(409, 'COD_REFUND_NOT_APPLICABLE', 'Prepaid refunds are returned through the original payment method.');
   if (row.return_status === 'refunded' || row.return_refund_status === 'refunded') throw fault(409, 'COD_REFUND_COMPLETED', 'This refund has already been completed.');
+  if (!['approved', 'refund_initiated'].includes(row.return_status)) throw fault(409, 'COD_REFUND_NOT_ELIGIBLE', 'Refund processing is available only after warehouse inspection is approved.');
+  if (Number(row.refund_amount) <= 0) throw fault(409, 'COD_REFUND_NOT_ELIGIBLE', 'No refund is payable after inspection and shipping deduction.');
 }
 
 async function getCustomer(userId, id, database = pool) {
   const row = await loadReturn(database, id, userId);
   if (!row) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
   return summary(row);
+}
+
+async function saveBeforeInspection(client, row, body, environment = process.env) {
+  const input = validateDestination(body);
+  if (row.payment_method !== 'cod') throw fault(409, 'COD_REFUND_NOT_APPLICABLE', 'Prepaid refunds use the original payment method.');
+  const encrypted = input.method === 'UPI' ? { upi: crypt.encrypt(input.upiId, environment), masked: crypt.maskUpi(input.upiId) }
+    : { holder: crypt.encrypt(input.accountHolderName, environment), account: crypt.encrypt(input.accountNumber, environment),
+      ifsc: crypt.encrypt(input.ifsc, environment), bank: input.bankName ? crypt.encrypt(input.bankName, environment) : null,
+      last4: input.accountNumber.slice(-4), masked: crypt.maskAccount(input.accountNumber) };
+  await client.query(`INSERT INTO cod_refund_destinations
+    (return_id,order_id,user_id,method,account_holder_name_encrypted,account_number_encrypted,
+      account_last4,ifsc_encrypted,bank_name_encrypted,upi_id_encrypted,masked_destination,encryption_key_version)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [row.id, row.order_id, row.user_id, input.method,
+    encrypted.holder || null, encrypted.account || null, encrypted.last4 || null,
+    encrypted.ifsc || null, encrypted.bank || null, encrypted.upi || null, encrypted.masked, crypt.KEY_VERSION]);
 }
 
 async function submit(userId, id, body, { database = pool, environment = process.env, notifications = emails } = {}) {
@@ -173,7 +190,7 @@ async function start(adminId, id, { database = pool } = {}) {
     const updated = (await client.query(`UPDATE cod_refund_destinations SET status = 'PROCESSING',
       processing_attempt_count = processing_attempt_count + 1, processing_at = NOW(), updated_at = NOW()
       WHERE id = $1 AND status IN ('PROVIDED','FAILED') RETURNING *`, [row.destination_id])).rows[0];
-    await client.query("UPDATE return_requests SET refund_status = 'processing', last_error_code = NULL, updated_at = NOW() WHERE id = $1", [row.id]);
+    await client.query("UPDATE return_requests SET refund_status = 'processing', status = 'refund_initiated', refund_initiated_at = COALESCE(refund_initiated_at, NOW()), last_error_code = NULL, updated_at = NOW() WHERE id = $1", [row.id]);
     await ledger.codRefund(client, { orderId: row.order_id, returnId: row.id, amount: row.refund_amount,
       status: 'PENDING', eventType: 'COD_REFUND_STARTED', eventId: String(updated.processing_attempt_count), createdBy: adminId });
     await client.query('COMMIT');
@@ -267,5 +284,5 @@ async function redactExpired(database = pool, environment = process.env) {
 
 function configurationError() { return fault(503, 'COD_REFUND_RETENTION_INVALID', 'COD refund retention is not configured safely.'); }
 
-module.exports = { validateDestination, summary, getCustomer, submit, reveal, start, complete, fail,
+module.exports = { validateDestination, saveBeforeInspection, summary, getCustomer, submit, reveal, start, complete, fail,
   getAdminSummary, redactExpired, loadReturn };
