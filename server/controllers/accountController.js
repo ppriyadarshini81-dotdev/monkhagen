@@ -273,11 +273,29 @@ async function enrichOrder(o) {
   return fmtOrder(o, itemsRes.rows, addrRes.rows[0]);
 }
 
+function orderDateFilter(value) {
+  if (value === undefined || value === '') return null;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000')) {
+    throw Object.assign(new Error('Invalid order date filter.'), { status: 400 });
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw Object.assign(new Error('Invalid order date filter.'), { status: 400 });
+  }
+  return value;
+}
+
 exports.getOrders = asyncHandler(async (req, res) => {
   const { limit, offset } = require('../middleware/validation').pagination(req.query);
   const requestedStatus = String(req.query.status || '').toLowerCase();
   const statusFilter = { active: ['confirmed', 'processing', 'shipped', 'pickup_scheduled', 'awb_assigned'], cancelled: ['cancelled'], delivered: ['delivered'] }[requestedStatus];
   if (requestedStatus && !statusFilter) return res.status(400).json({ message: 'Invalid order status filter.' });
+  const requestedSort = String(req.query.sort || 'newest').toLowerCase();
+  if (!['newest', 'oldest'].includes(requestedSort)) return res.status(400).json({ message: 'Invalid order date sort.' });
+  const sortDirection = requestedSort === 'oldest' ? 'ASC' : 'DESC';
+  const dateFrom = orderDateFilter(req.query.dateFrom);
+  const dateTo = orderDateFilter(req.query.dateTo);
+  if (dateFrom && dateTo && dateFrom > dateTo) return res.status(400).json({ message: 'From date must be on or before To date.' });
   const { rows } = await pool.query(
     `SELECT o.*,
        s.awb_code AS shipment_awb_code,
@@ -295,8 +313,10 @@ exports.getOrders = asyncHandler(async (req, res) => {
        AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
          OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))
        AND ($4::text[] IS NULL OR o.order_status = ANY($4))
-     ORDER BY o.created_at DESC LIMIT $2 OFFSET $3`,
-    [req.user.id, limit, offset, statusFilter || null]
+       AND ($5::date IS NULL OR o.created_at >= ($5::date::timestamp AT TIME ZONE 'Asia/Kolkata'))
+       AND ($6::date IS NULL OR o.created_at < (($6::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'))
+     ORDER BY o.created_at ${sortDirection}, o.id ${sortDirection} LIMIT $2 OFFSET $3`,
+    [req.user.id, limit, offset, statusFilter || null, dateFrom, dateTo]
   );
   const orders = await Promise.all(rows.map(enrichOrder));
   res.json(orders);

@@ -102,6 +102,7 @@ function evaluateEligibility(order, items, now = Date.now(), overrideTypes = [])
     size: item.size || null, color: item.color || null,
     replacementSizes: Array.isArray(item.replacement_sizes) ? item.replacement_sizes : [],
     purchasedQuantity: Number(item.quantity), returnedQuantity: Number(item.returned_quantity || 0),
+    alreadyRequested: Number(item.returned_quantity || 0) > 0,
     remainingQuantity: Math.max(0, Number(item.quantity) - Number(item.returned_quantity || 0))
   }));
   const hasExistingRequest = Boolean(order.has_existing_return_request) || availableItems.some(item => item.returnedQuantity > 0);
@@ -117,10 +118,11 @@ function evaluateEligibility(order, items, now = Date.now(), overrideTypes = [])
     { code: RETURN_TYPES.replacement, label: 'Replace size', eligible: replacementEligible,
       message: replacementEligible ? 'Replace size \u2014 available within 7 days of delivery.' : 'The 7-day size replacement window has closed.' }
   ];
-  const eligible = availableItems.some(item => item.remainingQuantity > 0) && requestTypes.some(type => type.eligible);
+  const available = availableItems.some(item => !item.alreadyRequested && item.remainingQuantity > 0);
+  const eligible = available && requestTypes.some(type => type.eligible);
   if (!eligible) {
-    return { eligible: false, hasExistingRequest, reason: availableItems.some(item => item.remainingQuantity > 0) ? 'WINDOW_CLOSED' : 'FULLY_RETURNED',
-      message: availableItems.some(item => item.remainingQuantity > 0) ? 'The return and replacement windows have closed.' : 'All purchased quantities already have a return request.',
+    return { eligible: false, hasExistingRequest, reason: available ? 'WINDOW_CLOSED' : 'FULLY_RETURNED',
+      message: available ? 'The return and replacement windows have closed.' : 'All products already have a return or replacement request.',
       deliveredAt: new Date(deliveredAt).toISOString(), returnUntil: new Date(returnUntilMs).toISOString(), defectUntil: new Date(defectUntilMs).toISOString(),
       defectReportingEnded: current > defectUntilMs && !override.has(RETURN_TYPES.defect), requestTypes, items: availableItems };
   }
@@ -320,6 +322,8 @@ async function createLocalReturn(userId, input, database = pool, now = Date.now)
       const purchased = byId.get(item.orderItemId);
       if (!purchased) throw fault(400, 'RETURN_ITEM_INVALID', 'A selected item does not belong to this order.');
       const alreadyReturned = Number(purchased.returned_quantity || 0);
+      if (alreadyReturned > 0) throw fault(409, 'RETURN_ITEM_ALREADY_REQUESTED',
+        'This product already has a return or replacement request.', { orderItemId: item.orderItemId });
       if (item.quantity > purchased.quantity - alreadyReturned) throw fault(409, 'RETURN_QUANTITY_EXCEEDED', 'Return quantity exceeds the remaining purchased quantity.');
       return { ...item, productId: purchased.product_id, size: purchased.size, refundPaise: purchased.refundFor(alreadyReturned, item.quantity) };
     });

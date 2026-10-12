@@ -1,0 +1,9 @@
+.mh-return-choice__options .mh-return-choice__icon { display: grid; flex: 0 0 44px; width: 44px; height: 44px; place-items: center; border-radius: 12px; }
+.mh-return-choice__options .mh-return-choice__icon--replacement { color: #4050db; background: #eef0ff; }
+.mh-return-choice__options .mh-return-choice__icon--return { color: #147d55; background: #eaf8f0; }
+.mh-return-choice__options .mh-return-choice__icon--defect { color: #c2410c; background: #fff0e6; }
+.mh-return-choice__copy strong { color: var(--mh-text); }
+.mh-return-back { display: flex; align-items: center; gap: 7px; margin: 0 0 14px; padding: 0; border: 0; background: transparent; color: var(--mh-text-dim); font: inherit; font-size: 12px; font-weight: 600; }
+.mh-return-back:hover:not(:disabled) { color: var(--mh-accent); }
+.mh-return-back:disabled { opacity: .45; cursor: not-allowed; }
+.mh-return-back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

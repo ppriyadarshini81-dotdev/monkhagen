@@ -20,11 +20,11 @@ const NOW = Date.parse('2026-10-17T09:30:00.000Z');
 const order = (age, changes = {}) => ({ id: ORDER, order_status: 'delivered', delivered_at: new Date(NOW - age), subtotal: '200.00', discount_amount: '20.00', ...changes });
 const items = (returned = 0) => [{ id: ITEM, product_name: 'Original tee', sku: 'TEE-M-BLUE', size: 'M', color: 'Blue', quantity: 2, unit_price: '100.00', returned_quantity: returned }];
 
-test('exact seven-day delivery eligibility uses delivered_at and supports remaining partial quantity', () => {
+test('exact seven-day delivery eligibility uses delivered_at and permits unrequested products', () => {
   for (const age of [0, 6 * 86400000, RETURN_WINDOW_MS]) {
-    const result = evaluateEligibility(order(age), items(1), NOW);
+    const result = evaluateEligibility(order(age), items(0), NOW);
     assert.equal(result.eligible, true);
-    assert.equal(result.items[0].remainingQuantity, 1);
+    assert.equal(result.items[0].remainingQuantity, 2);
   }
   assert.equal(evaluateEligibility(order(RETURN_WINDOW_MS + 1), items(), NOW).reason, 'WINDOW_CLOSED');
 });
@@ -32,7 +32,12 @@ test('exact seven-day delivery eligibility uses delivered_at and supports remain
 test('existing requests are flagged even for partial quantities, and cancelled requests release the flag within the window', () => {
   const partial = evaluateEligibility(order(0), items(1), NOW);
   assert.equal(partial.hasExistingRequest, true);
-  assert.equal(partial.eligible, true);
+  assert.equal(partial.eligible, false);
+  assert.equal(partial.items[0].alreadyRequested, true);
+  assert.equal(partial.items[0].remainingQuantity, 1);
+  const otherProduct = evaluateEligibility(order(0), [...items(1), { ...items()[0], id: OTHER }], NOW);
+  assert.equal(otherProduct.eligible, true);
+  assert.deepEqual(otherProduct.items.map(item => item.alreadyRequested), [true, false]);
   const full = evaluateEligibility(order(0), items(2), NOW);
   assert.equal(full.hasExistingRequest, true);
   assert.equal(full.eligible, false);
@@ -125,13 +130,14 @@ test('partial refund allocation uses original snapshots, allocates discount in p
   assert.equal(allocated.reduce((sum, item) => sum + item.refundFor(0, item.quantity), 0), 22500);
 });
 
-function localDatabase({ owner = true, returned = 0, deliveredAt = new Date(NOW), status = 'delivered', duplicate = null } = {}) {
+function localDatabase({ owner = true, returned = 0, deliveredAt = new Date(NOW), status = 'delivered', duplicate = null, additionalItem = false } = {}) {
   const queries = [];
   const client = { async query(sql, params) {
     queries.push({ sql: String(sql), params });
     if (String(sql).startsWith('SELECT * FROM return_requests WHERE user_id')) return { rows: duplicate ? [duplicate] : [] };
     if (String(sql).startsWith('SELECT o.*, u.email')) return { rows: owner ? [{ ...order(0, { delivered_at: deliveredAt, order_status: status }), customer_email: 'buyer@example.com' }] : [] };
-    if (String(sql).startsWith('SELECT oi.*')) return { rows: items(returned) };
+    if (String(sql).startsWith('SELECT oi.*')) return { rows: additionalItem
+      ? [{ ...items(returned)[0], quantity: 1 }, { ...items()[0], id: OTHER, quantity: 1 }] : items(returned) };
     if (String(sql).startsWith('INSERT INTO return_requests')) return { rows: [{ id: RETURN, order_id: ORDER, request_hash: params[7], status: 'requested' }] };
     return { rows: [] };
   }, release() {} };
@@ -140,13 +146,25 @@ function localDatabase({ owner = true, returned = 0, deliveredAt = new Date(NOW)
 
 test('local return transaction enforces ownership, window and remaining quantities without restoring inventory', async () => {
   const body = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] });
-  const db = localDatabase({ returned: 1 });
+  const db = localDatabase({ returned: 0 });
   const result = await createLocalReturn('customer', body, db, () => NOW);
   assert.equal(result.created, true);
   assert.equal(db.queries.filter(query => query.sql.startsWith('INSERT INTO return_items')).length, 1);
   assert.equal(db.queries.some(query => query.sql.includes('UPDATE product_variants')), false);
   await assert.rejects(createLocalReturn('customer', body, localDatabase({ owner: false }), () => NOW), error => error.status === 404);
   await assert.rejects(createLocalReturn('customer', body, localDatabase({ returned: 2 }), () => NOW), /already have a return request/);
+});
+
+test('an active request blocks another request for that product while other products remain available', async () => {
+  const blocked = validateRequest({ orderId: ORDER, idempotencyKey: IDEM,
+    items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] });
+  const db = localDatabase({ returned: 1, additionalItem: true });
+  await assert.rejects(createLocalReturn('customer', blocked, db, () => NOW), error =>
+    error.code === 'RETURN_ITEM_ALREADY_REQUESTED' && error.details.orderItemId === ITEM);
+  assert.equal(db.queries.some(query => query.sql.startsWith('INSERT INTO return_requests')), false);
+  const allowed = validateRequest({ orderId: ORDER, idempotencyKey: IDEM,
+    items: [{ orderItemId: OTHER, quantity: 1, reason: 'changed_mind' }] });
+  assert.equal((await createLocalReturn('customer', allowed, localDatabase({ returned: 1, additionalItem: true }), () => NOW)).created, true);
 });
 
 test('same idempotency key replays the local return and a conflicting body is rejected', async () => {

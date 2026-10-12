@@ -4,11 +4,30 @@
     <h2>My Orders</h2>
     <p>View confirmed purchases and follow every delivery.</p>
   </header>
-  <label class="mh-account-filter">Filter orders
-    <select [(ngModel)]="statusFilter" (change)="applyStatusFilter()">
-      <option value="">All orders</option><option value="active">Active</option><option value="cancelled">Cancelled</option><option value="delivered">Delivered</option>
-    </select>
-  </label>
+  <div class="mh-order-filters">
+    <label class="mh-account-filter">Filter orders
+      <select [(ngModel)]="statusFilter" (change)="applyStatusFilter()" [disabled]="loading">
+        <option value="">All orders</option><option value="active">Active</option><option value="cancelled">Cancelled</option><option value="delivered">Delivered</option>
+      </select>
+    </label>
+    <label class="mh-account-filter">Sort by date
+      <select [(ngModel)]="dateSort" (change)="applyStatusFilter()" [disabled]="loading">
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+      </select>
+    </label>
+    <form class="mh-order-date-range" (ngSubmit)="applyDateRange()" aria-label="Custom order date range">
+      <label class="mh-account-filter">From date
+        <input type="date" name="dateFrom" [(ngModel)]="dateFrom" [disabled]="loading" (ngModelChange)="dateRangeError = ''" />
+      </label>
+      <label class="mh-account-filter">To date
+        <input type="date" name="dateTo" [(ngModel)]="dateTo" [disabled]="loading" (ngModelChange)="dateRangeError = ''" />
+      </label>
+      <button type="submit" class="mh-order-action mh-order-action--primary" [disabled]="loading">Apply dates</button>
+      <button type="button" class="mh-order-action mh-order-action--quiet" [disabled]="loading || (!dateFrom && !dateTo && !dateRange.from && !dateRange.to)" (click)="clearDateRange()">Clear dates</button>
+    </form>
+  </div>
+  <p *ngIf="dateRangeError" class="mh-orders-notice mh-orders-notice--error" role="alert">{{ dateRangeError }}</p>
 
   <div *ngIf="loading" class="mh-orders-empty">Loading your orders...</div>
   <div *ngIf="!loading && loadError" class="mh-orders-empty mh-orders-empty--error">{{ loadError }}</div>
@@ -16,7 +35,7 @@
   <p class="mh-orders-notice mh-orders-notice--success" role="status" *ngIf="returnMessage">{{ returnMessage }}</p>
   <div *ngIf="!loading && !loadError && orders.length === 0" class="mh-orders-empty">
     <strong>No orders found</strong>
-    <span>{{ statusFilter ? 'No orders match this filter.' : 'Your confirmed orders will appear here.' }}</span>
+    <span>{{ statusFilter || dateRange.from || dateRange.to ? 'No orders match these filters.' : 'Your confirmed orders will appear here.' }}</span>
   </div>
 
   <div class="mh-orders-list" *ngIf="!loading && orders.length">
@@ -61,7 +80,7 @@
         <div [class.is-complete]="orderStage(order) >= 4"><span></span><small>Delivered</small></div>
       </div>
       <div class="mh-return-window" *ngIf="orderStage(order) === 4 && returnEligibilityFor(order) as eligibility">
-        <ng-container *ngIf="hasReturnRequest(order); else returnWindowAvailability"><strong>Already requested</strong> &middot; <a routerLink="/account/returns">View return &amp; replacement</a></ng-container>
+        <ng-container *ngIf="hasReturnRequest(order); else returnWindowAvailability"><strong>{{ canRequestReturn(order) ? 'Some products already requested' : 'Already requested' }}</strong> &middot; <a routerLink="/account/returns">View return &amp; replacement</a></ng-container>
         <ng-template #returnWindowAvailability><ng-container *ngIf="eligibility.eligible; else expiredReturnWindow">
           <span aria-hidden="true">✓</span> Exchange/Return available till <strong>{{ eligibility.returnUntil | date: 'd MMM' }}</strong>
         </ng-container>
@@ -154,9 +173,11 @@
       <p class="mh-return-choice__intro">Select an available option. We will ask for item and reason details next.</p>
       <div class="mh-return-choice__options">
         <button *ngFor="let type of orderedReturnChoices()" type="button" [class.mh-return-choice__option--defect]="type.code === 'defect'" [disabled]="!type.eligible" (click)="chooseReturnRequest(type.code)">
+          <span class="mh-return-choice__icon" [ngClass]="'mh-return-choice__icon--' + type.code">
           <svg *ngIf="type.code === 'replacement'" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h11l-2.5-2.5M15 7l-2.5 2.5M20 17H9l2.5 2.5M9 17l2.5-2.5M4 7v5h16v-5M20 17v-5H4v5" /></svg>
           <svg *ngIf="type.code === 'return'" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7.5A7 7 0 1 1 5 14M9 7.5 6 4.5M9 7.5 6 10.5M5 14h8" /></svg>
           <svg *ngIf="type.code === 'defect'" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 3.5 19h17L12 3Zm0 6v4m0 3h.01" /></svg>
+          </span>
           <span class="mh-return-choice__copy"><strong>{{ returnChoiceLabel(type.code) }}</strong><span>{{ type.message }}</span></span>
         </button>
       </div>
@@ -169,42 +190,73 @@
 <dialog #returnDialog class="mh-customer-dialog mh-return-dialog" aria-labelledby="return-title" (close)="clearReturn()">
   <ng-container *ngIf="returnOrder as order">
     <header class="mh-customer-dialog__head">
-      <div><span class="mh-eyebrow">{{ returnRequestType === 'defect' ? '2-day defect report' : '7-day returns' }}</span><h2 id="return-title">{{ returnRequestType === 'replacement' ? 'Replace size' : returnRequestType === 'defect' ? 'Report defective product' : 'Return item' }}</h2><p>#{{ order.orderNumber }}</p></div>
+      <div>
+        <button type="button" class="mh-return-back" [disabled]="returnSubmitting" (click)="backToReturnChoices()"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 5-7 7 7 7M3 12h18" /></svg>Back to options</button>
+        <span class="mh-eyebrow">{{ returnSubmissionType() === 'defect' ? '2-day defect report' : '7-day returns' }}</span><h2 id="return-title">{{ returnRequestType === 'replacement' ? 'Replace size' : returnRequestType === 'defect' ? 'Return a defective item' : 'Return item' }}</h2><p>#{{ order.orderNumber }}</p>
+      </div>
       <button type="button" class="mh-customer-dialog__close" aria-label="Close return form" (click)="closeReturn()">&times;</button>
     </header>
     <div class="mh-customer-dialog__body">
       <p class="mh-tracking-error" role="alert" *ngIf="returnError">{{ returnError }}</p>
-      <ng-container *ngIf="returnRequestType === 'replacement'; else standardReturnItems">
-        <p class="mh-replacement-intro">Select the item you would like to exchange. Size exchanges are available for the same product only.</p>
-        <div *ngFor="let row of returnRows" class="mh-replacement-item" [class.is-selected]="row.selected"><button type="button" class="mh-replacement-product" [class.is-selected]="row.selected" [attr.aria-expanded]="row.selected" (click)="selectReplacementItem(row)">
-          <span class="mh-replacement-product__image"><img *ngIf="row.imageUrl; else replacementFallback" [src]="row.imageUrl" [alt]="row.productName" /><ng-template #replacementFallback>{{ row.productName.charAt(0) }}</ng-template></span>
-          <span class="mh-replacement-product__copy"><strong>{{ row.productName }}</strong><span>Size: {{ row.size || 'One size' }}<ng-container *ngIf="row.color"> · {{ row.color }}</ng-container></span><b>₹{{ row.unitPrice | number }}</b></span>
-          <span class="mh-replacement-product__radio" [attr.aria-label]="row.selected ? 'Selected' : 'Select item'">{{ row.selected ? '✓' : '' }}</span>
+      <p class="mh-replacement-intro">{{ returnRequestType === 'replacement' ? 'Select the item you would like to exchange. Size exchanges are available for the same product only.' : 'Select the products you would like to return, then choose a reason for each.' }}</p>
+      <div *ngFor="let row of orderedReturnRows()" class="mh-replacement-item" [class.is-selected]="row.selected" [class.is-unavailable]="row.alreadyRequested" [attr.data-order-item]="row.orderItemId">
+        <button type="button" class="mh-replacement-product" [class.is-selected]="row.selected" [attr.aria-expanded]="row.selected" [disabled]="row.alreadyRequested || returnSubmitting" (click)="selectReplacementItem(row)">
+          <span class="mh-replacement-product__image"><img *ngIf="row.imageUrl; else productFallback" [src]="row.imageUrl" [alt]="row.productName" /><ng-template #productFallback>{{ row.productName.charAt(0) }}</ng-template></span>
+          <span class="mh-replacement-product__copy"><strong>{{ row.productName }}</strong><span>Size: {{ row.size || 'One size' }}<ng-container *ngIf="row.color"> &middot; {{ row.color }}</ng-container> &middot; Qty {{ row.purchasedQuantity }}</span><b>&#8377;{{ row.unitPrice | number }}</b><small class="mh-product-requested" *ngIf="row.alreadyRequested">Already requested for return / replacement</small></span>
+          <span class="mh-replacement-product__radio" [attr.aria-label]="row.alreadyRequested ? 'Already requested' : row.selected ? 'Selected' : 'Select item'">{{ row.selected ? '✓' : '' }}</span>
         </button>
-          <section *ngIf="row.selected" class="mh-replacement-step" [class.mh-replacement-step--invalid]="replacementSizeMissing(row) || row.replacementSizeServerError">
-            <h3>Select replacement size</h3><p>Original size: <strong>{{ row.size || 'One size' }}</strong></p>
-            <div class="mh-replacement-sizes"><button *ngFor="let size of row.replacementSizes" type="button" [class.is-selected]="row.replacementSize === size" [disabled]="size === row.size" (click)="selectReplacementSize(row, size)">{{ size }}</button></div>
-            <p class="mh-replacement-validation" *ngIf="replacementSizeMissing(row)">Choose a replacement size.</p><p class="mh-replacement-validation" *ngIf="row.replacementSizeServerError">{{ row.replacementSizeServerError }}</p>
-            <small *ngIf="row.replacementSizes.length">Select a different size for this product. Availability is checked again before submission.</small><small *ngIf="!row.replacementSizes.length">Replacement sizes are not currently available for this product.</small>
-          </section>
-          <section *ngIf="row.selected" class="mh-replacement-step" [class.mh-replacement-step--invalid]="replacementReasonMissing(row)">
-            <h3>Why are you exchanging?</h3><p>Select a reason to help us improve the fit.</p>
-              <div class="mh-replacement-reason-groups"><div *ngFor="let group of replacementReasonGroups" class="mh-replacement-reason-group" [class.is-expanded]="row.expandedReasonGroup === group.value"><button type="button" class="mh-replacement-reason-group__head" (click)="toggleReplacementReasonGroup(row, group.value)"><span><strong>{{ group.label }}</strong><small>{{ group.detail }}</small></span><b>{{ row.expandedReasonGroup === group.value ? '−' : '+' }}</b></button><div *ngIf="row.expandedReasonGroup === group.value" class="mh-replacement-reason-group__options"><button *ngFor="let option of group.options" type="button" [class.is-selected]="row.replacementReasonDetail === option.value" (click)="selectReplacementReason(row, group.value, option.value)"><span></span>{{ option.label }}</button></div></div></div>
-              <p class="mh-replacement-validation" *ngIf="replacementReasonMissing(row)">Choose a fit reason.</p>
-            <label class="mh-return-row__explanation">Additional details <span>(optional)</span><textarea maxlength="250" [(ngModel)]="row.replacementNotes" placeholder="Tell us more about the fit"></textarea></label>
-          </section>
-        </div>
-      </ng-container>
-      <ng-template #standardReturnItems><div class="mh-return-row" *ngFor="let row of returnRows">
-        <label class="mh-return-row__select"><input type="checkbox" [(ngModel)]="row.selected" /> <strong>{{ row.productName }}</strong></label>
-        <div *ngIf="row.selected" class="mh-return-row__fields">
-          <label>Quantity<select [(ngModel)]="row.quantity"><option *ngFor="let quantity of quantityOptions(row.max)" [ngValue]="quantity">{{ quantity }}</option></select></label>
-          <label>Reason<select [(ngModel)]="row.reason"><option value="" disabled>Select reason</option><option *ngFor="let reason of returnReasons" [value]="reason.code">{{ reason.label }}</option></select></label>
-          <label *ngIf="row.reason === 'other' || returnRequestType === 'defect'" class="mh-return-row__explanation">{{ returnRequestType === 'defect' ? 'Describe the issue *' : 'Explanation' }}<textarea maxlength="250" [(ngModel)]="row.comments" placeholder="Tell us what happened"></textarea></label>
-        </div>
-      </div></ng-template>
-      <p class="mh-return-note" *ngIf="returnRequestType === 'return'">A ₹150 return shipping deduction applies before an eligible refund is issued. Refunds are reviewed after the item reaches our warehouse.</p>
-      <p class="mh-return-note" *ngIf="returnRequestType === 'defect'">Verified defective, damaged, or wrong-product claims have no ₹150 return shipping deduction. We may contact you for supporting evidence.</p>
+        <section *ngIf="row.selected && row.max > 1" class="mh-replacement-step mh-return-quantity"><label>Quantity to {{ returnRequestType === 'replacement' ? 'exchange' : 'return' }}<select [(ngModel)]="row.quantity" [disabled]="returnSubmitting"><option *ngFor="let quantity of quantityOptions(row.max)" [ngValue]="quantity">{{ quantity }}</option></select></label></section>
+        <section *ngIf="row.selected && returnRequestType === 'replacement'" class="mh-replacement-step" [class.mh-replacement-step--invalid]="replacementSizeMissing(row) || row.replacementSizeServerError">
+          <h3>Select replacement size</h3><p>Original size: <strong>{{ row.size || 'One size' }}</strong></p>
+          <div class="mh-replacement-sizes"><button *ngFor="let size of row.replacementSizes" type="button" [class.is-selected]="row.replacementSize === size" [disabled]="size === row.size || returnSubmitting" (click)="selectReplacementSize(row, size)">{{ size }}</button></div>
+          <p class="mh-replacement-validation" *ngIf="replacementSizeMissing(row)">Choose a replacement size.</p><p class="mh-replacement-validation" *ngIf="row.replacementSizeServerError">{{ row.replacementSizeServerError }}</p>
+          <small *ngIf="row.replacementSizes.length">Select a different size for this product. Availability is checked again before submission.</small><small *ngIf="!row.replacementSizes.length">Replacement sizes are not currently available for this product.</small>
+        </section>
+        <section *ngIf="row.selected && returnRequestType === 'replacement'" class="mh-replacement-step" [class.mh-replacement-step--invalid]="replacementReasonMissing(row)">
+          <h3>Why are you exchanging?</h3><p>Select a reason to help us improve the fit.</p>
+          <p *ngIf="row.replacementReasonDetail" class="mh-return-selected-reason"><span>Selected reason</span><strong>{{ replacementReasonLabel(row) }}</strong></p>
+          <div class="mh-return-reason-grid mh-exchange-reason-grid">
+            <article *ngFor="let group of orderedReplacementReasonGroups(row)" class="mh-return-reason-card" [class.is-expanded]="row.expandedReasonGroup === group.value" [class.is-selected]="!!row.replacementReasonDetail && group.value === 'fit'" [attr.data-reason-group]="group.value">
+              <button type="button" class="mh-return-reason-head" [attr.aria-expanded]="row.expandedReasonGroup === group.value" [disabled]="returnSubmitting" (click)="toggleReplacementReasonGroup(row, group.value)">
+                <span class="mh-return-reason-icon" [ngClass]="group.value === 'fit' ? 'mh-return-reason-icon--fit' : group.value === 'wrong_item' ? 'mh-return-reason-icon--different' : 'mh-return-reason-icon--quality'" [ngSwitch]="group.value">
+                  <svg *ngSwitchCase="'fit'" viewBox="0 0 48 48" aria-hidden="true"><path d="m12 6 12 6 12-6 7 9-7 7-5-4v24H17V18l-5 4-7-7 7-9Z" /><path d="M18 26h12m-10-3-3 3 3 3m8-6 3 3-3 3M21 36h6" /></svg>
+                  <svg *ngSwitchCase="'wrong_item'" viewBox="0 0 48 48" aria-hidden="true"><path d="M7 5h22v37H7zM13 10h10M14 36h8m7-22 5 3 5-3 7 7-5 5-3-3v17H26V23l-3 3-5-5 7-7Z" /></svg>
+                  <svg *ngSwitchCase="'damaged'" viewBox="0 0 48 48" aria-hidden="true"><path d="m15 8 9 4 9-4 10 9-7 8-5-4v20H17V21l-5 4-7-8 10-9Z" /><path d="m18 9 6 10 6-10M24 19v22M28 27l5 5m0-5-5 5" /></svg>
+                </span>
+                <span class="mh-return-reason-copy"><strong>{{ group.label }}</strong><small>{{ group.detail }}</small></span>
+              </button>
+              <div *ngIf="row.expandedReasonGroup === group.value" class="mh-return-reason-options" role="group" [attr.aria-label]="group.label">
+                <button *ngFor="let option of group.options" type="button" class="mh-exchange-reason-option" [class.is-selected]="row.replacementReasonDetail === option.value" [attr.aria-pressed]="row.replacementReasonDetail === option.value" [disabled]="returnSubmitting" (click)="selectReplacementReason(row, group.value, option.value)"><span class="mh-exchange-reason-radio" aria-hidden="true"></span>{{ option.label }}</button>
+              </div>
+            </article>
+          </div>
+          <p class="mh-replacement-validation" *ngIf="replacementReasonMissing(row)">Choose a fit reason.</p>
+          <label class="mh-return-row__explanation">Additional details <span>(optional)</span><textarea maxlength="180" [(ngModel)]="row.replacementNotes" [disabled]="returnSubmitting" placeholder="Tell us more about the fit"></textarea></label>
+        </section>
+        <section *ngIf="row.selected && returnRequestType !== 'replacement'" class="mh-replacement-step mh-return-reasons">
+          <h3>Why would you like to return this item?</h3><p>Select a category, then choose the reason that applies.</p>
+          <p *ngIf="row.reasonDetail" class="mh-return-selected-reason"><span>Selected reason</span><strong>{{ returnReasonLabel(row) }}</strong></p>
+          <div class="mh-return-reason-grid">
+            <article *ngFor="let group of orderedReturnReasonGroups(row)" class="mh-return-reason-card" [class.is-expanded]="row.expandedReasonGroup === group.value" [class.is-selected]="row.reasonGroup === group.value" [class.is-unavailable]="!returnReasonGroupAvailable(group)" [attr.data-reason-group]="group.value">
+              <button type="button" class="mh-return-reason-head" [attr.aria-expanded]="row.expandedReasonGroup === group.value" [disabled]="returnSubmitting || !returnReasonGroupAvailable(group)" (click)="toggleReturnReasonGroup(row, group)">
+                <span class="mh-return-reason-icon" [ngClass]="'mh-return-reason-icon--' + group.value" [ngSwitch]="group.value">
+                  <svg *ngSwitchCase="'quality'" viewBox="0 0 48 48" aria-hidden="true"><path d="m15 8 9 4 9-4 10 9-7 8-5-4v20H17V21l-5 4-7-8 10-9Z" /><path d="m18 9 6 10 6-10M24 19v22M28 27l5 5m0-5-5 5" /></svg>
+                  <svg *ngSwitchCase="'fit'" viewBox="0 0 48 48" aria-hidden="true"><path d="m12 6 12 6 12-6 7 9-7 7-5-4v24H17V18l-5 4-7-7 7-9Z" /><path d="M18 26h12m-10-3-3 3 3 3m8-6 3 3-3 3M21 36h6" /></svg>
+                  <svg *ngSwitchCase="'mind'" viewBox="0 0 48 48" aria-hidden="true"><path d="M8 12h24v25H8zM14 12v-2a6 6 0 0 1 12 0v2M34 18a6 6 0 1 1 6 6v5M40 34h.01" /><path d="m14 24 4 4 8-8" /></svg>
+                  <svg *ngSwitchCase="'different'" viewBox="0 0 48 48" aria-hidden="true"><path d="M7 5h22v37H7zM13 10h10M14 36h8m7-22 5 3 5-3 7 7-5 5-3-3v17H26V23l-3 3-5-5 7-7Z" /></svg>
+                </span>
+                <span class="mh-return-reason-copy"><strong>{{ group.label }}</strong><small>{{ group.detail }}</small><small *ngIf="!returnReasonGroupAvailable(group)">{{ returnReasonUnavailableMessage(group) }}</small></span>
+              </button>
+              <div *ngIf="row.expandedReasonGroup === group.value" class="mh-return-reason-options">
+                <label *ngFor="let option of orderedReturnReasonOptions(row, group)" [class.is-selected]="row.reasonDetail === option.value"><input type="radio" [name]="'return-reason-' + row.orderItemId" [checked]="row.reasonDetail === option.value" [disabled]="returnSubmitting || !returnReasonGroupAvailable(group)" (change)="selectReturnReason(row, group, option)" /><span>{{ option.label }}</span></label>
+              </div>
+            </article>
+          </div>
+          <label class="mh-return-row__explanation">Additional details <span>(optional)</span><textarea [attr.maxlength]="returnCommentLimit(row)" [(ngModel)]="row.comments" [disabled]="returnSubmitting" placeholder="Tell us more about this item"></textarea></label>
+        </section>
+      </div>
+      <p class="mh-return-note" *ngIf="returnSubmissionType() === 'return'">A ₹150 return shipping deduction applies before an eligible refund is issued. Refunds are reviewed after the item reaches our warehouse.</p>
+      <p class="mh-return-note" *ngIf="returnSubmissionType() === 'defect'">Verified defective, damaged, or wrong-product claims have no ₹150 return shipping deduction. We may contact you for supporting evidence.</p>
       <p class="mh-return-note" *ngIf="returnRequestType === 'replacement'">Size replacements are for the same product only and are completed after warehouse inspection and stock confirmation.</p>
     </div>
     <footer class="mh-customer-dialog__foot"><small>Pickup uses the original delivery address.</small><div><button type="button" class="mh-order-action mh-order-action--quiet" (click)="closeReturn()">Cancel</button><button type="button" class="mh-order-action mh-order-action--primary" [disabled]="returnSubmitting" (click)="submitReturn()">{{ returnSubmitting ? 'Submitting...' : (returnRequestType === 'replacement' ? 'Confirm Replace' : 'Confirm return') }}</button></div></footer>

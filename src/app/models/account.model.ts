@@ -219,6 +219,7 @@ export interface ReturnEligibility {
     purchasedQuantity: number;
     returnedQuantity: number;
     remainingQuantity: number;
+    alreadyRequested?: boolean;
     replacementSizes: string[];
   }>;
 }

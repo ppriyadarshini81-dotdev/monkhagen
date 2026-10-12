@@ -12,7 +12,7 @@ import { FEATURE_FLAGS } from '../../../config/feature-flags';
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './orders.component.html',
-  styleUrls: ['./orders.component.css', './orders-return-state.css']
+  styleUrls: ['./orders.component.css', './orders-return-state.css', './orders-return-options.css', './orders-return-form.css']
 })
 export class AccountOrdersComponent implements OnInit {
   readonly codEnabled = FEATURE_FLAGS.cashOnDelivery;
@@ -29,6 +29,11 @@ export class AccountOrdersComponent implements OnInit {
   readonly pageSize = 10;
   hasNextPage = false;
   statusFilter = '';
+  dateSort: 'newest' | 'oldest' = 'newest';
+  dateFrom = '';
+  dateTo = '';
+  dateRange = { from: '', to: '' };
+  dateRangeError = '';
   selectedOrder: Order | null = null;
   trackingOrder: Order | null = null;
   tracking: TrackingInfo | null = null;
@@ -65,7 +70,30 @@ export class AccountOrdersComponent implements OnInit {
     ] }
   ];
   returnReasons: ReturnEligibility['reasons'] = [];
-  returnRows: Array<{ orderItemId: string; productName: string; imageUrl: string | null; size: string | null; color: string | null; unitPrice: number; replacementSizes: string[]; replacementSize: string; replacementSizeServerError: string; replacementReasonDetail: string; replacementNotes: string; expandedReasonGroup: string; selected: boolean; quantity: number; max: number; reason: string; comments: string }> = [];
+  readonly returnReasonGroups = [
+    { value: 'quality', label: 'Quality issues', detail: 'Poor quality product', options: [
+      { value: 'poor_quality', label: 'Received a poor quality product', reason: 'quality_issue' },
+      { value: 'image_mismatch', label: 'Product image was better than the actual product', reason: 'quality_issue' },
+      { value: 'damaged', label: 'Received a damaged, used or stained item', reason: 'product_damaged' }
+    ] },
+    { value: 'fit', label: 'Size & fit issues', detail: "Doesn't fit me well", options: [
+      { value: 'too_small', label: 'Size too small', reason: 'size_issue' },
+      { value: 'too_large', label: 'Size too big', reason: 'size_issue' },
+      { value: 'fit_issue', label: 'I did not like the fit', reason: 'size_issue' }
+    ] },
+    { value: 'mind', label: 'Changed my mind', detail: "I don't want this product", options: [
+      { value: 'better_price_store', label: 'Found a better price on Monk Hagen', reason: 'changed_mind' },
+      { value: 'delayed', label: 'Delivery was delayed', reason: 'changed_mind' },
+      { value: 'better_price_elsewhere', label: 'Found a better price elsewhere', reason: 'changed_mind' },
+      { value: 'not_needed', label: 'I do not need it anymore', reason: 'changed_mind' }
+    ] },
+    { value: 'different', label: 'Different product', detail: 'Not what I ordered', options: [
+      { value: 'different_color', label: 'Received the same product, but different color', reason: 'wrong_item' },
+      { value: 'different_size', label: 'Received the same product, but different size', reason: 'wrong_item' },
+      { value: 'different_product', label: 'Received a completely different product', reason: 'wrong_item' }
+    ] }
+  ];
+  returnRows: Array<{ orderItemId: string; productName: string; imageUrl: string | null; size: string | null; color: string | null; unitPrice: number; replacementSizes: string[]; replacementSize: string; replacementSizeServerError: string; replacementReasonDetail: string; replacementNotes: string; expandedReasonGroup: string; reasonGroup: string; reasonDetail: string; alreadyRequested: boolean; purchasedQuantity: number; selected: boolean; quantity: number; max: number; reason: string; comments: string }> = [];
   cancellationEligibility: CancellationEligibility | null = null;
   cancellationLoading = false;
   cancellationOrder: Order | null = null;
@@ -89,7 +117,8 @@ export class AccountOrdersComponent implements OnInit {
   }
   loadOrders(page = this.page): void {
     this.loading = true; this.loadError = '';
-    this.account.getOrders(this.pageSize, page * this.pageSize, this.statusFilter).subscribe({
+    this.account.getOrders(this.pageSize, page * this.pageSize, this.statusFilter, this.dateSort,
+      this.dateRange.from, this.dateRange.to).subscribe({
       next: (orders) => {
         this.orders = orders; this.page = page; this.hasNextPage = orders.length === this.pageSize;
         this.loadDeliveredEligibility(orders);
@@ -109,6 +138,24 @@ export class AccountOrdersComponent implements OnInit {
   }
   applyStatusFilter(): void { this.loadOrders(0); }
 
+  applyDateRange(): void {
+    if (this.loading) return;
+    this.dateRangeError = '';
+    if (this.dateFrom && this.dateTo && this.dateFrom > this.dateTo) {
+      this.dateRangeError = 'From date must be on or before To date.';
+      return;
+    }
+    this.dateRange = { from: this.dateFrom, to: this.dateTo };
+    this.loadOrders(0);
+  }
+
+  clearDateRange(): void {
+    if (this.loading) return;
+    this.dateFrom = ''; this.dateTo = ''; this.dateRangeError = '';
+    this.dateRange = { from: '', to: '' };
+    this.loadOrders(0);
+  }
+
   private loadDeliveredEligibility(orders: Order[]): void {
     for (const order of orders) {
       if (this.orderStage(order) !== 4 || this.isCancelled(order)) continue;
@@ -127,7 +174,9 @@ export class AccountOrdersComponent implements OnInit {
   }
 
   canRequestReturn(order: Order): boolean {
-    return Boolean(this.returnEligibilityFor(order)?.eligible) && !this.hasReturnRequest(order) && !this.returnSubmitting;
+    const eligibility = this.returnEligibilityFor(order);
+    return Boolean(eligibility?.eligible && eligibility.items.some(item =>
+      !item.alreadyRequested && item.returnedQuantity === 0 && item.remainingQuantity > 0)) && !this.returnSubmitting;
   }
 
   openReturnChoices(order: Order): void {
@@ -146,7 +195,7 @@ export class AccountOrdersComponent implements OnInit {
   }
 
   private showReturnChoices(order: Order, eligibility: ReturnEligibility): void {
-    if (!eligibility.eligible || eligibility.hasExistingRequest || eligibility.items.some(item => item.returnedQuantity > 0)) return;
+    if (!eligibility.eligible || !eligibility.items.some(item => !item.alreadyRequested && item.returnedQuantity === 0 && item.remainingQuantity > 0)) return;
     this.returnChoiceOrder = order;
     this.returnChoiceEligibility = eligibility;
     queueMicrotask(() => this.returnChoiceDialog?.nativeElement.showModal());
@@ -163,10 +212,20 @@ export class AccountOrdersComponent implements OnInit {
 
   closeReturnChoices(): void { this.returnChoiceDialog?.nativeElement.close(); }
 
-  clearReturnChoices(): void { this.returnChoiceOrder = null; this.returnChoiceEligibility = null; }
+  backToReturnChoices(): void {
+    if (this.returnSubmitting || !this.returnOrder) return;
+    const order = this.returnOrder;
+    this.closeReturn();
+    this.openReturnChoices(order);
+  }
+
+  clearReturnChoices(): void {
+    if (this.returnChoiceDialog?.nativeElement.open) return;
+    this.returnChoiceOrder = null; this.returnChoiceEligibility = null;
+  }
 
   returnChoiceLabel(type: 'return' | 'defect' | 'replacement'): string {
-    return type === 'replacement' ? 'Size Exchange' : type === 'return' ? 'Return Item' : 'Report an Issue';
+    return type === 'replacement' ? 'Size Exchange' : type === 'return' ? 'Return Item' : 'Return a defective item';
   }
 
   orderedReturnChoices(): ReturnEligibility['requestTypes'] {
@@ -225,6 +284,7 @@ export class AccountOrdersComponent implements OnInit {
   openReturn(order: Order, requestType: 'return' | 'defect' | 'replacement' = 'return'): void {
     const eligibility = this.returnEligibility;
     if (!eligibility?.requestTypes.find(type => type.code === requestType && type.eligible)) return;
+    this.returnEligibilityByOrderId[order.id] = eligibility;
     this.returnOrder = order;
     this.returnIdempotencyKey = this.newUuid();
     this.returnRequestType = requestType;
@@ -234,12 +294,14 @@ export class AccountOrdersComponent implements OnInit {
     this.returnReasons = eligibility.reasons.filter(reason => allowedReasons.includes(reason.code));
     this.returnError = '';
     this.returnValidationAttempted = false;
-    this.returnRows = eligibility.items.filter(item => item.remainingQuantity > 0).map(item => {
+    this.returnRows = eligibility.items.map(item => {
       const orderItem = order.items.find(candidate => candidate.id === item.orderItemId);
       return {
       orderItemId: item.orderItemId, productName: item.productName, imageUrl: orderItem?.imageUrl || null,
       size: item.size, color: item.color, unitPrice: orderItem?.unitPrice || 0, replacementSizes: item.replacementSizes || [],
-      replacementSize: '', replacementSizeServerError: '', replacementReasonDetail: '', replacementNotes: '', expandedReasonGroup: '', selected: false,
+      replacementSize: '', replacementSizeServerError: '', replacementReasonDetail: '', replacementNotes: '', expandedReasonGroup: '',
+      reasonGroup: '', reasonDetail: '', alreadyRequested: Boolean(item.alreadyRequested || item.returnedQuantity > 0 || item.remainingQuantity === 0),
+      purchasedQuantity: item.purchasedQuantity, selected: false,
       quantity: 1, max: item.remainingQuantity, reason: '', comments: ''
       };
     });
@@ -250,10 +312,79 @@ export class AccountOrdersComponent implements OnInit {
   closeReturn(): void { this.returnDialog?.nativeElement.close(); }
 
   selectReplacementItem(selected: typeof this.returnRows[number]): void {
+    if (selected.alreadyRequested || this.returnSubmitting) return;
     selected.selected = !selected.selected;
     selected.quantity = 1;
-    selected.reason = selected.selected ? 'size_issue' : '';
-    if (!selected.selected) { selected.replacementSize = ''; selected.replacementSizeServerError = ''; selected.replacementReasonDetail = ''; selected.replacementNotes = ''; selected.expandedReasonGroup = ''; }
+    selected.reason = selected.selected && this.returnRequestType === 'replacement' ? 'size_issue' : '';
+    if (!selected.selected) { selected.replacementSize = ''; selected.replacementSizeServerError = ''; selected.replacementReasonDetail = ''; selected.replacementNotes = ''; selected.expandedReasonGroup = ''; selected.reasonGroup = ''; selected.reasonDetail = ''; selected.comments = ''; }
+  }
+
+  orderedReturnRows(): typeof this.returnRows {
+    return [...this.returnRows].sort((a, b) => Number(b.selected) - Number(a.selected) || Number(a.alreadyRequested) - Number(b.alreadyRequested));
+  }
+
+  orderedReturnReasonGroups(row: typeof this.returnRows[number]): typeof this.returnReasonGroups {
+    const first = row.reasonGroup || row.expandedReasonGroup;
+    return this.returnReasonGroups
+      .filter(group => this.returnRequestType !== 'defect' || this.isDefectReason(group.options[0].reason))
+      .sort((a, b) => Number(b.value === first) - Number(a.value === first));
+  }
+
+  orderedReplacementReasonGroups(row: typeof this.returnRows[number]): typeof this.replacementReasonGroups {
+    const first = row.replacementReasonDetail ? 'fit' : row.expandedReasonGroup;
+    return [...this.replacementReasonGroups].sort((a, b) => Number(b.value === first) - Number(a.value === first));
+  }
+
+  replacementReasonLabel(row: typeof this.returnRows[number]): string {
+    return this.replacementReasonGroups.flatMap(group => group.options)
+      .find(option => option.value === row.replacementReasonDetail)?.label || '';
+  }
+
+  orderedReturnReasonOptions(row: typeof this.returnRows[number], group: typeof this.returnReasonGroups[number]): typeof group.options {
+    return [...group.options].sort((a, b) => Number(b.value === row.reasonDetail) - Number(a.value === row.reasonDetail));
+  }
+
+  private isDefectReason(reason: string): boolean { return ['quality_issue', 'product_damaged', 'wrong_item'].includes(reason); }
+
+  returnReasonGroupAvailable(group: typeof this.returnReasonGroups[number]): boolean {
+    const type = this.isDefectReason(group.options[0].reason) ? 'defect' : 'return';
+    const eligibility = this.returnEligibilityByOrderId[this.returnOrder?.id || ''] || this.returnEligibility;
+    return (this.returnRequestType !== 'defect' || type === 'defect') &&
+      Boolean(eligibility?.requestTypes.some(candidate => candidate.code === type && candidate.eligible));
+  }
+
+  returnReasonUnavailableMessage(group: typeof this.returnReasonGroups[number]): string {
+    if (this.returnRequestType === 'defect' && !this.isDefectReason(group.options[0].reason)) {
+      return 'Choose Return Item for size, fit or changed-mind requests.';
+    }
+    return this.isDefectReason(group.options[0].reason)
+      ? 'The 2-day defective-item window has closed.' : 'The 7-day return window has closed.';
+  }
+
+  toggleReturnReasonGroup(row: typeof this.returnRows[number], group: typeof this.returnReasonGroups[number]): void {
+    if (this.returnSubmitting || !this.returnReasonGroupAvailable(group)) return;
+    row.expandedReasonGroup = row.expandedReasonGroup === group.value ? '' : group.value;
+  }
+
+  selectReturnReason(row: typeof this.returnRows[number], group: typeof this.returnReasonGroups[number], option: typeof group.options[number]): void {
+    if (row.alreadyRequested || this.returnSubmitting || !this.returnReasonGroupAvailable(group)) return;
+    row.reason = option.reason; row.reasonDetail = option.value; row.reasonGroup = group.value;
+    row.expandedReasonGroup = group.value; this.returnError = '';
+  }
+
+  returnReasonLabel(row: typeof this.returnRows[number]): string {
+    return this.returnReasonGroups.flatMap(group => group.options).find(option => option.value === row.reasonDetail)?.label || '';
+  }
+
+  returnComments(row: typeof this.returnRows[number]): string {
+    return [this.returnReasonLabel(row), row.comments.trim()].filter(Boolean).join(' ');
+  }
+
+  returnCommentLimit(row: typeof this.returnRows[number]): number { return 250 - this.returnReasonLabel(row).length - 1; }
+
+  returnSubmissionType(): 'replacement' | 'return' | 'defect' {
+    return this.returnRequestType === 'return' && this.returnRows.some(row => row.selected && this.isDefectReason(row.reason))
+      ? 'defect' : this.returnRequestType;
   }
 
   selectReplacementSize(row: typeof this.returnRows[number], size: string): void { row.replacementSize = size; row.replacementSizeServerError = ''; }
@@ -264,7 +395,7 @@ export class AccountOrdersComponent implements OnInit {
 
   selectReplacementReason(row: typeof this.returnRows[number], group: string, reason: string): void {
     if (group !== 'fit') {
-      this.returnError = 'Different or damaged items must be submitted through Report an Issue so the defect policy is applied.';
+      this.returnError = 'For a different or damaged item, go back and choose "Return a defective item".';
       return;
     }
     this.returnError = '';
@@ -284,7 +415,16 @@ export class AccountOrdersComponent implements OnInit {
     if (!order || !this.returnIdempotencyKey || this.returnSubmitting) return;
     const selected = this.returnRows.filter(row => row.selected);
     if (!selected.length) { this.returnError = 'Select at least one item.'; return; }
-    if (selected.some(row => !row.reason || row.quantity < 1 || row.quantity > row.max || (row.reason === 'other' && !row.comments.trim()) || (this.returnRequestType === 'defect' && !row.comments.trim()))) {
+    if (selected.some(row => row.alreadyRequested)) { this.returnError = 'A selected product already has a return or replacement request.'; return; }
+    const requestType = this.returnSubmissionType();
+    if (requestType === 'defect' && selected.some(row => row.reason && !this.isDefectReason(row.reason))) {
+      this.returnError = 'Submit defective items separately from size, fit or changed-mind returns.'; return;
+    }
+    const available = this.returnEligibilityByOrderId[order.id] || this.returnEligibility;
+    if (!available?.requestTypes.some(type => type.code === requestType && type.eligible)) {
+      this.returnError = 'This request option is no longer available. Go back to options to check availability.'; return;
+    }
+    if (selected.some(row => !row.reason || row.quantity < 1 || row.quantity > row.max || (row.reason === 'other' && !row.comments.trim()) || (requestType === 'defect' && !this.returnComments(row)) || this.returnComments(row).length > 250)) {
       this.returnError = 'Choose a valid quantity and reason for every selected item. Add an explanation for Other.';
       return;
     }
@@ -298,12 +438,12 @@ export class AccountOrdersComponent implements OnInit {
     this.account.createReturn({
       orderId: order.id,
       idempotencyKey: this.returnIdempotencyKey,
-      requestType: this.returnRequestType,
+      requestType,
       items: selected.map(row => {
         const replacementReason = this.replacementReasonGroups[0].options.find(reason => reason.value === row.replacementReasonDetail);
         const comments = this.returnRequestType === 'replacement'
           ? [replacementReason?.detail, row.replacementNotes.trim()].filter(Boolean).join(' ')
-          : row.comments.trim();
+          : this.returnComments(row);
         return { orderItemId: row.orderItemId, quantity: Number(row.quantity), reason: row.reason,
           ...(comments ? { comments } : {}), ...(this.returnRequestType === 'replacement' ? { replacementSize: row.replacementSize } : {}) };
       })
@@ -312,7 +452,13 @@ export class AccountOrdersComponent implements OnInit {
         this.returnSubmitting = false;
         const eligibility = this.returnEligibilityByOrderId[order.id] || this.returnEligibility;
         if (eligibility) {
-          const requested = { ...eligibility, hasExistingRequest: true };
+          const items = eligibility.items.map(item => {
+            const row = selected.find(candidate => candidate.orderItemId === item.orderItemId);
+            return row ? { ...item, alreadyRequested: true, returnedQuantity: item.returnedQuantity + row.quantity,
+              remainingQuantity: Math.max(0, item.remainingQuantity - row.quantity) } : item;
+          });
+          const requested = { ...eligibility, items, hasExistingRequest: true,
+            eligible: items.some(item => !item.alreadyRequested && item.returnedQuantity === 0 && item.remainingQuantity > 0) && eligibility.requestTypes.some(type => type.eligible) };
           this.returnEligibilityByOrderId[order.id] = requested;
           this.returnEligibility = requested;
         }
@@ -331,6 +477,21 @@ export class AccountOrdersComponent implements OnInit {
           if (row) { row.replacementSizeServerError = response.message || 'This size is no longer available for this product.'; this.returnError = ''; return; }
         }
         this.returnError = response?.message || 'We could not create the return request. Please try again.';
+        if (error?.status === 409) {
+          this.account.getReturnEligibility(order.id).subscribe({
+            next: eligibility => {
+              this.returnEligibilityByOrderId[order.id] = eligibility;
+              this.returnEligibility = eligibility;
+              for (const row of this.returnRows) {
+                const item = eligibility.items.find(candidate => candidate.orderItemId === row.orderItemId);
+                if (item) {
+                  row.alreadyRequested = Boolean(item.alreadyRequested || item.returnedQuantity > 0 || item.remainingQuantity === 0);
+                  if (row.alreadyRequested) row.selected = false;
+                }
+              }
+            }, error: () => {}
+          });
+        }
       }
     });
   }
@@ -419,6 +580,7 @@ export class AccountOrdersComponent implements OnInit {
   clearCancellation(): void { this.cancellationOrder = null; this.cancellationReason = ''; this.cancellationNotes = ''; this.cancellationError = ''; this.cancellationSubmitting = false; }
 
   clearReturn(): void {
+    if (this.returnDialog?.nativeElement.open) return;
     this.returnOrder = null;
     this.returnIdempotencyKey = '';
     this.returnReasons = [];

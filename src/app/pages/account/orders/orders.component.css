@@ -148,7 +148,7 @@
 .mh-return-dialog { width: min(680px, calc(100vw - 32px)); }
 .mh-return-choice-dialog { width: min(580px, calc(100vw - 32px)); }
 .mh-return-choice__intro { margin: 0 0 16px; color: var(--mh-text-dim); font-size: 13px; }
-.mh-return-choice__options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.mh-return-choice__options { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .mh-return-choice__options button { display: flex; align-items: center; gap: 13px; width: 100%; padding: 16px; border: 1px solid var(--mh-line); border-radius: 12px; background: var(--mh-bg); color: var(--mh-text); text-align: left; }
 .mh-return-choice__options button:not(:disabled):hover { border-color: var(--mh-accent); background: #f6f7ff; }
 .mh-return-choice__options button:disabled { cursor: not-allowed; opacity: .52; }
