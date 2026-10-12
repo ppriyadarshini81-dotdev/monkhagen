@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {
   DEFECT_WINDOW_MS, RETURN_TYPES, RETURN_WINDOW_MS, evaluateEligibility, refundableItems, validateRequest,
   createLocalReturn, returnPayload, provisionReturn, mappedWebhookStatus,
-  approveReturn, rejectReturn, initiateRefund, processShiprocketWebhook, resolveReturnWarehouse
+  approveReturn, rejectReturn, initiateRefund, processShiprocketWebhook, resolveReturnWarehouse, getEligibility, listCustomerReturns
 } = require('../services/returnService');
 const { shippingError } = require('../config/shiprocket');
 const { environment: packingEnvironment } = require('./helpers/shippingPackageFixtures');
@@ -32,12 +32,12 @@ test('exact seven-day delivery eligibility uses delivered_at and permits unreque
 test('existing requests are flagged even for partial quantities, and cancelled requests release the flag within the window', () => {
   const partial = evaluateEligibility(order(0), items(1), NOW);
   assert.equal(partial.hasExistingRequest, true);
-  assert.equal(partial.eligible, false);
-  assert.equal(partial.items[0].alreadyRequested, true);
+  assert.equal(partial.eligible, true);
+  assert.equal(partial.items[0].alreadyRequested, false);
   assert.equal(partial.items[0].remainingQuantity, 1);
   const otherProduct = evaluateEligibility(order(0), [...items(1), { ...items()[0], id: OTHER }], NOW);
   assert.equal(otherProduct.eligible, true);
-  assert.deepEqual(otherProduct.items.map(item => item.alreadyRequested), [true, false]);
+  assert.deepEqual(otherProduct.items.map(item => item.alreadyRequested), [false, false]);
   const full = evaluateEligibility(order(0), items(2), NOW);
   assert.equal(full.hasExistingRequest, true);
   assert.equal(full.eligible, false);
@@ -45,6 +45,28 @@ test('existing requests are flagged even for partial quantities, and cancelled r
   assert.equal(cancelled.hasExistingRequest, false);
   assert.equal(cancelled.eligible, true);
   assert.equal(evaluateEligibility(order(RETURN_WINDOW_MS + 1), items(0), NOW).eligible, false);
+});
+
+test('cancelled history keeps the order link available without reserving products', async () => {
+  const database = { async query(sql) {
+    if (sql.startsWith('SELECT o.*')) return { rows: [{ ...order(0), has_return_history: true, has_existing_return_request: false }] };
+    if (sql.startsWith('SELECT oi.*')) return { rows: items(0) };
+    return { rows: [] };
+  } };
+  const result = await getEligibility('customer', ORDER, database, () => NOW);
+  assert.equal(result.hasReturnHistory, true); assert.equal(result.hasExistingRequest, false);
+  assert.equal(result.eligible, true); assert.equal(result.items[0].remainingQuantity, 2);
+});
+
+test('customer returns validate order filters and preserve authenticated user, status and pagination parameters', async () => {
+  const calls = [];
+  const database = { query: async (sql, params) => { calls.push(params); return { rows: [] }; } };
+  await assert.rejects(listCustomerReturns('customer', database, { orderId: 'invalid' }), error => error.status === 400);
+  assert.equal(calls.length, 0);
+  await listCustomerReturns('customer', database, { orderId: ORDER, statuses: ['received'], limit: 10, offset: 20 });
+  assert.deepEqual(calls[0], ['customer', 10, 20, ['received'], ORDER]);
+  await listCustomerReturns('customer', database);
+  assert.deepEqual(calls[1], ['customer', 100, 0, null, null]);
 });
 
 test('defect reports close immediately after the exact 48-hour delivery boundary', () => {
@@ -146,7 +168,7 @@ function localDatabase({ owner = true, returned = 0, deliveredAt = new Date(NOW)
 
 test('local return transaction enforces ownership, window and remaining quantities without restoring inventory', async () => {
   const body = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] });
-  const db = localDatabase({ returned: 0 });
+  const db = localDatabase({ returned: 1 });
   const result = await createLocalReturn('customer', body, db, () => NOW);
   assert.equal(result.created, true);
   assert.equal(db.queries.filter(query => query.sql.startsWith('INSERT INTO return_items')).length, 1);
@@ -155,7 +177,7 @@ test('local return transaction enforces ownership, window and remaining quantiti
   await assert.rejects(createLocalReturn('customer', body, localDatabase({ returned: 2 }), () => NOW), /already have a return request/);
 });
 
-test('an active request blocks another request for that product while other products remain available', async () => {
+test('a fully requested product stays blocked while other products remain available', async () => {
   const blocked = validateRequest({ orderId: ORDER, idempotencyKey: IDEM,
     items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] });
   const db = localDatabase({ returned: 1, additionalItem: true });
@@ -165,6 +187,17 @@ test('an active request blocks another request for that product while other prod
   const allowed = validateRequest({ orderId: ORDER, idempotencyKey: IDEM,
     items: [{ orderItemId: OTHER, quantity: 1, reason: 'changed_mind' }] });
   assert.equal((await createLocalReturn('customer', allowed, localDatabase({ returned: 1, additionalItem: true }), () => NOW)).created, true);
+});
+
+test('remaining units can be requested, but an existing request cannot cause quantities to exceed the purchase', async () => {
+  const remaining = validateRequest({ orderId: ORDER, idempotencyKey: IDEM,
+    items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] });
+  assert.equal((await createLocalReturn('customer', remaining, localDatabase({ returned: 1 }), () => NOW)).created, true);
+  const excess = validateRequest({ orderId: ORDER, idempotencyKey: IDEM,
+    items: [{ orderItemId: ITEM, quantity: 2, reason: 'size_issue' }] });
+  const database = localDatabase({ returned: 1 });
+  await assert.rejects(createLocalReturn('customer', excess, database, () => NOW), error => error.code === 'RETURN_QUANTITY_EXCEEDED');
+  assert.equal(database.queries.some(query => query.sql.startsWith('INSERT INTO return_requests')), false);
 });
 
 test('same idempotency key replays the local return and a conflicting body is rejected', async () => {

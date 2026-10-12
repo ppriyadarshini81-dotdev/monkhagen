@@ -80,11 +80,11 @@
         <div [class.is-complete]="orderStage(order) >= 4"><span></span><small>Delivered</small></div>
       </div>
       <div class="mh-return-window" *ngIf="orderStage(order) === 4 && returnEligibilityFor(order) as eligibility">
-        <ng-container *ngIf="hasReturnRequest(order); else returnWindowAvailability"><strong>{{ canRequestReturn(order) ? 'Some products already requested' : 'Already requested' }}</strong> &middot; <a routerLink="/account/returns">View return &amp; replacement</a></ng-container>
+        <ng-container *ngIf="hasReturnRequest(order) && !eligibility.eligible; else returnWindowAvailability"><strong>Already requested</strong> &middot; <a routerLink="/account/returns" [queryParams]="{ orderId: order.id }">View return &amp; replacement</a></ng-container>
         <ng-template #returnWindowAvailability><ng-container *ngIf="eligibility.eligible; else expiredReturnWindow">
-          <span aria-hidden="true">✓</span> Exchange/Return available till <strong>{{ eligibility.returnUntil | date: 'd MMM' }}</strong>
+          <span aria-hidden="true">✓</span> Exchange/Return available till <strong>{{ eligibility.returnUntil | date: 'd MMM' }}</strong><ng-container *ngIf="hasReturnHistory(order)"> &middot; <a routerLink="/account/returns" [queryParams]="{ orderId: order.id }">View return &amp; replacement</a></ng-container>
         </ng-container>
-        <ng-template #expiredReturnWindow>{{ eligibility.message || 'Return and replacement window has ended.' }} <a routerLink="/contact/email">Contact support</a> for help.</ng-template></ng-template>
+        <ng-template #expiredReturnWindow>{{ eligibility.message || 'Return and replacement window has ended.' }}<ng-container *ngIf="hasReturnHistory(order)"> &middot; <a routerLink="/account/returns" [queryParams]="{ orderId: order.id }">View return &amp; replacement</a></ng-container> <a routerLink="/contact/email">Contact support</a> for help.</ng-template></ng-template>
       </div>
 
       <footer class="mh-customer-order__foot">
@@ -148,7 +148,7 @@
         <span *ngIf="returnEligibilityLoading">Checking return availability...</span>
         <ng-container *ngIf="!returnEligibilityLoading && returnEligibility as eligibility">
           <strong class="mh-return-requested-label" *ngIf="hasReturnRequest(order)">Already requested</strong>
-          <span *ngIf="hasReturnRequest(order)">Follow your request in <a routerLink="/account/returns" (click)="closeDetails()">Returns &amp; Replacements</a>.</span>
+          <span *ngIf="hasReturnHistory(order)">Follow your request in <a routerLink="/account/returns" [queryParams]="{ orderId: order.id }" (click)="closeDetails()">Returns &amp; Replacements</a>.</span>
           <ng-container *ngFor="let type of eligibility.requestTypes">
             <strong *ngIf="type.eligible && !hasReturnRequest(order)">{{ type.message }}</strong>
           </ng-container>
@@ -202,7 +202,7 @@
       <div *ngFor="let row of orderedReturnRows()" class="mh-replacement-item" [class.is-selected]="row.selected" [class.is-unavailable]="row.alreadyRequested" [attr.data-order-item]="row.orderItemId">
         <button type="button" class="mh-replacement-product" [class.is-selected]="row.selected" [attr.aria-expanded]="row.selected" [disabled]="row.alreadyRequested || returnSubmitting" (click)="selectReplacementItem(row)">
           <span class="mh-replacement-product__image"><img *ngIf="row.imageUrl; else productFallback" [src]="row.imageUrl" [alt]="row.productName" /><ng-template #productFallback>{{ row.productName.charAt(0) }}</ng-template></span>
-          <span class="mh-replacement-product__copy"><strong>{{ row.productName }}</strong><span>Size: {{ row.size || 'One size' }}<ng-container *ngIf="row.color"> &middot; {{ row.color }}</ng-container> &middot; Qty {{ row.purchasedQuantity }}</span><b>&#8377;{{ row.unitPrice | number }}</b><small class="mh-product-requested" *ngIf="row.alreadyRequested">Already requested for return / replacement</small></span>
+          <span class="mh-replacement-product__copy"><strong>{{ row.productName }}</strong><span>Size: {{ row.size || 'One size' }}<ng-container *ngIf="row.color"> &middot; {{ row.color }}</ng-container> &middot; Qty {{ row.purchasedQuantity }}</span><b>&#8377;{{ row.unitPrice | number }}</b><small class="mh-product-requested" *ngIf="row.alreadyRequested">Already requested for return / replacement</small><small class="mh-product-requested" *ngIf="!row.alreadyRequested && row.requestedQuantity > 0">{{ row.requestedQuantity }} already requested &middot; {{ row.max }} remaining</small></span>
           <span class="mh-replacement-product__radio" [attr.aria-label]="row.alreadyRequested ? 'Already requested' : row.selected ? 'Selected' : 'Select item'">{{ row.selected ? '✓' : '' }}</span>
         </button>
         <section *ngIf="row.selected && row.max > 1" class="mh-replacement-step mh-return-quantity"><label>Quantity to {{ returnRequestType === 'replacement' ? 'exchange' : 'return' }}<select [(ngModel)]="row.quantity" [disabled]="returnSubmitting"><option *ngFor="let quantity of quantityOptions(row.max)" [ngValue]="quantity">{{ quantity }}</option></select></label></section>

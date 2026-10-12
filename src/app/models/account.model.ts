@@ -202,6 +202,7 @@ export interface ReturnEligibility {
   orderId: string;
   eligible: boolean;
   hasExistingRequest?: boolean;
+  hasReturnHistory?: boolean;
   reason: string | null;
   message: string | null;
   deliveredAt?: string;

@@ -19,8 +19,8 @@ describe('AccountOrdersComponent', () => {
       requestTypes: ['return', 'replacement', 'defect'].map(code => ({ code: code as 'return' | 'replacement' | 'defect',
         label: code, eligible: true, message: '' })),
       items: [1, 2, 3].map(index => ({ orderItemId: `item-${index}`, productName: `Tee ${index}`, sku: null,
-        size: 'M', color: 'Black', purchasedQuantity: 2, returnedQuantity: index === 1 && blockFirst ? 1 : 0,
-        remainingQuantity: index === 1 && blockFirst ? 1 : 2, alreadyRequested: index === 1 && blockFirst,
+        size: 'M', color: 'Black', purchasedQuantity: 2, returnedQuantity: index === 1 && blockFirst ? 2 : 0,
+        remainingQuantity: index === 1 && blockFirst ? 0 : 2, alreadyRequested: index === 1 && blockFirst,
         replacementSizes: ['M', 'L'] })) };
   }
 
@@ -226,6 +226,75 @@ describe('AccountOrdersComponent', () => {
     expect(row.alreadyRequested).toBeTrue(); expect(row.selected).toBeFalse();
     expect(component.canRequestReturn(order)).toBeTrue();
     component.submitReturn(); expect(account.createReturn).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Return & Replace enabled for remaining quantities and disables it for fully requested or expired orders', async () => {
+    const delivered = { ...order, status: 'delivered' } as Order;
+    const eligibility = productEligibility(); eligibility.items = [eligibility.items[0]];
+    eligibility.items[0] = { ...eligibility.items[0], returnedQuantity: 1, remainingQuantity: 1 };
+    eligibility.hasExistingRequest = true;
+    account.getOrders.and.returnValue(of([delivered]));
+    account.getReturnEligibility.and.returnValue(of(eligibility));
+    await TestBed.configureTestingModule({ imports: [AccountOrdersComponent],
+      providers: [{ provide: AccountService, useValue: account }, provideRouter([])] }).compileComponents();
+    const fixture = TestBed.createComponent(AccountOrdersComponent); fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    const button = Array.from(element.querySelectorAll<HTMLButtonElement>('.mh-customer-order__foot button'))
+      .find(candidate => candidate.textContent?.includes('Return & Replace'))!;
+    expect(button.disabled).toBeFalse();
+    expect(element.querySelector('.mh-return-window')?.textContent).toContain('Exchange/Return available till');
+    expect(element.querySelector('.mh-return-window > span')?.textContent).toBe('✓');
+    expect(element.querySelector('.mh-return-window a')?.getAttribute('href')).toBe('/account/returns?orderId=order-1');
+    const instance = fixture.componentInstance;
+    instance.returnEligibilityByOrderId[order.id] = { ...eligibility, eligible: false,
+      items: [{ ...eligibility.items[0], returnedQuantity: 2, remainingQuantity: 0, alreadyRequested: true }] };
+    fixture.detectChanges(); expect(button.disabled).toBeTrue();
+    instance.returnEligibilityByOrderId[order.id] = { ...eligibility, eligible: false, reason: 'WINDOW_CLOSED',
+      requestTypes: eligibility.requestTypes.map(type => ({ ...type, eligible: false })) };
+    fixture.detectChanges(); expect(button.disabled).toBeTrue();
+    instance.returnEligibilityByOrderId[order.id] = { ...eligibility, hasExistingRequest: false,
+      items: [{ ...eligibility.items[0], returnedQuantity: 0, remainingQuantity: 2, alreadyRequested: false }] };
+    fixture.detectChanges(); expect(button.disabled).toBeFalse(); fixture.destroy();
+  });
+
+  it('updates remaining quantities immediately after each successful request', () => {
+    const eligibility = productEligibility(); eligibility.items = [eligibility.items[0]];
+    component.returnEligibility = eligibility; component.openReturn(order, 'return');
+    account.createReturn.and.returnValue(of({ pickupDelayed: false } as any));
+    for (const remaining of [1, 0]) {
+      const row = component.returnRows[0];
+      component.selectReplacementItem(row);
+      component.selectReturnReason(row, component.returnReasonGroups[1], component.returnReasonGroups[1].options[0]);
+      component.submitReturn();
+      expect(component.returnEligibilityFor(order)?.items[0].remainingQuantity).toBe(remaining);
+      expect(component.canRequestReturn(order)).toBe(remaining > 0);
+      if (remaining) {
+        component.openReturn(order, 'return');
+        expect(component.returnRows[0].alreadyRequested).toBeFalse();
+        expect(component.returnRows[0].max).toBe(1);
+        expect(component.returnRows[0].requestedQuantity).toBe(1);
+      }
+    }
+    expect(account.createReturn).toHaveBeenCalledTimes(2);
+    expect(account.createReturn.calls.allArgs().map(args => args[0].items[0].quantity)).toEqual([1, 1]);
+  });
+
+  it('shows a link scoped to the order only after a request has been created, including cancelled history', async () => {
+    const delivered = { ...order, status: 'delivered' } as Order;
+    const eligibility = productEligibility();
+    account.getOrders.and.returnValue(of([delivered])); account.getReturnEligibility.and.returnValue(of(eligibility));
+    await TestBed.configureTestingModule({ imports: [AccountOrdersComponent],
+      providers: [{ provide: AccountService, useValue: account }, provideRouter([])] }).compileComponents();
+    const fixture = TestBed.createComponent(AccountOrdersComponent); fixture.detectChanges();
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.mh-return-window a')).toBeNull();
+    fixture.componentInstance.returnEligibilityByOrderId[order.id] = { ...eligibility, hasReturnHistory: true };
+    fixture.detectChanges();
+    const link = element.querySelector<HTMLAnchorElement>('.mh-return-window a')!;
+    expect(link.textContent).toBe('View return & replacement');
+    expect(link.getAttribute('href')).toBe('/account/returns?orderId=order-1');
+    expect(fixture.componentInstance.canRequestReturn(delivered)).toBeTrue();
+    fixture.destroy();
   });
 
   it('stacks distinct return options and navigates back from each form without losing the order', async () => {

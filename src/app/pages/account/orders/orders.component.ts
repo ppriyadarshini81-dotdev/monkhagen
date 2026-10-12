@@ -93,7 +93,7 @@ export class AccountOrdersComponent implements OnInit {
       { value: 'different_product', label: 'Received a completely different product', reason: 'wrong_item' }
     ] }
   ];
-  returnRows: Array<{ orderItemId: string; productName: string; imageUrl: string | null; size: string | null; color: string | null; unitPrice: number; replacementSizes: string[]; replacementSize: string; replacementSizeServerError: string; replacementReasonDetail: string; replacementNotes: string; expandedReasonGroup: string; reasonGroup: string; reasonDetail: string; alreadyRequested: boolean; purchasedQuantity: number; selected: boolean; quantity: number; max: number; reason: string; comments: string }> = [];
+  returnRows: Array<{ orderItemId: string; productName: string; imageUrl: string | null; size: string | null; color: string | null; unitPrice: number; replacementSizes: string[]; replacementSize: string; replacementSizeServerError: string; replacementReasonDetail: string; replacementNotes: string; expandedReasonGroup: string; reasonGroup: string; reasonDetail: string; alreadyRequested: boolean; purchasedQuantity: number; requestedQuantity: number; selected: boolean; quantity: number; max: number; reason: string; comments: string }> = [];
   cancellationEligibility: CancellationEligibility | null = null;
   cancellationLoading = false;
   cancellationOrder: Order | null = null;
@@ -173,10 +173,13 @@ export class AccountOrdersComponent implements OnInit {
     return Boolean(eligibility?.hasExistingRequest) || Boolean(eligibility?.items.some(item => item.returnedQuantity > 0));
   }
 
+  hasReturnHistory(order: Order): boolean {
+    return Boolean(this.returnEligibilityFor(order)?.hasReturnHistory) || this.hasReturnRequest(order);
+  }
+
   canRequestReturn(order: Order): boolean {
     const eligibility = this.returnEligibilityFor(order);
-    return Boolean(eligibility?.eligible && eligibility.items.some(item =>
-      !item.alreadyRequested && item.returnedQuantity === 0 && item.remainingQuantity > 0)) && !this.returnSubmitting;
+    return Boolean(eligibility?.eligible && eligibility.items.some(item => item.remainingQuantity > 0)) && !this.returnSubmitting;
   }
 
   openReturnChoices(order: Order): void {
@@ -195,7 +198,7 @@ export class AccountOrdersComponent implements OnInit {
   }
 
   private showReturnChoices(order: Order, eligibility: ReturnEligibility): void {
-    if (!eligibility.eligible || !eligibility.items.some(item => !item.alreadyRequested && item.returnedQuantity === 0 && item.remainingQuantity > 0)) return;
+    if (!eligibility.eligible || !eligibility.items.some(item => item.remainingQuantity > 0)) return;
     this.returnChoiceOrder = order;
     this.returnChoiceEligibility = eligibility;
     queueMicrotask(() => this.returnChoiceDialog?.nativeElement.showModal());
@@ -300,8 +303,8 @@ export class AccountOrdersComponent implements OnInit {
       orderItemId: item.orderItemId, productName: item.productName, imageUrl: orderItem?.imageUrl || null,
       size: item.size, color: item.color, unitPrice: orderItem?.unitPrice || 0, replacementSizes: item.replacementSizes || [],
       replacementSize: '', replacementSizeServerError: '', replacementReasonDetail: '', replacementNotes: '', expandedReasonGroup: '',
-      reasonGroup: '', reasonDetail: '', alreadyRequested: Boolean(item.alreadyRequested || item.returnedQuantity > 0 || item.remainingQuantity === 0),
-      purchasedQuantity: item.purchasedQuantity, selected: false,
+      reasonGroup: '', reasonDetail: '', alreadyRequested: item.remainingQuantity <= 0,
+      purchasedQuantity: item.purchasedQuantity, requestedQuantity: item.returnedQuantity, selected: false,
       quantity: 1, max: item.remainingQuantity, reason: '', comments: ''
       };
     });
@@ -454,11 +457,11 @@ export class AccountOrdersComponent implements OnInit {
         if (eligibility) {
           const items = eligibility.items.map(item => {
             const row = selected.find(candidate => candidate.orderItemId === item.orderItemId);
-            return row ? { ...item, alreadyRequested: true, returnedQuantity: item.returnedQuantity + row.quantity,
+            return row ? { ...item, alreadyRequested: item.remainingQuantity <= row.quantity, returnedQuantity: item.returnedQuantity + row.quantity,
               remainingQuantity: Math.max(0, item.remainingQuantity - row.quantity) } : item;
           });
-          const requested = { ...eligibility, items, hasExistingRequest: true,
-            eligible: items.some(item => !item.alreadyRequested && item.returnedQuantity === 0 && item.remainingQuantity > 0) && eligibility.requestTypes.some(type => type.eligible) };
+          const requested = { ...eligibility, items, hasExistingRequest: true, hasReturnHistory: true,
+            eligible: items.some(item => item.remainingQuantity > 0) && eligibility.requestTypes.some(type => type.eligible) };
           this.returnEligibilityByOrderId[order.id] = requested;
           this.returnEligibility = requested;
         }
@@ -485,7 +488,10 @@ export class AccountOrdersComponent implements OnInit {
               for (const row of this.returnRows) {
                 const item = eligibility.items.find(candidate => candidate.orderItemId === row.orderItemId);
                 if (item) {
-                  row.alreadyRequested = Boolean(item.alreadyRequested || item.returnedQuantity > 0 || item.remainingQuantity === 0);
+                  row.max = item.remainingQuantity;
+                  row.requestedQuantity = item.returnedQuantity;
+                  row.quantity = Math.min(row.quantity, Math.max(1, row.max));
+                  row.alreadyRequested = item.remainingQuantity <= 0;
                   if (row.alreadyRequested) row.selected = false;
                 }
               }

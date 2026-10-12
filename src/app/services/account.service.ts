@@ -89,8 +89,9 @@ export class AccountService {
   }
 
   // ── Returns ────────────────────────────────────────────────
-  getReturns(limit = 10, offset = 0, status = ''): Observable<ReturnRequest[]> {
+  getReturns(limit = 10, offset = 0, status = '', orderId = ''): Observable<ReturnRequest[]> {
     const params: Record<string, string | number> = { limit, offset };
+    if (orderId) params['orderId'] = orderId;
     if (status) params['status'] = status;
     return this.http.get<ReturnRequest[]>(`${this.api}/returns`, { params });
   }

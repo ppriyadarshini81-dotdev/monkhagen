@@ -102,7 +102,7 @@ function evaluateEligibility(order, items, now = Date.now(), overrideTypes = [])
     size: item.size || null, color: item.color || null,
     replacementSizes: Array.isArray(item.replacement_sizes) ? item.replacement_sizes : [],
     purchasedQuantity: Number(item.quantity), returnedQuantity: Number(item.returned_quantity || 0),
-    alreadyRequested: Number(item.returned_quantity || 0) > 0,
+    alreadyRequested: Number(item.returned_quantity || 0) >= Number(item.quantity),
     remainingQuantity: Math.max(0, Number(item.quantity) - Number(item.returned_quantity || 0))
   }));
   const hasExistingRequest = Boolean(order.has_existing_return_request) || availableItems.some(item => item.returnedQuantity > 0);
@@ -118,7 +118,7 @@ function evaluateEligibility(order, items, now = Date.now(), overrideTypes = [])
     { code: RETURN_TYPES.replacement, label: 'Replace size', eligible: replacementEligible,
       message: replacementEligible ? 'Replace size \u2014 available within 7 days of delivery.' : 'The 7-day size replacement window has closed.' }
   ];
-  const available = availableItems.some(item => !item.alreadyRequested && item.remainingQuantity > 0);
+  const available = availableItems.some(item => item.remainingQuantity > 0);
   const eligible = available && requestTypes.some(type => type.eligible);
   if (!eligible) {
     return { eligible: false, hasExistingRequest, reason: available ? 'WINDOW_CLOSED' : 'FULLY_RETURNED',
@@ -136,7 +136,8 @@ function evaluateEligibility(order, items, now = Date.now(), overrideTypes = [])
 async function loadOrderAndItems(client, userId, orderId, lock = false) {
   const order = await client.query(
     `SELECT o.*, u.email AS customer_email,
-       EXISTS (SELECT 1 FROM return_requests rr WHERE rr.order_id = o.id AND rr.status = ANY($3::varchar[])) AS has_existing_return_request
+       EXISTS (SELECT 1 FROM return_requests rr WHERE rr.order_id = o.id AND rr.status = ANY($3::varchar[])) AS has_existing_return_request,
+       EXISTS (SELECT 1 FROM return_requests rr WHERE rr.order_id = o.id) AS has_return_history
      FROM orders o JOIN users u ON u.id = o.user_id
      WHERE o.id = $1 AND o.user_id = $2 ${lock ? 'FOR UPDATE OF o' : ''}`,
     [orderId, userId, ACTIVE_STATUSES]
@@ -161,7 +162,7 @@ async function getEligibility(userId, orderId, database = pool, now = Date.now) 
     WHERE order_id = $1 AND user_id = $2 AND used_at IS NULL`, [orderId, userId]) : { rows: [] };
   const eligibility = evaluateEligibility(source.order, source.items, now, overrides.rows.map(row => row.request_type));
   const permitted = new Set(eligibility.requestTypes?.filter(type => type.eligible).map(type => type.code) || []);
-  return { orderId, reasons: RETURN_REASONS.filter(reason =>
+  return { orderId, hasReturnHistory: Boolean(source.order?.has_return_history || eligibility.hasExistingRequest), reasons: RETURN_REASONS.filter(reason =>
     (DEFECT_REASONS.has(reason.code) && permitted.has(RETURN_TYPES.defect)) ||
     (NORMAL_REASONS.has(reason.code) && permitted.has(RETURN_TYPES.return)) ||
     (reason.code === 'size_issue' && permitted.has(RETURN_TYPES.replacement))), ...eligibility };
@@ -322,8 +323,8 @@ async function createLocalReturn(userId, input, database = pool, now = Date.now)
       const purchased = byId.get(item.orderItemId);
       if (!purchased) throw fault(400, 'RETURN_ITEM_INVALID', 'A selected item does not belong to this order.');
       const alreadyReturned = Number(purchased.returned_quantity || 0);
-      if (alreadyReturned > 0) throw fault(409, 'RETURN_ITEM_ALREADY_REQUESTED',
-        'This product already has a return or replacement request.', { orderItemId: item.orderItemId });
+      if (alreadyReturned >= purchased.quantity) throw fault(409, 'RETURN_ITEM_ALREADY_REQUESTED',
+        'All units of this product already have a return or replacement request.', { orderItemId: item.orderItemId });
       if (item.quantity > purchased.quantity - alreadyReturned) throw fault(409, 'RETURN_QUANTITY_EXCEEDED', 'Return quantity exceeds the remaining purchased quantity.');
       return { ...item, productId: purchased.product_id, size: purchased.size, refundPaise: purchased.refundFor(alreadyReturned, item.quantity) };
     });
@@ -511,10 +512,12 @@ async function createReturn(userId, body = {}, database = pool, dependencies = {
   await notifySafely(() => notifier.returnRequested(local.row.id));
   return formatReturn(await findReturn(database, local.row.id, userId));
 }
-async function listCustomerReturns(userId, database = pool, { limit = 100, offset = 0, statuses = null } = {}) {
+async function listCustomerReturns(userId, database = pool, { limit = 100, offset = 0, statuses = null, orderId = null } = {}) {
+  if (orderId !== null) orderId = validId(orderId, 'order ID');
   const result = await database.query(
-    'SELECT id FROM return_requests WHERE user_id = $1 AND ($4::text[] IS NULL OR status = ANY($4)) ORDER BY created_at DESC LIMIT $2 OFFSET $3',
-    [userId, limit, offset, statuses]
+    `SELECT id FROM return_requests WHERE user_id = $1 AND ($4::text[] IS NULL OR status = ANY($4))
+      AND ($5::uuid IS NULL OR order_id = $5) ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`,
+    [userId, limit, offset, statuses, orderId]
   );
   return Promise.all(result.rows.map(async row => formatReturn(await findReturn(database, row.id, userId))));
 }

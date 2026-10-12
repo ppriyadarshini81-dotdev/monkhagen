@@ -1,6 +1,8 @@
-import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { AccountService } from '../../../services/account.service';
 import { ReturnRequest } from '../../../models/account.model';
 import { FEATURE_FLAGS } from '../../../config/feature-flags';
@@ -8,17 +10,21 @@ import { FEATURE_FLAGS } from '../../../config/feature-flags';
 @Component({
   selector: 'app-account-returns',
   standalone: true,
-  imports: [CommonModule, DatePipe, FormsModule],
+  imports: [CommonModule, DatePipe, FormsModule, RouterLink],
   templateUrl: './returns.component.html',
   styleUrl: './returns.component.css'
 })
-export class AccountReturnsComponent implements OnInit {
+export class AccountReturnsComponent implements OnInit, OnDestroy {
   @ViewChild('returnDetailsDialog') returnDetailsDialog?: ElementRef<HTMLDialogElement>;
   readonly codEnabled = FEATURE_FLAGS.cashOnDelivery;
   returns: ReturnRequest[] = [];
   loading = true;
   page = 0; readonly pageSize = 10; hasNextPage = false;
   statusFilter = '';
+  orderId = '';
+  loadError = '';
+  private routeSubscription?: Subscription;
+  private returnsSubscription?: Subscription;
   refundFormReturnId = '';
   refundMethod: 'UPI' | 'BANK' = 'UPI';
   upiId = ''; confirmUpiId = '';
@@ -27,16 +33,22 @@ export class AccountReturnsComponent implements OnInit {
   cancellingReturnId = '';
   selectedReturn: ReturnRequest | null = null;
 
-  constructor(private account: AccountService) {}
+  constructor(private account: AccountService, private route: ActivatedRoute) {}
 
   ngOnInit(): void {
-    this.loadReturns();
+    this.routeSubscription = this.route.queryParamMap.subscribe(params => {
+      this.orderId = params.get('orderId') || '';
+      this.returns = [];
+      this.loadReturns(0);
+    });
   }
+  ngOnDestroy(): void { this.routeSubscription?.unsubscribe(); this.returnsSubscription?.unsubscribe(); }
   loadReturns(page = this.page): void {
-    this.loading = true;
-    this.account.getReturns(this.pageSize, page * this.pageSize, this.statusFilter).subscribe({
+    this.returnsSubscription?.unsubscribe();
+    this.loading = true; this.loadError = '';
+    this.returnsSubscription = this.account.getReturns(this.pageSize, page * this.pageSize, this.statusFilter, this.orderId).subscribe({
       next: (r) => { this.returns = r; this.page = page; this.hasNextPage = r.length === this.pageSize; this.loading = false; },
-      error: () => { this.loading = false; }
+      error: error => { this.loadError = error?.error?.message || 'We could not load your requests. Please try again.'; this.loading = false; }
     });
   }
   changePage(direction: number): void {

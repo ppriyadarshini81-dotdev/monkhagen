@@ -373,7 +373,7 @@ exports.getReturns = asyncHandler(async (req, res) => {
   const requestedStatus = String(req.query.status || '').toLowerCase();
   const statusFilter = { open: ['requested', 'return_created', 'shiprocket_failed', 'pickup_scheduled', 'picked_up', 'in_transit', 'received', 'approved'], refund_initiated: ['refund_initiated'], refunded: ['refunded'], cancelled: ['cancelled', 'rejected'] }[requestedStatus];
   if (requestedStatus && !statusFilter) return res.status(400).json({ message: 'Invalid return status filter.' });
-  res.json(await returns.listCustomerReturns(req.user.id, pool, { limit, offset, statuses: statusFilter || null }));
+  res.json(await returns.listCustomerReturns(req.user.id, pool, { limit, offset, statuses: statusFilter || null, orderId: req.query.orderId }));
 });
 
 exports.createReturn = asyncHandler(async (req, res) => {
