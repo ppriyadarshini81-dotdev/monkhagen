@@ -16,6 +16,12 @@
         <option value="oldest">Oldest first</option>
       </select>
     </label>
+    <label class="mh-account-filter">Year
+      <select [(ngModel)]="yearFilter" (change)="applyStatusFilter()" [disabled]="loading">
+        <option value="">All years</option>
+        <option *ngFor="let year of orderYears" [value]="year">{{ year }}</option>
+      </select>
+    </label>
     <form class="mh-order-date-range" (ngSubmit)="applyDateRange()" aria-label="Custom order date range">
       <label class="mh-account-filter">From date
         <input type="date" name="dateFrom" [(ngModel)]="dateFrom" [disabled]="loading" (ngModelChange)="dateRangeError = ''" />

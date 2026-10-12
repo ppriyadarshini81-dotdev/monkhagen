@@ -136,6 +136,7 @@ test('mixed inspection submits one warehouse-to-customer order, replaces approve
   assert.equal(f.state.outboundOrder.order_type, 'replacement');
   assert.equal(f.state.shipment.orderId, OUTBOUND);
   assert.deepEqual(f.calls[0].order_items.map(item => item.sku), ['TEE-L-BLACK', 'TEE-M-BLACK']);
+  assert.deepEqual(f.calls[0].order_items.map(item => item.name), ['Original tee - Size L - Replacement', 'Original tee - Size M - Returned item']);
   assert.equal(f.state.stock, 4);
   assert.equal(f.state.originalStock, 2);
   assert.equal(result.items[1].inspectionStatus, 'rejected');
@@ -149,13 +150,13 @@ test('mixed inspection submits one warehouse-to-customer order, replaces approve
 test('all approved products replace their sizes in one outbound order', async () => {
   const f = fixture(); await submitReplacementInspection(RETURN, decisions('approved', 'approved'), 'admin', f);
   assert.equal(f.calls.length, 1); assert.equal(f.calls[0].order_items.length, 2);
-  assert.ok(f.calls[0].order_items.every(item => item.name.includes('replacement size L')));
+  assert.ok(f.calls[0].order_items.every(item => item.name.includes('Size L - Replacement')));
   assert.equal(f.state.stock, 3); assert.equal(f.state.originalStock, 3);
 });
 
 test('all rejected products still ship originals back, with reasons and no sellable stock changes', async () => {
   const f = fixture(); const result = await submitReplacementInspection(RETURN, decisions('rejected', 'rejected'), 'admin', f);
-  assert.equal(f.calls.length, 1); assert.ok(f.calls[0].order_items.every(item => item.name.includes('returned item')));
+  assert.equal(f.calls.length, 1); assert.ok(f.calls[0].order_items.every(item => item.name.includes('Size M - Returned item')));
   assert.ok(result.items.every(item => item.inspectionStatus === 'rejected' && item.inspectionReason));
   assert.equal(f.state.stock, 5); assert.equal(f.state.originalStock, 1);
   assert.equal(f.state.outboundOrder.order_type, 'rejected_return');

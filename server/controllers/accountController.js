@@ -285,6 +285,14 @@ function orderDateFilter(value) {
   return value;
 }
 
+function orderYearFilter(value) {
+  if (value === undefined || value === '') return null;
+  if (typeof value !== 'string' || !/^\d{4}$/.test(value) || Number(value) < 2000 || Number(value) > 2100) {
+    throw Object.assign(new Error('Invalid order year filter.'), { status: 400 });
+  }
+  return Number(value);
+}
+
 exports.getOrders = asyncHandler(async (req, res) => {
   const { limit, offset } = require('../middleware/validation').pagination(req.query);
   const requestedStatus = String(req.query.status || '').toLowerCase();
@@ -295,6 +303,7 @@ exports.getOrders = asyncHandler(async (req, res) => {
   const sortDirection = requestedSort === 'oldest' ? 'ASC' : 'DESC';
   const dateFrom = orderDateFilter(req.query.dateFrom);
   const dateTo = orderDateFilter(req.query.dateTo);
+  const year = orderYearFilter(req.query.year);
   if (dateFrom && dateTo && dateFrom > dateTo) return res.status(400).json({ message: 'From date must be on or before To date.' });
   const { rows } = await pool.query(
     `SELECT o.*,
@@ -315,8 +324,9 @@ exports.getOrders = asyncHandler(async (req, res) => {
        AND ($4::text[] IS NULL OR o.order_status = ANY($4))
        AND ($5::date IS NULL OR o.created_at >= ($5::date::timestamp AT TIME ZONE 'Asia/Kolkata'))
        AND ($6::date IS NULL OR o.created_at < (($6::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'))
+       AND ($7::integer IS NULL OR EXTRACT(YEAR FROM o.created_at AT TIME ZONE 'Asia/Kolkata') = $7)
      ORDER BY o.created_at ${sortDirection}, o.id ${sortDirection} LIMIT $2 OFFSET $3`,
-    [req.user.id, limit, offset, statusFilter || null, dateFrom, dateTo]
+    [req.user.id, limit, offset, statusFilter || null, dateFrom, dateTo, year]
   );
   const orders = await Promise.all(rows.map(enrichOrder));
   res.json(orders);

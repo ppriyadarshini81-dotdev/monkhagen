@@ -28,6 +28,15 @@ function text(value, label, max = 255) {
   return value.trim();
 }
 
+function productNameWithSize(productName, size, suffix = '') {
+  const baseName = text(productName, 'Product name');
+  const selectedSize = typeof size === 'string' ? size.trim() : '';
+  const parts = [baseName];
+  if (selectedSize) parts.push(`Size ${text(selectedSize, 'Product size', 50)}`);
+  if (suffix) parts.push(text(suffix, 'Product item description', 80));
+  return text(parts.join(' - '), 'Product name');
+}
+
 function postcode(value, label) {
   if (!['string', 'number'].includes(typeof value) || !/^[1-9]\d{5}$/.test(String(value))) throw invalid(`${label} must be a six-digit Indian PIN code.`);
   return String(value);
@@ -144,7 +153,7 @@ function buildOrderPayload(order, address, items, parcel, env = process.env) {
     const units = providerId(item.quantity, 'Item quantity');
     const price = Number(item.unit_price);
     if (!Number.isFinite(price) || price < 0) throw invalid('Order item price is invalid.');
-    return { name: text(item.product_name, 'Product name'),
+    return { name: productNameWithSize(item.product_name, item.size),
       // Create Custom Order expects selling_price inclusive of GST. Sending
       // only the taxable base would understate the payment/parcel value.
       sku: text(item.sku || item.variant_id || item.id, 'Item SKU', 100), units, selling_price: price, tax };
@@ -229,5 +238,5 @@ function normalizeInvoice(data) {
   return invoiceUrl;
 }
 
-module.exports = { uuid, positive, providerId, serviceabilityInput, packageDetails, packageForItems, productTaxPercent, customerEmail, assertFulfillmentSafe, assertShippable,
+module.exports = { uuid, positive, providerId, serviceabilityInput, packageDetails, packageForItems, productTaxPercent, customerEmail, assertFulfillmentSafe, assertShippable, productNameWithSize,
   buildOrderPayload, normalizeCouriers, normalizeTracking, normalizeInvoice, optionalNumber, safeUrl };

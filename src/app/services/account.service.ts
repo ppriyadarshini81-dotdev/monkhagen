@@ -59,10 +59,11 @@ export class AccountService {
   }
 
   // ── Orders ─────────────────────────────────────────────────
-  getOrders(limit = 10, offset = 0, status = '', sort: 'newest' | 'oldest' = 'newest', dateFrom = '', dateTo = ''): Observable<Order[]> {
+  getOrders(limit = 10, offset = 0, status = '', sort: 'newest' | 'oldest' = 'newest', dateFrom = '', dateTo = '', year = ''): Observable<Order[]> {
     const params: Record<string, string | number> = { limit, offset, sort };
     if (dateFrom) params['dateFrom'] = dateFrom;
     if (dateTo) params['dateTo'] = dateTo;
+    if (year) params['year'] = year;
     if (status) params['status'] = status;
     return this.http.get<Order[]>(`${this.api}/orders`, { params });
   }

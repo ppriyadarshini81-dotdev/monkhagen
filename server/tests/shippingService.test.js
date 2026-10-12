@@ -16,7 +16,7 @@ const orderFixture = () => ({
 });
 const address = { full_name: 'Test Customer', address_line1: '123 Test Street', city: 'Delhi', state: 'Delhi',
   postal_code: '110001', country: 'India', phone: '+91 9876543210', email: 'delivery@example.test' };
-const items = [{ id: 'line-1', variant_id: 'variant-1', product_name: 'Test Tee', quantity: 1, unit_price: '1499', sku: 'TEE-M-BLACK' }];
+const items = [{ id: 'line-1', variant_id: 'variant-1', product_name: 'Test Tee', size: 'M', quantity: 1, unit_price: '1499', sku: 'TEE-M-BLACK' }];
 
 function setup({ order = orderFixture(), request, downloadInvoice, row: initial, environment = packingEnvironment } = {}) {
   let row = initial || null;
@@ -66,7 +66,7 @@ test('maps immutable order snapshots, INR totals, variant SKUs and package units
   assert.equal(body.billing_country, 'India');
   assert.equal(body.sub_total, 1499);
   assert.equal(body.shipping_charges, 99);
-  assert.deepEqual(body.order_items[0], { name: 'Test Tee', sku: 'TEE-M-BLACK', units: 1, selling_price: 1499, tax: 5 });
+  assert.deepEqual(body.order_items[0], { name: 'Test Tee - Size M', sku: 'TEE-M-BLACK', units: 1, selling_price: 1499, tax: 5 });
   assert.equal(body.weight, 0.5);
   assert.equal(body.length, 25);
   assert.equal(body.order_items[0].tax, 5);

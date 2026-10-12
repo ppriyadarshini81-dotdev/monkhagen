@@ -7,7 +7,7 @@ const ledger = require('./financialLedgerService');
 const codRefunds = require('./codRefundService');
 const inventory = require('./inventoryService');
 const afterSalesOrders = require('./afterSalesOrderService');
-const { packageDetails, productTaxPercent } = require('./shippingMapping');
+const { packageDetails, productTaxPercent, productNameWithSize } = require('./shippingMapping');
 const { outboundStage, adminCategory, ADMIN_CATEGORY_SQL } = require('./returnWorkflow');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -472,7 +472,7 @@ async function returnPayload(database, returnId, env = process.env, api = shipro
     const gross = moneyPaise(item.unitPrice) * Number(item.quantity);
     const net = moneyPaise(item.refundAmount);
     return { sku: cleanText(item.sku || item.variantId || item.id, 'Item SKU', 100, true),
-      name: cleanText(item.name, 'Product name', 255, true), units: Number(item.quantity),
+      name: productNameWithSize(item.name, item.size), units: Number(item.quantity),
       selling_price: Number(item.unitPrice), tax, discount: Number(rupees(gross - net)), qc_enable: false, qc_size: item.size || '' };
   });
   const { weight, length, breadth, height } = packageDetails({}, env, items);
@@ -798,7 +798,9 @@ async function replacementOutboundPayload(database, returnId, env = process.env,
     sku: cleanText(row.inspection_status === 'approved'
       ? (row.replacement_sku || `${row.product_id}-${row.replacement_size}`)
       : (row.sku || row.variant_id || row.return_item_id), 'Item SKU', 100, true),
-    name: cleanText(`${row.product_name}${row.inspection_status === 'approved' ? ` - replacement size ${row.replacement_size}` : ` - returned item`}`, 'Product name', 255, true),
+    name: productNameWithSize(row.product_name,
+      row.inspection_status === 'approved' ? row.replacement_size : row.size,
+      row.inspection_status === 'approved' ? 'Replacement' : 'Returned item'),
     units: Number(row.quantity), selling_price: Number(row.unit_price),
     requestedSize: row.inspection_status === 'approved' ? row.replacement_size : row.size,
     inspectionStatus: row.inspection_status, productId: row.product_id, returnItemId: row.return_item_id

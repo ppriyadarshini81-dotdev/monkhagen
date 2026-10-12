@@ -43,6 +43,11 @@ test('customer order sorting and date ranges apply before pagination and include
   assert.deepEqual(names(await list({ sort: 'oldest', offset: '2' })), ['middle-b', 'newest']);
   assert.deepEqual(names(await list({ sort: 'oldest', status: 'delivered' })), ['middle-a', 'middle-b']);
   assert.deepEqual(names(await list({ sort: 'newest', status: 'cancelled' })), ['newest']);
+  await db.exec(`INSERT INTO orders (id, user_id, order_number, created_at) VALUES
+    ('10000000-0000-4000-8000-000000000012', '20000000-0000-4000-8000-000000000001', 'previous-year', '2025-10-11');`);
+  assert.deepEqual(names(await list({ year: '2025', limit: '100' })), ['previous-year']);
+  assert.deepEqual(names(await list({ year: '2026', sort: 'oldest', limit: '100' })), ['oldest', 'middle-a', 'middle-b', 'newest']);
+  await db.exec(`DELETE FROM orders WHERE order_number = 'previous-year';`);
   const calls = query.mock.callCount();
   const invalid = await list({ sort: 'ASC; DROP TABLE orders' });
   assert.equal(invalid.status, 400);
@@ -67,5 +72,7 @@ test('customer order sorting and date ranges apply before pagination and include
     await assert.rejects(list({ dateFrom: invalidDate }), { status: 400 });
     await assert.rejects(list({ dateTo: invalidDate }), { status: 400 });
   }
+  await assert.rejects(list({ year: '1999' }), { status: 400 });
+  await assert.rejects(list({ year: '2026-10' }), { status: 400 });
   assert.equal(query.mock.callCount(), rangeCalls);
 });

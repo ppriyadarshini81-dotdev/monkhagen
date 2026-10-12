@@ -267,7 +267,7 @@ test('Shiprocket return payload uses customer pickup and the saved forward picku
   assert.equal(payload.pickup_phone, '9876543210');
   assert.equal(payload.shipping_address, 'Kabir Apparels Warehouse');
   assert.equal(payload.shipping_pincode, 110001);
-  assert.deepEqual(payload.order_items[0], { sku: 'TEE-M-BLUE', name: 'Original tee', units: 1, selling_price: 100, tax: 5, discount: 10, qc_enable: false, qc_size: 'M' });
+  assert.deepEqual(payload.order_items[0], { sku: 'TEE-M-BLUE', name: 'Original tee - Size M', units: 1, selling_price: 100, tax: 5, discount: 10, qc_enable: false, qc_size: 'M' });
   assert.equal(Object.hasOwn(payload, 'request_pickup'), false);
   assert.equal(payload.weight, 0.3);
   assert.equal(payload.length, 27);

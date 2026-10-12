@@ -33,6 +33,8 @@ export class AccountOrdersComponent implements OnInit, OnDestroy {
   hasNextPage = false;
   statusFilter = '';
   dateSort: 'newest' | 'oldest' = 'newest';
+  yearFilter = '';
+  readonly orderYears = Array.from({ length: 10 }, (_, index) => String(new Date().getFullYear() - index));
   dateFrom = '';
   dateTo = '';
   dateRange = { from: '', to: '' };
@@ -137,7 +139,7 @@ export class AccountOrdersComponent implements OnInit, OnDestroy {
   loadOrders(page = this.page): void {
     this.loading = true; this.loadError = '';
     this.account.getOrders(this.pageSize, page * this.pageSize, this.statusFilter, this.dateSort,
-      this.dateRange.from, this.dateRange.to).subscribe({
+      this.dateRange.from, this.dateRange.to, this.yearFilter).subscribe({
       next: (orders) => {
         this.orders = orders; this.page = page; this.hasNextPage = orders.length === this.pageSize;
         this.loadDeliveredEligibility(orders);

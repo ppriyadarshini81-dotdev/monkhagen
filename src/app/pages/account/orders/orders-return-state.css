@@ -3,8 +3,9 @@
 .mh-return-requested-label{color:var(--mh-accent)}
 .mh-invoice-state{margin:0;padding:12px 28px;border-top:1px solid var(--mh-line);font-size:12px;color:var(--mh-muted)}
 .mh-invoice-state a{color:var(--mh-accent)}
-.mh-order-filters{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px}
+.mh-order-filters{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:20px}
 .mh-order-filters .mh-account-filter{margin-bottom:0}
-.mh-order-date-range{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px}
+.mh-order-date-range{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px}
+.mh-order-filters>.mh-account-filter select{min-width:150px}
 .mh-order-date-range input{min-width:160px;min-height:38px;box-sizing:border-box;padding:10px 12px;border:1px solid var(--mh-line);border-radius:9px;background:#fff;color:var(--mh-text);font:inherit;text-transform:none;letter-spacing:normal}
 .mh-order-date-range button{min-height:38px}

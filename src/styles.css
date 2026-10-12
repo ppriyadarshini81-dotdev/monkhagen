@@ -38,6 +38,19 @@ body { min-width: 0; max-width: 100%; }
 
 body.mh-scroll-locked { overflow: hidden; }
 
+/* Native dialogs can scroll their own body, but the document behind them must
+   remain still.  :has() covers every customer/admin dialog on desktop, tablet
+   and modern mobile browsers without preventing the dialog's internal scroll. */
+html:has(dialog[open]),
+body:has(dialog[open]) {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+dialog[open] {
+  overscroll-behavior: contain;
+}
+
 :focus-visible { outline: 2px solid var(--mh-accent); outline-offset: 3px; }
 
 /* Admin COD refund modal is global to keep the already-large Admin component within its CSS budget. */
