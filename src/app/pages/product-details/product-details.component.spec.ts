@@ -249,4 +249,119 @@ describe('Product details shared content', () => {
 
     expect(fixture.componentInstance.imageZoom).toBe(2);
   });
+
+  function openPanningViewer() {
+    productService.getProduct.and.returnValue(of({ ...product, images: [pixel, pixel] }));
+    fixture.detectChanges(); fixture.componentInstance.openImageViewer(); fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    const frame = root.querySelector<HTMLElement>('.mh-pd__viewer-frame')!;
+    const image = frame.querySelector<HTMLImageElement>('img')!;
+    spyOnProperty(image, 'clientWidth', 'get').and.returnValue(200);
+    spyOnProperty(image, 'clientHeight', 'get').and.returnValue(220);
+    const width = spyOnProperty(frame, 'clientWidth', 'get').and.returnValue(250);
+    const height = spyOnProperty(frame, 'clientHeight', 'get').and.returnValue(300);
+    let captured = false;
+    const capture = spyOn(frame, 'setPointerCapture').and.callFake(() => { captured = true; });
+    spyOn(frame, 'hasPointerCapture').and.callFake(() => captured);
+    const release = spyOn(frame, 'releasePointerCapture').and.callFake(() => { captured = false; });
+    image.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); fixture.detectChanges();
+    function pointer(type: string, pointerType: string, x: number, y: number, pointerId = 1) {
+      frame.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerType, pointerId,
+        clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1 }));
+      fixture.detectChanges();
+    }
+    return { root, frame, image, width, height, capture, release, pointer, component: fixture.componentInstance };
+  }
+
+  for (const pointerType of ['mouse', 'touch']) {
+    it(`pans a zoomed image in all four directions with ${pointerType}, clamps edges and releases dragging`, () => {
+      const viewer = openPanningViewer();
+      viewer.pointer('pointerdown', pointerType, 100, 100);
+      expect(viewer.capture).toHaveBeenCalledWith(1);
+      viewer.pointer('pointermove', pointerType, 140, 130);
+      expect(viewer.image.style.transform).toContain('translate(40px, 30px)');
+      expect(viewer.frame.classList.contains('is-panning')).toBeTrue();
+      expect(getComputedStyle(viewer.image).cursor).toBe('grabbing');
+      expect(getComputedStyle(viewer.root.querySelector('.mh-pd__image-stage')!).touchAction).toBe('none');
+      viewer.pointer('pointermove', pointerType, -1000, -1000);
+      expect(viewer.component.imagePanX).toBe(-75); expect(viewer.component.imagePanY).toBe(-70);
+      viewer.pointer('pointermove', pointerType, 1000, 1000);
+      expect(viewer.component.imagePanX).toBe(75); expect(viewer.component.imagePanY).toBe(70);
+      viewer.pointer('pointerup', pointerType, 1000, 1000);
+      expect(viewer.release).toHaveBeenCalledWith(1); expect(viewer.component.imagePanning).toBeFalse();
+      expect(viewer.component.imageZoom).toBe(2); expect(viewer.component.activeImage).toBe(0);
+      viewer.pointer('pointermove', pointerType, 0, 0);
+      expect(viewer.component.imagePanX).toBe(75);
+      viewer.root.querySelector<HTMLButtonElement>('.mh-pd__zoom-value')!.click(); fixture.detectChanges();
+      expect(viewer.component.imagePanX).toBe(0); expect(viewer.component.imagePanY).toBe(0);
+      expect(viewer.component.imageZoom).toBe(1);
+    });
+  }
+
+  it('keeps a touch drag that returns to its starting point from being mistaken for a double-tap', () => {
+    const viewer = openPanningViewer();
+    viewer.pointer('pointerdown', 'touch', 100, 100); viewer.pointer('pointerup', 'touch', 100, 100);
+    viewer.pointer('pointerdown', 'touch', 100, 100);
+    viewer.pointer('pointermove', 'touch', 150, 140); viewer.pointer('pointermove', 'touch', 100, 100);
+    viewer.pointer('pointerup', 'touch', 100, 100);
+    expect(viewer.component.imageZoom).toBe(2);
+  });
+
+  it('ends panning on cancellation or lost capture without getting stuck or jumping on the next drag', () => {
+    const viewer = openPanningViewer();
+    for (const event of ['pointercancel', 'lostpointercapture']) {
+      viewer.pointer('pointerdown', 'mouse', 100, 100); viewer.pointer('pointermove', 'mouse', 130, 120);
+      const x = viewer.component.imagePanX, y = viewer.component.imagePanY;
+      viewer.pointer(event, 'mouse', 130, 120);
+      expect(viewer.component.imagePanning).toBeFalse();
+      viewer.pointer('pointermove', 'mouse', 170, 150);
+      expect(viewer.component.imagePanX).toBe(x); expect(viewer.component.imagePanY).toBe(y);
+    }
+  });
+
+  it('clamps pan after zoom or viewport changes and resets it when changing photos or closing', () => {
+    const viewer = openPanningViewer();
+    viewer.pointer('pointerdown', 'mouse', 100, 100); viewer.pointer('pointermove', 'mouse', 200, 200);
+    viewer.pointer('pointerup', 'mouse', 200, 200);
+    viewer.component.setImageZoom(1.5);
+    expect(viewer.component.imagePanX).toBe(25); expect(viewer.component.imagePanY).toBe(15);
+    viewer.width.and.returnValue(500); viewer.height.and.returnValue(600); viewer.component.viewerResized();
+    expect(viewer.component.imagePanX).toBe(0); expect(viewer.component.imagePanY).toBe(0);
+    viewer.component.changeImage(1);
+    expect(viewer.component.imageZoom).toBe(1); expect(viewer.component.imagePanX).toBe(0);
+    viewer.component.closeImageViewer(); expect(viewer.component.imageViewerOpen).toBeFalse();
+  });
+
+  it('pans with a trackpad while zoomed instead of switching photos', () => {
+    const viewer = openPanningViewer();
+    viewer.root.querySelector('.mh-pd__image-stage')!.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true, cancelable: true, deltaX: 30, deltaY: 20 }));
+    expect(viewer.component.imagePanX).toBe(-30); expect(viewer.component.imagePanY).toBe(-20);
+    expect(viewer.component.activeImage).toBe(0);
+  });
+
+  it('does not let a mouse press before zooming block a later touch drag', () => {
+    const viewer = openPanningViewer(); viewer.component.setImageZoom(1);
+    viewer.pointer('pointerdown', 'mouse', 100, 100);
+    expect(viewer.capture).not.toHaveBeenCalled();
+    viewer.component.setImageZoom(2);
+    viewer.pointer('pointerdown', 'touch', 100, 100, 2); viewer.pointer('pointermove', 'touch', 130, 120, 2);
+    expect(viewer.component.imagePanning).toBeTrue();
+    expect(viewer.component.imagePanX).toBe(30); expect(viewer.component.imagePanY).toBe(20);
+    viewer.pointer('pointerup', 'touch', 130, 120, 2);
+  });
+
+  it('ends one-finger panning when another finger arrives and permits a fresh drag afterward', () => {
+    const viewer = openPanningViewer();
+    viewer.pointer('pointerdown', 'touch', 100, 100);
+    viewer.pointer('pointerdown', 'touch', 150, 150, 2);
+    expect(viewer.component.imagePanning).toBeFalse();
+    viewer.pointer('pointermove', 'touch', 170, 150);
+    expect(viewer.component.imagePanX).toBe(0); expect(viewer.component.imagePanY).toBe(0);
+    viewer.pointer('pointerup', 'touch', 170, 150); viewer.pointer('pointerup', 'touch', 150, 150, 2);
+    expect(viewer.component.imageZoom).toBe(2);
+    viewer.pointer('pointerdown', 'touch', 100, 100, 3); viewer.pointer('pointermove', 'touch', 130, 120, 3);
+    expect(viewer.component.imagePanX).toBe(30); expect(viewer.component.imagePanY).toBe(20);
+    viewer.pointer('pointerup', 'touch', 130, 120, 3);
+  });
 });
