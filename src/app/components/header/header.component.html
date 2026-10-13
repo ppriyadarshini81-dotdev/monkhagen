@@ -11,20 +11,17 @@
       <a routerLink="/products" routerLinkActive="active" (click)="closeMenu()">Products</a>
       <a routerLink="/about" routerLinkActive="active" (click)="closeMenu()">About Us</a>
 
-      <ng-container *ngIf="isAdmin">
-        <a routerLink="/admin" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Admin</a>
-        <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Dashboard</a>
-        <a routerLink="/admin/ledger" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Ledger</a>
-        <a routerLink="/admin/stock" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Stock</a>
+      <ng-container *ngIf="isAdmin && !inAdminPortal">
+        <a routerLink="/admin/dashboard" routerLinkActive="active" (click)="closeMenu()">Admin Portal</a>
       </ng-container>
 
       <div class="mh-nav__mobileonly">
         <ng-container *ngIf="user$ | async as user; else mobileLogin">
           <span class="mh-nav__hi">Hi, {{ user.name }}</span>
-          <a routerLink="/account/profile" (click)="closeMenu()">My Account</a>
-          <a routerLink="/account/orders" (click)="closeMenu()">Orders</a>
-          <a routerLink="/account/returns" (click)="closeMenu()">Returns</a>
+          <a routerLink="/account/profile" (click)="closeMenu()">Profile</a>
           <a routerLink="/account/addresses" (click)="closeMenu()">Addresses</a>
+          <a routerLink="/account/orders" (click)="closeMenu()">My Orders</a>
+          <a routerLink="/account/returns" (click)="closeMenu()">Returns/Replacement</a>
           <button type="button" class="mh-nav__logout" (click)="logout()">Logout</button>
         </ng-container>
         <ng-template #mobileLogin>

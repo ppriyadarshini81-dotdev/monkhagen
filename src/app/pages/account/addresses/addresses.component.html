@@ -17,7 +17,7 @@
           <p id="addr-phone-error" class="mh-field-error" *ngIf="visibleError('phone')">{{ visibleError('phone') }}</p></div>
         <div class="mh-field"><label class="mh-label" for="addr-email">Email address *</label>
           <input id="addr-email" class="mh-input" [(ngModel)]="form.email" name="email" required type="email" maxlength="254" autocomplete="email" (blur)="touched.add('email')" [attr.aria-invalid]="!!visibleError('email')" aria-describedby="addr-email-error" />
-          <p class="mh-field-hint">Used only for shipment tracking and delivery updates. We will not send marketing spam to this address.</p>
+          <p class="mh-field-hint">Used solely for sending delivery updates.</p>
           <p id="addr-email-error" class="mh-field-error" *ngIf="visibleError('email')">{{ visibleError('email') }}</p></div>
         <div class="mh-field mh-field--full"><label class="mh-label" for="addr-line1">Address line 1 *</label>
           <input id="addr-line1" class="mh-input" [(ngModel)]="form.addressLine1" name="l1" required maxlength="255" autocomplete="address-line1" (blur)="touched.add('addressLine1')" [attr.aria-invalid]="!!visibleError('addressLine1')" aria-describedby="addr-line1-error" />
@@ -42,10 +42,13 @@
           <input id="addr-pin" class="mh-input" [ngModel]="form.postalCode" (ngModelChange)="pincodeChanged($event)" name="pin" required inputmode="numeric" maxlength="6" autocomplete="postal-code" (blur)="touched.add('postalCode')" [attr.aria-invalid]="!!visibleError('postalCode')" aria-describedby="addr-pin-error" />
           <p class="mh-field-hint" *ngIf="pincodeLoading">Checking PIN code…</p>
           <p id="addr-pin-error" class="mh-field-error" *ngIf="visibleError('postalCode')">{{ visibleError('postalCode') }}</p></div>
-        <div class="mh-field"><label class="mh-label">Type</label>
-          <select class="mh-input mh-select" [(ngModel)]="form.addressType" name="type">
+        <div class="mh-field"><label class="mh-label" for="addr-type">Type</label>
+          <select id="addr-type" class="mh-input mh-select" [ngModel]="form.addressType" (ngModelChange)="addressTypeChanged($event)" name="type">
             <option>Home</option><option>Work</option><option>Other</option>
           </select></div>
+        <div class="mh-field" *ngIf="form.addressType === 'Other'"><label class="mh-label" for="addr-custom-type">Name this address type *</label>
+          <input id="addr-custom-type" class="mh-input" [(ngModel)]="customAddressType" name="customAddressType" required maxlength="30" placeholder="e.g. Parents' home" [attr.aria-invalid]="attempted && !!customAddressTypeError" />
+          <p class="mh-field-error" *ngIf="attempted && customAddressTypeError">{{ customAddressTypeError }}</p></div>
       </div>
       <p class="mh-error" *ngIf="locationError">{{ locationError }}</p>
       <p class="mh-error" *ngIf="error">{{ error }}</p>

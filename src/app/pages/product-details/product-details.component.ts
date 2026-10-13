@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
@@ -21,7 +21,7 @@ import { ProductReview, ReviewEligibility, ReviewSummary } from '../../models/re
   templateUrl: './product-details.component.html',
   styleUrl: './product-details.component.css'
 })
-export class ProductDetailsComponent implements OnInit {
+export class ProductDetailsComponent implements OnInit, OnDestroy {
   readonly cachedMediaUrl = cachedMediaUrl;
   product?: Product;
   loading = true;
@@ -61,6 +61,9 @@ export class ProductDetailsComponent implements OnInit {
   activeReviewPhoto = '';
   readonly starValues = [1, 2, 3, 4, 5];
   imageZoom = 1;
+  imagePanX = 0;
+  imagePanY = 0;
+  imagePanning = false;
   imageViewerOpen = false;
   private failedZoomImages = new Set<number>();
   private loadedViewerImages = new Set<number>();
@@ -71,7 +74,10 @@ export class ProductDetailsComponent implements OnInit {
   private wheelDistance = 0;
   private wheelGestureActive = false;
   private lastWheelEventAt = 0;
-  private viewerPointerStart: { x: number; y: number; index: number } | null = null;
+  private viewerPointerStart: { x: number; y: number; index: number; pointerId: number; moved: boolean } | null = null;
+  private viewerPointers = new Set<number>();
+  private viewerPan: { pointerId: number; target: HTMLElement; image: HTMLImageElement;
+    x: number; y: number; panX: number; panY: number; moved: boolean } | null = null;
   private lastViewerTapAt = 0;
   private lastViewerTapIndex = -1;
   private suppressSyntheticDoubleClickUntil = 0;
@@ -92,6 +98,7 @@ export class ProductDetailsComponent implements OnInit {
     if (this.suppressImageOpen) return;
     if (!this.product?.images.length) return;
     this.imageZoom = 1;
+    this.resetViewerInteraction();
     this.loadedViewerImages = new Set([this.activeImage]);
     this.imageViewerOpen = true;
     this.productImageDialog?.nativeElement.showModal();
@@ -100,6 +107,7 @@ export class ProductDetailsComponent implements OnInit {
 
   closeImageViewer(): void {
     this.imageZoom = 1;
+    this.resetViewerInteraction();
     this.imageViewerOpen = false;
     this.loadedViewerImages.clear();
     this.productImageDialog?.nativeElement.close();
@@ -107,6 +115,7 @@ export class ProductDetailsComponent implements OnInit {
 
   imageViewerClosed(): void {
     this.imageZoom = 1;
+    this.resetViewerInteraction();
     this.imageViewerOpen = false;
     this.loadedViewerImages.clear();
   }
@@ -131,12 +140,15 @@ export class ProductDetailsComponent implements OnInit {
   }
 
   setImageZoom(zoom: number): void {
+    this.finishViewerPan();
     this.imageZoom = Math.min(3, Math.max(1, Number(zoom.toFixed(1))));
+    this.constrainViewerPan();
   }
 
   selectImage(index: number): void {
     this.activeImage = index;
     this.imageZoom = 1;
+    this.resetViewerInteraction();
     if (this.productImageDialog?.nativeElement.open) {
       this.loadedViewerImages.add(index);
       this.scrollViewerTo(index);
@@ -156,13 +168,16 @@ export class ProductDetailsComponent implements OnInit {
     if (!Number.isSafeInteger(index) || index === this.activeImage) return;
     this.activeImage = index;
     this.imageZoom = 1;
+    this.resetViewerInteraction();
     this.loadedViewerImages.add(index);
   }
 
   toggleViewerZoom(index: number): void {
+    const zoom = this.activeImage === index && this.imageZoom > 1 ? 1 : 2;
+    if (index !== this.activeImage) this.resetViewerInteraction();
     this.activeImage = index;
     this.loadedViewerImages.add(index);
-    this.imageZoom = this.imageZoom > 1 ? 1 : 2;
+    this.setImageZoom(zoom);
   }
 
   viewerImageDoubleClick(event: MouseEvent, index: number): void {
@@ -177,17 +192,59 @@ export class ProductDetailsComponent implements OnInit {
   }
 
   viewerImagePointerDown(event: PointerEvent, index: number): void {
-    if (event.pointerType !== 'touch') return;
-    this.viewerPointerStart = { x: event.clientX, y: event.clientY, index };
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (event.pointerType !== 'touch' && this.imageZoom <= 1) return;
+    this.viewerPointers.add(event.pointerId);
+    if (this.viewerPointers.size > 1) {
+      this.finishViewerPan();
+      this.viewerPointerStart = null;
+      this.clearViewerTap();
+      return;
+    }
+    if (event.pointerType === 'touch') {
+      this.viewerPointerStart = { x: event.clientX, y: event.clientY, index, pointerId: event.pointerId, moved: false };
+    }
+    if (this.imageZoom <= 1 || index !== this.activeImage) return;
+    const target = event.currentTarget as HTMLElement;
+    const image = target.querySelector<HTMLImageElement>('img');
+    if (!image) return;
+    this.constrainViewerPan(image);
+    this.viewerPan = { pointerId: event.pointerId, target, image, x: event.clientX, y: event.clientY,
+      panX: this.imagePanX, panY: this.imagePanY, moved: false };
+    this.imagePanning = true;
+    try { target.setPointerCapture(event.pointerId); }
+    catch { /* Synthetic events and interrupted pointers may no longer be active. */ }
+  }
+
+  viewerImagePointerMove(event: PointerEvent): void {
+    const tap = this.viewerPointerStart;
+    if (tap?.pointerId === event.pointerId && Math.hypot(event.clientX - tap.x, event.clientY - tap.y) > 14) tap.moved = true;
+    const pan = this.viewerPan;
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    if (event.cancelable) event.preventDefault();
+    const x = event.clientX - pan.x, y = event.clientY - pan.y;
+    if (Math.hypot(x, y) > 5) pan.moved = true;
+    this.imagePanX = pan.panX + x;
+    this.imagePanY = pan.panY + y;
+    this.constrainViewerPan(pan.image);
   }
 
   viewerImagePointerUp(event: PointerEvent, index: number): void {
+    const dragged = this.viewerPan?.pointerId === event.pointerId && this.viewerPan.moved;
+    if (this.viewerPan?.pointerId === event.pointerId) this.finishViewerPan();
+    this.viewerPointers.delete(event.pointerId);
+    if (dragged) {
+      this.viewerPointerStart = null;
+      this.clearViewerTap();
+      this.suppressSyntheticDoubleClickUntil = performance.now() + 350;
+      return;
+    }
     if (event.pointerType !== 'touch') return;
     const start = this.viewerPointerStart;
     this.viewerPointerStart = null;
-    if (!start || start.index !== index || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 14) {
-      this.lastViewerTapAt = 0;
-      this.lastViewerTapIndex = -1;
+    if (!start || start.pointerId !== event.pointerId || start.index !== index || start.moved || this.viewerPointers.size ||
+        Math.hypot(event.clientX - start.x, event.clientY - start.y) > 14) {
+      this.clearViewerTap();
       return;
     }
 
@@ -205,6 +262,56 @@ export class ProductDetailsComponent implements OnInit {
     this.lastViewerTapAt = now;
     this.lastViewerTapIndex = index;
   }
+
+  viewerImagePointerCancel(event: PointerEvent): void {
+    this.viewerPointers.delete(event.pointerId);
+    if (this.viewerPan?.pointerId === event.pointerId) this.finishViewerPan();
+    this.viewerPointerStart = null;
+    this.clearViewerTap();
+  }
+
+  viewerImageCaptureLost(event: PointerEvent): void {
+    if (this.viewerPan?.pointerId === event.pointerId) this.viewerImagePointerCancel(event);
+  }
+
+  private finishViewerPan(): void {
+    const pan = this.viewerPan;
+    this.viewerPan = null;
+    this.imagePanning = false;
+    if (pan?.target.hasPointerCapture(pan.pointerId)) pan.target.releasePointerCapture(pan.pointerId);
+  }
+
+  private clearViewerTap(): void { this.lastViewerTapAt = 0; this.lastViewerTapIndex = -1; }
+
+  private resetViewerInteraction(): void {
+    this.finishViewerPan();
+    this.imagePanX = 0; this.imagePanY = 0;
+    this.viewerPointers.clear(); this.viewerPointerStart = null;
+    this.touchStartX = null; this.touchCurrentX = null; this.touchPointCount = 0;
+    this.clearViewerTap();
+  }
+
+  private constrainViewerPan(image?: HTMLImageElement): void {
+    image ||= this.productImageStage?.nativeElement.querySelector<HTMLImageElement>(`[data-viewer-index="${this.activeImage}"] img`) || undefined;
+    const frame = image?.parentElement;
+    if (this.imageZoom <= 1 || !image || !frame) {
+      this.imagePanX = 0; this.imagePanY = 0;
+      return;
+    }
+    const maxX = Math.max(0, (image.clientWidth * this.imageZoom - frame.clientWidth) / 2);
+    const maxY = Math.max(0, (image.clientHeight * this.imageZoom - frame.clientHeight) / 2);
+    this.imagePanX = Math.max(-maxX, Math.min(maxX, this.imagePanX));
+    this.imagePanY = Math.max(-maxY, Math.min(maxY, this.imagePanY));
+  }
+
+  viewerImageLoaded(event: Event, index: number): void {
+    if (index === this.activeImage) this.constrainViewerPan(event.currentTarget as HTMLImageElement);
+  }
+
+  @HostListener('window:resize')
+  viewerResized(): void { if (this.imageViewerOpen) this.constrainViewerPan(); }
+
+  ngOnDestroy(): void { this.resetViewerInteraction(); }
 
   private scrollViewerTo(index: number, smooth = true): void {
     const stage = this.productImageStage?.nativeElement;
@@ -259,6 +366,13 @@ export class ProductDetailsComponent implements OnInit {
   }
 
   imageTrackpadSlide(event: WheelEvent): void {
+    if (this.imageViewerOpen && this.imageZoom > 1) {
+      event.preventDefault();
+      this.imagePanX -= event.deltaX;
+      this.imagePanY -= event.deltaY;
+      this.constrainViewerPan();
+      return;
+    }
     if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
     event.preventDefault();
     const now = event.timeStamp || performance.now();
@@ -521,6 +635,7 @@ export class ProductDetailsComponent implements OnInit {
     if (imageCount < 2) return;
     this.activeImage = (this.activeImage + delta + imageCount) % imageCount;
     this.imageZoom = 1;
+    this.resetViewerInteraction();
     if (this.productImageDialog?.nativeElement.open) {
       this.loadedViewerImages.add(this.activeImage);
       this.scrollViewerTo(this.activeImage);

@@ -28,6 +28,15 @@ function text(value, label, max = 255) {
   return value.trim();
 }
 
+function productNameWithSize(productName, size, suffix = '') {
+  const baseName = text(productName, 'Product name');
+  const selectedSize = typeof size === 'string' ? size.trim() : '';
+  const parts = [baseName];
+  if (selectedSize) parts.push(`Size ${text(selectedSize, 'Product size', 50)}`);
+  if (suffix) parts.push(text(suffix, 'Product item description', 80));
+  return text(parts.join(' - '), 'Product name');
+}
+
 function postcode(value, label) {
   if (!['string', 'number'].includes(typeof value) || !/^[1-9]\d{5}$/.test(String(value))) throw invalid(`${label} must be a six-digit Indian PIN code.`);
   return String(value);
@@ -50,13 +59,36 @@ function serviceabilityInput(input) {
   };
 }
 
-function packageDetails(input = {}, env = process.env) {
+function itemQuantity(items) {
+  if (!Array.isArray(items) || !items.length) throw invalid('The parcel must contain products.');
+  let quantity = 0;
+  for (const item of items) {
+    quantity += providerId(item?.quantity ?? item?.units, 'Item quantity');
+    if (!Number.isSafeInteger(quantity)) throw invalid('The parcel product quantity is too large.');
+  }
+  return quantity;
+}
+
+function packageForItems(items, env = process.env) {
+  const quantity = itemQuantity(items);
+  const profile = require('../config/shippingPackages')(env).find(row => quantity >= row.minimumQuantity &&
+    (row.maximumQuantity === null || quantity <= row.maximumQuantity));
+  if (!profile) throw shippingError(503, 'SHIPPING_PACKAGE_NOT_CONFIGURED', 'Configure packing measurements for this product quantity.');
+  return { weight: profile.weight, length: profile.length, breadth: profile.breadth, height: profile.height };
+}
+
+function packageDetails(input = {}, env = process.env, items) {
+  let profile = {};
+  if (items !== undefined) {
+    if (['weight', 'length', 'breadth', 'height'].every(field => input[field] != null)) itemQuantity(items);
+    else profile = packageForItems(items, env);
+  }
   const values = {
     pickup_location: input.pickup_location ?? env.SHIPROCKET_PICKUP_LOCATION,
-    weight: input.weight ?? env.SHIPROCKET_PACKAGE_WEIGHT_KG,
-    length: input.length ?? env.SHIPROCKET_PACKAGE_LENGTH_CM,
-    breadth: input.breadth ?? env.SHIPROCKET_PACKAGE_BREADTH_CM,
-    height: input.height ?? env.SHIPROCKET_PACKAGE_HEIGHT_CM
+    weight: input.weight ?? profile.weight ?? env.SHIPROCKET_PACKAGE_WEIGHT_KG,
+    length: input.length ?? profile.length ?? env.SHIPROCKET_PACKAGE_LENGTH_CM,
+    breadth: input.breadth ?? profile.breadth ?? env.SHIPROCKET_PACKAGE_BREADTH_CM,
+    height: input.height ?? profile.height ?? env.SHIPROCKET_PACKAGE_HEIGHT_CM
   };
   if (Object.values(values).some(value => value == null || value === '')) {
     throw shippingError(503, 'SHIPPING_PACKAGE_NOT_CONFIGURED',
@@ -79,6 +111,11 @@ function assertFulfillmentSafe(order) {
   if (['cancelled', 'returned'].includes(order.order_status)) {
     throw shippingError(409, 'ORDER_NOT_SHIPPABLE', 'This order is not eligible for shipment creation.');
   }
+  if (['replacement', 'rejected_return'].includes(order.order_type)) {
+    if (order.source_order_id && order.return_request_id && Number(order.total_amount) === 0 &&
+        order.after_sales_return_status === 'approved' && !order.after_sales_pending_operation) return;
+    throw shippingError(409, 'ORDER_FULFILLMENT_HELD', 'The linked inspection must be completed before this outbound order can ship.');
+  }
   if (order.payment_method === 'cod' && ['pending', 'paid'].includes(order.payment_status)) return;
   if (order.payment_method !== 'razorpay' || order.payment_status !== 'paid' ||
       !order.razorpay_order_id || !order.razorpay_payment_id || !order.paid_at) {
@@ -93,7 +130,15 @@ function assertShippable(order) {
   }
 }
 
-function buildOrderPayload(order, address, items, parcel) {
+function productTaxPercent(env = process.env) {
+  const value = Number(env.SHIPROCKET_PRODUCT_TAX_PERCENT);
+  if (typeof env.SHIPROCKET_PRODUCT_TAX_PERCENT !== 'string' || !env.SHIPROCKET_PRODUCT_TAX_PERCENT.trim() || !Number.isFinite(value) || value < 0 || value > 100) {
+    throw shippingError(503, 'SHIPROCKET_NOT_CONFIGURED', 'Configure the Shiprocket product tax percentage in the backend environment.');
+  }
+  return value;
+}
+
+function buildOrderPayload(order, address, items, parcel, env = process.env) {
   assertShippable(order);
   if (!address) throw invalid('The saved order address is missing.');
   const name = text(address.full_name, 'Customer name').split(/\s+/);
@@ -103,12 +148,15 @@ function buildOrderPayload(order, address, items, parcel) {
   if (String(address.country || '').toLowerCase() !== 'india') throw invalid('Only domestic Indian shipments are supported.');
   const billingEmail = customerEmail(address.email);
   if (!items.length) throw invalid('The order has no items.');
+  const tax = productTaxPercent(env);
   const orderItems = items.map(item => {
     const units = providerId(item.quantity, 'Item quantity');
     const price = Number(item.unit_price);
     if (!Number.isFinite(price) || price < 0) throw invalid('Order item price is invalid.');
-    return { name: text(item.product_name, 'Product name'),
-      sku: text(item.sku || item.variant_id || item.id, 'Item SKU', 100), units, selling_price: price };
+    return { name: productNameWithSize(item.product_name, item.size),
+      // Create Custom Order expects selling_price inclusive of GST. Sending
+      // only the taxable base would understate the payment/parcel value.
+      sku: text(item.sku || item.variant_id || item.id, 'Item SKU', 100), units, selling_price: price, tax };
   });
   const subtotal = Number(order.subtotal);
   const discount = Number(order.discount_amount);
@@ -131,7 +179,7 @@ function buildOrderPayload(order, address, items, parcel) {
     billing_pincode: postcode(address.postal_code, 'Saved address postcode'), billing_country: 'India',
     billing_email: billingEmail, billing_phone: phone, shipping_is_billing: true,
     order_items: orderItems, payment_method: order.payment_method === 'cod' ? 'COD' : 'Prepaid',
-    sub_total: subtotal, total_discount: discount, shipping_charges: shipping,
+    sub_total: subtotal - discount, total_discount: discount, shipping_charges: shipping,
     length: parcel.length, breadth: parcel.breadth, height: parcel.height, weight: parcel.weight
   };
 }
@@ -190,5 +238,5 @@ function normalizeInvoice(data) {
   return invoiceUrl;
 }
 
-module.exports = { uuid, positive, providerId, serviceabilityInput, packageDetails, customerEmail, assertFulfillmentSafe, assertShippable,
+module.exports = { uuid, positive, providerId, serviceabilityInput, packageDetails, packageForItems, productTaxPercent, customerEmail, assertFulfillmentSafe, assertShippable, productNameWithSize,
   buildOrderPayload, normalizeCouriers, normalizeTracking, normalizeInvoice, optionalNumber, safeUrl };

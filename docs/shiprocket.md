@@ -13,17 +13,23 @@ Set these backend environment variables locally. Variable names only are listed 
 | `SHIPROCKET_BASE_URL` | Documented Shiprocket API origin; defaults to the official HTTPS origin when blank |
 | `SHIPROCKET_TIMEOUT_MS` | Optional request/body timeout, defaults to 15 seconds; accepted range 1–60 seconds |
 | `SHIPROCKET_PICKUP_LOCATION` | Exact name of an existing pickup location in your Shiprocket account |
-| `SHIPROCKET_PACKAGE_WEIGHT_KG` | Actual packed-order weight in kilograms |
-| `SHIPROCKET_PACKAGE_LENGTH_CM` | Packed-order length in centimetres |
-| `SHIPROCKET_PACKAGE_BREADTH_CM` | Packed-order breadth in centimetres |
-| `SHIPROCKET_PACKAGE_HEIGHT_CM` | Packed-order height in centimetres |
+| `SHIPROCKET_PRODUCT_TAX_PERCENT` | Product GST percentage sent in each item; configured as `5` |
+| `SHIPROCKET_PACKAGE_PROFILES` | JSON array of quantity ranges, actual weight in kg and length/breadth/height in cm; configure in `.env` |
+| `SHIPROCKET_PACKAGE_WEIGHT_KG` | Legacy fallback weight in kilograms for callers without item quantities |
+| `SHIPROCKET_PACKAGE_LENGTH_CM` | Legacy fallback length in centimetres |
+| `SHIPROCKET_PACKAGE_BREADTH_CM` | Legacy fallback breadth in centimetres |
+| `SHIPROCKET_PACKAGE_HEIGHT_CM` | Legacy fallback height in centimetres |
 | `SHIPROCKET_WEBHOOK_SECRET` | Strong private value configured as Shiprocket's tracking webhook `x-api-key` |
 
 Existing `DB_*`, `JWT_*`, `RAZORPAY_*`, and `SMTP_*` configuration is reused. No new npm packages are required: the integration uses Node's native `fetch`, `AbortController`, and test runner, plus the existing `pg`, Express, and rate limiter.
 
-Restart the backend after setting `.env`. Package defaults describe **one entire packed order**, not one product. Only configure automatic defaults if they accurately describe the orders you fulfill. Otherwise leave them blank and supply measurements per order through the admin create-shipment request. No guessed warehouse name or measurements are used.
+Restart the backend after changing configuration. New shipments select actual packed weight and dimensions from the merchant's `SHIPROCKET_PACKAGE_PROFILES` environment configuration, by summing the saved product quantities. `server/config/shippingPackages.js` validates the environment value and contains no merchant measurements. This applies to forward orders, requested reverse-return units, and consolidated replacement/rejected-return parcels. See [quantity-based packing](quantity-based-shipping.md) for the five configured tiers. Explicit admin measurements override selected fields; saved measurements remain stable on retries. The fixed package environment variables are legacy fallbacks for callers without item quantities, and are not required for these quantity-based shipments. The existing pickup location is still required.
 
 ## Database and startup
+
+Product prices remain GST-inclusive. Each product line sent to Shiprocket contains `tax: 5`, from `SHIPROCKET_PRODUCT_TAX_PERCENT=5` in the backend environment, with its original inclusive `selling_price`. The request subtotal is the product subtotal after the existing order discount. Customer payment amounts are unchanged. Normal, reverse-return, and replacement/rejected-return payloads all forward the configured item percentage.
+
+Customer and admin invoice downloads retrieve the Shiprocket PDF for the saved Shiprocket order ID. GST component calculations and invoice formatting belong to Shiprocket. The application has no custom GST settings page, tax database migration, rate/snapshot engine, credit-note generator or PDF renderer. Tax changes apply to newly sent payloads; an existing provider order must be corrected through Shiprocket's supported order-update workflow to change its already-saved tax data. Never create a duplicate shipment to correct an invoice.
 
 `server/migrations/001_shipments.sql` adds `shipments`. `server/config/db.js` records it in `schema_migrations` and applies it transactionally under an advisory migration lock. The file is repeatable and can also be applied through your normal PostgreSQL migration tooling. Startup waits for pending migrations before listening or processing shipping work; completed migrations are skipped on later starts.
 
@@ -194,6 +200,16 @@ ORDER BY created_at;
 No live provider credentials were used during implementation. Live serviceability, account-specific pickup configuration, wallet/courier eligibility and end-to-end fulfillment still require the configuration and controlled sequence above.
 
 ## Files
+
+### Return and replacement outbound orders
+
+Admin Returns & Replacements has five tabs: All, Requested, Inspection Required, Completed, and Return & Replacement Orders. Completed means no administrator action is pending; it does not necessarily mean the courier has delivered or a refund has settled. Outbound parcels awaiting courier assignment, pickup scheduling, or provider reconciliation remain visible in the outbound orders tab.
+
+Submitting all product inspection decisions creates one zero-charge application order linked to both the original purchase and the return request. `orders.order_type` distinguishes `normal`, `replacement`, and `rejected_return`. Mixed parcels use `replacement` at order level, while `order_items.fulfillment_type` distinguishes replacement sizes from rejected originals and preserves each inspection reason. The same linked `shipments` row supports existing tracking operations and signed forward callbacks. Retried inspection submissions reuse the original outbound order.
+
+Customers track the complete inbound, inspection, and outbound journey in the existing return details. After-sales orders are excluded from their purchase list and purchase analytics. The outbound order is created in Shiprocket on inspection submission; courier assignment and pickup scheduling remain deliberate operations in Shiprocket. A creation timeout or uncertain provider response requires reconciliation before retrying.
+
+Migration `027_after_sales_orders` adds the links and classifications and backfills recorded outbound shipments without booking or enqueueing a shipment. Apply this migration before deploying the updated backend. The rollback-only PostgreSQL verification can be run with `$env:AFTER_SALES_DB_TESTS = '1'; node --test server/tests/afterSalesDatabase.test.js`; all provider requests are mocked and all database test objects are rolled back.
 
 The fulfillment integration is centered on `server/config/shiprocket.js`, `server/models/Shipment.js`, `server/services/shippingService.js`, and `server/services/shippingWorker.js`. Reverse logistics is implemented in `server/services/returnService.js`, the account/admin return controllers and routes, and `server/migrations/009_returns_workflow.sql`. Backend configuration lives only in private environment settings; do not commit provider credentials or webhook secrets.
 

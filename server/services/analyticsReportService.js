@@ -4,11 +4,11 @@ const BUSINESS_TIME_ZONE = 'Asia/Kolkata';
 const INDIA_OFFSET = '+05:30';
 const RANGE_VALUES = new Set(['today', 'yesterday', '7d', '30d', 'this_month', 'custom']);
 const KPI_DEFINITIONS = {
-  visitors: 'Distinct anonymous browser identifiers seen during the selected period; admin traffic is excluded.',
-  newVisitors: 'Visitors whose first recorded session occurred during the selected period.',
-  returningVisitors: 'Visitors with a recorded session before the selected period who returned during it.',
-  loggedInVisitors: 'Distinct visitors linked to a customer account during the period.',
-  anonymousVisitors: 'Distinct visitors that were never linked to a customer account during the period.',
+  visitors: 'Distinct customer accounts when signed in, otherwise distinct anonymous browser identifiers; admin traffic is excluded.',
+  newVisitors: 'Customer accounts or anonymous browsers whose first recorded session occurred during the selected period.',
+  returningVisitors: 'Customer accounts or anonymous browsers with a recorded session before the selected period who returned during it.',
+  loggedInVisitors: 'Distinct customer accounts seen during the period, regardless of browser or device.',
+  anonymousVisitors: 'Distinct anonymous browser identifiers seen during the period.',
   loginEvents: 'Successful customer login events recorded during the period.',
   signups: 'New customer account creation events recorded during the period.',
   uniqueUsersLoggedIn: 'Distinct customer account IDs with a successful login event in the period.',
@@ -17,12 +17,12 @@ const KPI_DEFINITIONS = {
   pageViews: 'Customer page-view events recorded in the period.',
   totalActiveSeconds: 'Total active foreground seconds reported by customer sessions.',
   productViews: 'Product detail view events recorded in the period.',
-  uniqueProductViewers: 'Distinct visitor IDs that viewed at least one product in the period.',
+  uniqueProductViewers: 'Distinct customer accounts or anonymous browsers that viewed at least one product in the period.',
   productsViewed: 'Distinct products viewed in the period.',
-  addToCartVisitors: 'Distinct visitors that added at least one product to cart in the period.',
+  addToCartVisitors: 'Distinct customer accounts or anonymous browsers that added at least one product to cart in the period.',
   addToCarts: 'Server-authoritative signed-in cart additions plus browser-tracked guest cart additions.',
   removeFromCarts: 'Server-authoritative signed-in removals plus browser-tracked guest removals.',
-  checkoutStarted: 'Distinct visitors that started checkout during the period.',
+  checkoutStarted: 'Distinct customer accounts or anonymous browsers that started checkout during the period.',
   paymentAttempts: 'Gateway payment attempts recorded during the period.',
   paymentSuccesses: 'Gateway payment attempts confirmed successful during the period.',
   paymentFailures: 'Gateway payment attempts recorded as failed during the period.',
@@ -121,16 +121,18 @@ function rate(numerator, denominator) { return denominator ? Number((numerator *
 async function aggregate(start, end, database = pool) {
   const [sessions, events, orders, attempts, carts, ledger, returns, cohorts] = await Promise.all([
     database.query(`WITH scoped AS (
-        SELECT * FROM analytics_sessions WHERE started_at >= $1 AND started_at < $2 AND NOT is_internal
+        SELECT *,CASE WHEN user_id IS NULL THEN 'visitor:'||visitor_id::text ELSE 'user:'||user_id::text END AS identity
+        FROM analytics_sessions WHERE started_at >= $1 AND started_at < $2 AND NOT is_internal
       ), visitors AS (
-        SELECT visitor_id, BOOL_OR(user_id IS NOT NULL) AS logged_in FROM scoped GROUP BY visitor_id
+        SELECT identity, BOOL_OR(user_id IS NOT NULL) AS logged_in FROM scoped GROUP BY identity
       ) SELECT
         (SELECT COUNT(*) FROM scoped)::int AS sessions,
         COUNT(*)::int AS visitors,
         COUNT(*) FILTER (WHERE logged_in)::int AS logged_in_visitors,
         COUNT(*) FILTER (WHERE NOT logged_in)::int AS anonymous_visitors,
         COUNT(*) FILTER (WHERE EXISTS(SELECT 1 FROM analytics_sessions old
-          WHERE old.visitor_id=visitors.visitor_id AND old.started_at < $1 AND NOT old.is_internal))::int AS returning_visitors,
+          WHERE (CASE WHEN old.user_id IS NULL THEN 'visitor:'||old.visitor_id::text ELSE 'user:'||old.user_id::text END)=visitors.identity
+          AND old.started_at < $1 AND NOT old.is_internal))::int AS returning_visitors,
         COALESCE((SELECT SUM(page_views) FROM scoped),0)::int AS page_views,
         COALESCE((SELECT SUM(product_views) FROM scoped),0)::int AS product_views,
         COALESCE((SELECT SUM(active_seconds) FROM scoped),0)::int AS total_active_seconds,
@@ -152,7 +154,7 @@ async function aggregate(start, end, database = pool) {
       COUNT(*) FILTER (WHERE payment_method = 'razorpay' AND payment_status = 'pending')::int AS pending_payments,
       COUNT(*) FILTER (WHERE payment_method = 'razorpay' AND
         (payment_status = 'failed' OR (payment_status = 'pending' AND inventory_released_at IS NOT NULL)))::int AS abandoned_checkouts
-      FROM orders WHERE created_at >= $1 AND created_at < $2`, [start, end]),
+      FROM orders WHERE order_type = 'normal' AND created_at >= $1 AND created_at < $2`, [start, end]),
     database.query(`SELECT COUNT(*)::int AS attempts,
       COUNT(*) FILTER (WHERE status = 'successful')::int AS successful,
       COUNT(*) FILTER (WHERE status = 'failed')::int AS failed
@@ -183,9 +185,9 @@ async function aggregate(start, end, database = pool) {
     ) SELECT
       COUNT(DISTINCT e.user_id) FILTER (WHERE e.event_type='LOGIN')::int AS unique_users_logged_in,
       (SELECT COUNT(*)::int FROM login_users WHERE login_count>1) AS repeat_login_users,
-      COUNT(DISTINCT s.visitor_id) FILTER (WHERE e.event_type='PRODUCT_VIEWED')::int AS unique_product_viewers,
+      COUNT(DISTINCT CASE WHEN s.user_id IS NULL THEN 'visitor:'||s.visitor_id::text ELSE 'user:'||s.user_id::text END) FILTER (WHERE e.event_type='PRODUCT_VIEWED')::int AS unique_product_viewers,
       COUNT(DISTINCT e.product_id) FILTER (WHERE e.event_type='PRODUCT_VIEWED')::int AS products_viewed,
-      COUNT(DISTINCT s.visitor_id) FILTER (WHERE e.event_type='ADD_TO_CART')::int AS add_to_cart_visitors,
+      COUNT(DISTINCT CASE WHEN s.user_id IS NULL THEN 'visitor:'||s.visitor_id::text ELSE 'user:'||s.user_id::text END) FILTER (WHERE e.event_type='ADD_TO_CART')::int AS add_to_cart_visitors,
       COUNT(DISTINCT e.session_id) FILTER (WHERE e.event_type='FRONTEND_ERROR')::int AS affected_error_sessions
     FROM analytics_events e JOIN analytics_sessions s ON s.id=e.session_id AND NOT s.is_internal
     WHERE e.occurred_at >= $1 AND e.occurred_at < $2`, [start, end])
@@ -280,11 +282,11 @@ async function revenue(query) {
       GROUP BY 1
     ), orders_by_day AS (
       SELECT (created_at AT TIME ZONE $3)::date AS day, COUNT(*)::int AS orders
-      FROM orders WHERE created_at >= $4 AND created_at < $5
+      FROM orders WHERE order_type = 'normal' AND created_at >= $4 AND created_at < $5
         AND payment_status IN ('paid','refunded','partially_refunded') GROUP BY 1
     ), traffic AS (
       SELECT (started_at AT TIME ZONE $3)::date AS day,
-        COUNT(DISTINCT visitor_id)::int AS visitors
+        COUNT(DISTINCT CASE WHEN user_id IS NULL THEN 'visitor:'||visitor_id::text ELSE 'user:'||user_id::text END)::int AS visitors
       FROM analytics_sessions WHERE started_at >= $4 AND started_at < $5 AND NOT is_internal GROUP BY 1
     ), cart_activity AS (
       SELECT (occurred_at AT TIME ZONE $3)::date AS day, COUNT(*)::int AS add_to_carts
@@ -304,14 +306,14 @@ async function revenue(query) {
 async function funnel(query) {
   const period = resolvePeriod(query);
   const { rows } = await pool.query(`WITH session_visitors AS (
-      SELECT id, visitor_id FROM analytics_sessions WHERE started_at >= $1 AND started_at < $2 AND NOT is_internal
+      SELECT id, visitor_id, user_id FROM analytics_sessions WHERE started_at >= $1 AND started_at < $2 AND NOT is_internal
     ), event_visitors AS (
-      SELECT e.event_type, COUNT(DISTINCT s.visitor_id)::int AS count
+      SELECT e.event_type, COUNT(DISTINCT CASE WHEN s.user_id IS NULL THEN 'visitor:'||s.visitor_id::text ELSE 'user:'||s.user_id::text END)::int AS count
       FROM analytics_events e JOIN session_visitors s ON s.id = e.session_id
       WHERE e.occurred_at >= $1 AND e.occurred_at < $2 GROUP BY e.event_type
     ) SELECT event_type, count FROM event_visitors`, [period.start, period.end]);
   const counts = Object.fromEntries(rows.map(row => [row.event_type, number(row.count)]));
-  const visitors = number((await pool.query(`SELECT COUNT(DISTINCT visitor_id)::int AS count
+  const visitors = number((await pool.query(`SELECT COUNT(DISTINCT CASE WHEN user_id IS NULL THEN 'visitor:'||visitor_id::text ELSE 'user:'||user_id::text END)::int AS count
     FROM analytics_sessions WHERE started_at >= $1 AND started_at < $2 AND NOT is_internal`, [period.start, period.end])).rows[0].count);
   const stages = [
     ['Visitors', visitors], ['Product views', counts.PRODUCT_VIEWED || 0],
@@ -354,11 +356,11 @@ async function products(query) {
   const sql = `WITH behaviour AS (
       SELECT e.product_id,
         COUNT(*) FILTER (WHERE e.event_type = 'PRODUCT_VIEWED')::int AS views,
-        COUNT(DISTINCT s.visitor_id) FILTER (WHERE e.event_type = 'PRODUCT_VIEWED')::int AS unique_viewers,
-        COUNT(DISTINCT s.visitor_id) FILTER (WHERE e.event_type = 'PRODUCT_VIEWED' AND e.user_id IS NOT NULL)::int AS logged_in_viewers,
-        COUNT(DISTINCT s.visitor_id) FILTER (WHERE e.event_type = 'PRODUCT_VIEWED' AND e.user_id IS NULL)::int AS guest_viewers,
+        COUNT(DISTINCT CASE WHEN s.user_id IS NULL THEN 'visitor:'||s.visitor_id::text ELSE 'user:'||s.user_id::text END) FILTER (WHERE e.event_type = 'PRODUCT_VIEWED')::int AS unique_viewers,
+        COUNT(DISTINCT s.user_id) FILTER (WHERE e.event_type = 'PRODUCT_VIEWED' AND s.user_id IS NOT NULL)::int AS logged_in_viewers,
+        COUNT(DISTINCT s.visitor_id) FILTER (WHERE e.event_type = 'PRODUCT_VIEWED' AND s.user_id IS NULL)::int AS guest_viewers,
         COUNT(*) FILTER (WHERE e.event_type = 'ADD_TO_CART')::int AS add_to_carts,
-        COUNT(DISTINCT s.visitor_id) FILTER (WHERE e.event_type = 'ADD_TO_CART')::int AS unique_cart_visitors
+        COUNT(DISTINCT CASE WHEN s.user_id IS NULL THEN 'visitor:'||s.visitor_id::text ELSE 'user:'||s.user_id::text END) FILTER (WHERE e.event_type = 'ADD_TO_CART')::int AS unique_cart_visitors
       FROM analytics_events e JOIN analytics_sessions s ON s.id=e.session_id AND NOT s.is_internal
       WHERE e.occurred_at >= $1 AND e.occurred_at < $2
         AND e.product_id IS NOT NULL GROUP BY e.product_id
@@ -366,13 +368,13 @@ async function products(query) {
       SELECT oi.product_id, COUNT(DISTINCT o.id)::int AS orders,
         COALESCE(SUM(oi.quantity),0)::int AS units_sold,
         COALESCE(SUM(oi.total_price - (oi.total_price / NULLIF(o.total_amount,0) * o.refunded_amount)),0) AS revenue
-      FROM order_items oi JOIN orders o ON o.id = oi.order_id
+      FROM order_items oi JOIN orders o ON o.id = oi.order_id AND o.order_type = 'normal'
       WHERE o.paid_at >= $1 AND o.paid_at < $2
         AND o.payment_status IN ('paid','refunded','partially_refunded')
       GROUP BY oi.product_id
     ), checkouts AS (
       SELECT oi.product_id, COUNT(DISTINCT o.id)::int AS checkouts
-      FROM order_items oi JOIN orders o ON o.id = oi.order_id
+      FROM order_items oi JOIN orders o ON o.id = oi.order_id AND o.order_type = 'normal'
       WHERE o.created_at >= $1 AND o.created_at < $2 GROUP BY oi.product_id
     ) SELECT p.id, p.name,
       COALESCE(b.views,0)::int AS views, COALESCE(b.unique_viewers,0)::int AS unique_viewers,
@@ -412,8 +414,8 @@ async function carts(query) {
         status = 'converted' AND updated_at - last_activity >= INTERVAL '24 hours' AS recovered
       FROM cart_activity WHERE created_at < $2 AND last_activity >= $1
     ) SELECT *,
-      EXISTS(SELECT 1 FROM orders o WHERE o.cart_id = scoped.id) AS checkout_started,
-      EXISTS(SELECT 1 FROM orders o WHERE o.cart_id = scoped.id AND o.payment_status IN ('paid','refunded','partially_refunded')) AS purchased,
+      EXISTS(SELECT 1 FROM orders o WHERE o.order_type = 'normal' AND o.cart_id = scoped.id) AS checkout_started,
+      EXISTS(SELECT 1 FROM orders o WHERE o.order_type = 'normal' AND o.cart_id = scoped.id AND o.payment_status IN ('paid','refunded','partially_refunded')) AS purchased,
       EXISTS(SELECT 1 FROM orders o JOIN payment_attempts pa ON pa.order_id=o.id WHERE o.cart_id=scoped.id) AS payment_attempted,
       (SELECT pa.status FROM orders o JOIN payment_attempts pa ON pa.order_id=o.id
         WHERE o.cart_id=scoped.id ORDER BY pa.attempted_at DESC LIMIT 1) AS last_payment_status,
@@ -440,7 +442,7 @@ async function carts(query) {
       (SELECT CASE WHEN e.event_type='PAYMENT_SUCCESS' THEN 'successful' WHEN e.event_type='PAYMENT_FAILED' THEN 'failed' ELSE 'started' END
         FROM analytics_events e WHERE e.session_id=journeys.session_id AND e.event_type IN ('PAYMENT_STARTED','PAYMENT_SUCCESS','PAYMENT_FAILED')
         ORDER BY e.occurred_at DESC LIMIT 1) AS last_payment_status,
-      EXISTS(SELECT 1 FROM orders o WHERE o.analytics_session_id=journeys.session_id
+      EXISTS(SELECT 1 FROM orders o WHERE o.order_type = 'normal' AND o.analytics_session_id=journeys.session_id
         AND o.payment_status IN ('paid','refunded','partially_refunded')) AS purchased
     FROM journeys WHERE quantity > 0 ORDER BY abandoned DESC,last_activity DESC LIMIT 100`, [period.start, period.end]);
   const allRows = [...rows, ...guestResult.rows];
@@ -492,14 +494,17 @@ async function visitors(query) {
   const period = resolvePeriod(query);
   const [segments, hourly, users] = await Promise.all([
     pool.query(`WITH scoped AS (
-      SELECT visitor_id, MIN(started_at) AS first_in_period FROM analytics_sessions
-      WHERE started_at >= $1 AND started_at < $2 AND NOT is_internal GROUP BY visitor_id
+      SELECT CASE WHEN user_id IS NULL THEN 'visitor:'||visitor_id::text ELSE 'user:'||user_id::text END AS identity,
+        MIN(started_at) AS first_in_period FROM analytics_sessions
+      WHERE started_at >= $1 AND started_at < $2 AND NOT is_internal GROUP BY 1
     ) SELECT COUNT(*)::int AS visitors,
       COUNT(*) FILTER (WHERE EXISTS(SELECT 1 FROM analytics_sessions previous
-        WHERE previous.visitor_id=scoped.visitor_id AND previous.started_at < $1 AND NOT previous.is_internal))::int AS returning
+        WHERE (CASE WHEN previous.user_id IS NULL THEN 'visitor:'||previous.visitor_id::text ELSE 'user:'||previous.user_id::text END)=scoped.identity
+          AND previous.started_at < $1 AND NOT previous.is_internal))::int AS returning
       FROM scoped`, [period.start, period.end]),
     pool.query(`SELECT EXTRACT(HOUR FROM started_at AT TIME ZONE $3)::int AS hour,
-      COUNT(*)::int AS sessions, COUNT(DISTINCT visitor_id)::int AS visitors
+      COUNT(*)::int AS sessions,
+      COUNT(DISTINCT CASE WHEN user_id IS NULL THEN 'visitor:'||visitor_id::text ELSE 'user:'||user_id::text END)::int AS visitors
       FROM analytics_sessions WHERE started_at >= $1 AND started_at < $2 AND NOT is_internal GROUP BY 1 ORDER BY 1`,
     [period.start, period.end, BUSINESS_TIME_ZONE]),
     pool.query(`SELECT
@@ -509,7 +514,7 @@ async function visitors(query) {
       COUNT(*) FILTER (WHERE purchases.orders > 1)::int AS repeat_customers
       FROM users u JOIN roles r ON r.id=u.role_id AND r.name='customer'
       CROSS JOIN LATERAL (SELECT COUNT(*)::int AS orders FROM orders o
-        WHERE o.user_id=u.id AND o.payment_status IN ('paid','refunded','partially_refunded')) purchases`,
+        WHERE o.user_id=u.id AND o.order_type = 'normal' AND o.payment_status IN ('paid','refunded','partially_refunded')) purchases`,
     [period.start, period.end])
   ]);
   const segment = segments.rows[0];
@@ -584,11 +589,12 @@ async function trend(query) {
       SELECT generate_series($1::date,$2::date,INTERVAL '1 day')::date AS day
     ), session_daily AS (
       SELECT (started_at AT TIME ZONE $3)::date AS day, COUNT(*)::int AS sessions,
-        COUNT(DISTINCT visitor_id)::int AS visitors, COALESCE(SUM(page_views),0)::int AS page_views,
-        COUNT(DISTINCT visitor_id) FILTER (WHERE user_id IS NOT NULL)::int AS logged_in_visitors,
+        COUNT(DISTINCT CASE WHEN user_id IS NULL THEN 'visitor:'||visitor_id::text ELSE 'user:'||user_id::text END)::int AS visitors, COALESCE(SUM(page_views),0)::int AS page_views,
+        COUNT(DISTINCT user_id) FILTER (WHERE user_id IS NOT NULL)::int AS logged_in_visitors,
         COUNT(DISTINCT visitor_id) FILTER (WHERE user_id IS NULL)::int AS anonymous_visitors,
-        COUNT(DISTINCT visitor_id) FILTER (WHERE (SELECT MIN(first.started_at AT TIME ZONE $3)::date
-          FROM analytics_sessions first WHERE first.visitor_id=analytics_sessions.visitor_id AND NOT first.is_internal)
+        COUNT(DISTINCT CASE WHEN user_id IS NULL THEN 'visitor:'||visitor_id::text ELSE 'user:'||user_id::text END) FILTER (WHERE (SELECT MIN(first.started_at AT TIME ZONE $3)::date
+          FROM analytics_sessions first WHERE (CASE WHEN first.user_id IS NULL THEN 'visitor:'||first.visitor_id::text ELSE 'user:'||first.user_id::text END)
+          =(CASE WHEN analytics_sessions.user_id IS NULL THEN 'visitor:'||analytics_sessions.visitor_id::text ELSE 'user:'||analytics_sessions.user_id::text END) AND NOT first.is_internal)
           = (started_at AT TIME ZONE $3)::date)::int AS new_visitors,
         COALESCE(SUM(product_views),0)::int AS product_views, COALESCE(SUM(active_seconds),0)::int AS total_active_seconds,
         COALESCE(AVG(active_seconds),0) AS average_session_seconds
@@ -597,12 +603,12 @@ async function trend(query) {
       SELECT (e.occurred_at AT TIME ZONE $3)::date AS day,
         COUNT(*) FILTER (WHERE event_type='ADD_TO_CART')::int AS add_to_carts,
         COUNT(*) FILTER (WHERE event_type='REMOVE_FROM_CART')::int AS remove_from_carts,
-        COUNT(DISTINCT s.visitor_id) FILTER (WHERE event_type='CHECKOUT_STARTED')::int AS checkout_started,
+        COUNT(DISTINCT CASE WHEN s.user_id IS NULL THEN 'visitor:'||s.visitor_id::text ELSE 'user:'||s.user_id::text END) FILTER (WHERE event_type='CHECKOUT_STARTED')::int AS checkout_started,
         COUNT(*) FILTER (WHERE event_type='FRONTEND_ERROR')::int AS frontend_errors,
         COUNT(DISTINCT e.session_id) FILTER (WHERE event_type='FRONTEND_ERROR')::int AS affected_error_sessions,
-        COUNT(DISTINCT s.visitor_id) FILTER (WHERE event_type='PRODUCT_VIEWED')::int AS unique_product_viewers,
+        COUNT(DISTINCT CASE WHEN s.user_id IS NULL THEN 'visitor:'||s.visitor_id::text ELSE 'user:'||s.user_id::text END) FILTER (WHERE event_type='PRODUCT_VIEWED')::int AS unique_product_viewers,
         COUNT(DISTINCT e.product_id) FILTER (WHERE event_type='PRODUCT_VIEWED')::int AS products_viewed,
-        COUNT(DISTINCT s.visitor_id) FILTER (WHERE event_type='ADD_TO_CART')::int AS add_to_cart_visitors,
+        COUNT(DISTINCT CASE WHEN s.user_id IS NULL THEN 'visitor:'||s.visitor_id::text ELSE 'user:'||s.user_id::text END) FILTER (WHERE event_type='ADD_TO_CART')::int AS add_to_cart_visitors,
         COUNT(DISTINCT e.user_id) FILTER (WHERE event_type='LOGIN')::int AS unique_users_logged_in,
         COUNT(*) FILTER (WHERE event_type='LOGIN')::int AS login_events,
         COUNT(*) FILTER (WHERE event_type='SIGNUP')::int AS signups
@@ -617,7 +623,7 @@ async function trend(query) {
           OR (payment_method='cod' AND payment_status='pending')))::int AS unique_purchasers,
         COALESCE(SUM(total_amount) FILTER (WHERE order_status<>'cancelled' AND (payment_status IN ('paid','refunded','partially_refunded')
           OR (payment_method='cod' AND payment_status='pending'))),0) AS gross_order_value
-      FROM orders WHERE created_at >= $4 AND created_at < $5 GROUP BY 1
+      FROM orders WHERE order_type = 'normal' AND created_at >= $4 AND created_at < $5 GROUP BY 1
     ), login_by_day AS (
       SELECT (e.occurred_at AT TIME ZONE $3)::date AS day,e.user_id,COUNT(*) AS login_count
       FROM analytics_events e JOIN analytics_sessions s ON s.id=e.session_id AND NOT s.is_internal
@@ -724,15 +730,22 @@ async function drilldown(query) {
   let result;
   let columns;
   if (traffic.has(metricName)) {
-    result = await pool.query(`SELECT SUBSTRING(MD5(s.visitor_id::text),1,10) AS visitor_reference,
+    const identity = `CASE WHEN s.user_id IS NULL THEN 'visitor:'||s.visitor_id::text ELSE 'user:'||s.user_id::text END`;
+    const historicalIdentity = `CASE WHEN old.user_id IS NULL THEN 'visitor:'||old.visitor_id::text ELSE 'user:'||old.user_id::text END`;
+    const audience = metricName === 'newVisitors'
+      ? `AND NOT EXISTS(SELECT 1 FROM analytics_sessions old WHERE ${historicalIdentity}=${identity} AND old.started_at<$1 AND NOT old.is_internal)`
+      : metricName === 'returningVisitors'
+        ? `AND EXISTS(SELECT 1 FROM analytics_sessions old WHERE ${historicalIdentity}=${identity} AND old.started_at<$1 AND NOT old.is_internal)`
+        : '';
+    result = await pool.query(`SELECT SUBSTRING(MD5(MIN(s.visitor_id::text)),1,10) AS visitor_reference,
         COALESCE(u.name,'Guest') AS customer, COALESCE(u.email,'—') AS email,
         CASE WHEN s.user_id IS NULL THEN 'Guest' ELSE 'Authenticated' END AS visitor_type,
         COUNT(*)::int AS sessions, SUM(s.page_views)::int AS page_views, SUM(s.product_views)::int AS product_views,
         SUM(s.active_seconds)::int AS active_seconds, MIN(s.started_at) AS first_seen,
         MAX(s.last_activity_at) AS last_seen, MIN(s.entry_path) AS entry_page, MAX(s.exit_path) AS exit_page
       FROM analytics_sessions s LEFT JOIN users u ON u.id=s.user_id
-      WHERE s.started_at >= $1 AND s.started_at < $2 AND NOT s.is_internal
-      GROUP BY s.visitor_id,u.name,u.email,s.user_id ORDER BY last_seen DESC LIMIT 250`, [start,end]);
+      WHERE s.started_at >= $1 AND s.started_at < $2 AND NOT s.is_internal ${audience}
+      GROUP BY ${identity},u.name,u.email,s.user_id ORDER BY last_seen DESC LIMIT 250`, [start,end]);
     columns = [['visitor_reference','Visitor ref'],['customer','Customer'],['email','Email'],['visitor_type','Type'],
       ['sessions','Sessions'],['page_views','Page views'],['product_views','Product views'],['active_seconds','Active seconds'],
       ['first_seen','First seen'],['last_seen','Last seen'],['entry_page','Entry'],['exit_page','Exit']];
@@ -762,7 +775,7 @@ async function drilldown(query) {
       : "o.order_status<>'cancelled' AND (o.payment_status IN ('paid','refunded','partially_refunded') OR (o.payment_method='cod' AND o.payment_status='pending'))";
     result = await pool.query(`SELECT o.order_number,u.name AS customer,u.email,o.total_amount,o.payment_method,
         o.payment_status,o.order_status,o.created_at
-      FROM orders o JOIN users u ON u.id=o.user_id WHERE o.created_at >= $1 AND o.created_at < $2
+      FROM orders o JOIN users u ON u.id=o.user_id WHERE o.order_type = 'normal' AND o.created_at >= $1 AND o.created_at < $2
         AND ${orderFilter}
       ORDER BY o.created_at DESC LIMIT 250`, [start,end]);
     columns = [['order_number','Order'],['customer','Customer'],['email','Email'],['total_amount','Amount'],

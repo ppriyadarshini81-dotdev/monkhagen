@@ -264,6 +264,22 @@ function failureMessage(type, data, environment) {
   return { subject: `ACTION REQUIRED – ${label} – ${reference}`, html: layout(`Action required: ${label}`, content) };
 }
 
+function newArrival(data, environment) {
+  const name = String(data.product_name || 'New arrival');
+  const productPath = data.product_slug ? `/product/${encodeURIComponent(data.product_slug)}` : '/products';
+  const productLink = link(productPath, environment);
+  const unsubscribe = data.unsubscribe_token
+    ? `<p style="margin:22px 0 0;color:#777;font-size:11px;line-height:1.6">You received this because you joined the MONK HAGEN list. <a href="${escapeHtml(link(`/newsletter/unsubscribe?token=${encodeURIComponent(data.unsubscribe_token)}`, environment))}" style="color:#2348e8">Unsubscribe</a>.</p>`
+    : '';
+  const image = safeUrl(data.image_url)
+    ? `<img src="${escapeHtml(data.image_url)}" alt="${escapeHtml(name)}" style="display:block;width:100%;max-width:320px;max-height:400px;object-fit:cover;margin:0 auto 20px;border-radius:8px">`
+    : '';
+  const content = paragraph('A new MONK HAGEN piece has just dropped.') + image +
+    card(detailRows([['New arrival', escapeHtml(name)], ['Price', escapeHtml(money(data.product_price))]])) +
+    cta('Shop new arrival', productLink) + unsubscribe;
+  return { subject: `New drop: ${name} | MONK HAGEN`, html: layout('A new arrival just dropped', content) };
+}
+
 function buildEmail(eventType, data, environment = process.env) {
   let message;
   if (eventType === 'ORDER_CONFIRMED_CUSTOMER') message = orderConfirmed(data, false, environment);
@@ -276,6 +292,7 @@ function buildEmail(eventType, data, environment = process.env) {
   else if (['REFUND_INITIATED_CUSTOMER','REFUND_INITIATED_ADMIN','REFUND_COMPLETED_CUSTOMER','REFUND_COMPLETED_ADMIN',
     'COD_REFUND_REQUIRED_ADMIN','COD_REFUND_PENDING_CUSTOMER','COD_REFUND_PENDING_ADMIN'].includes(eventType)) message = refundMessage(eventType, data);
   else if (['SHIPMENT_CREATION_FAILED_ADMIN','RETURN_CREATION_FAILED_ADMIN','REFUND_FAILED_ADMIN'].includes(eventType)) message = failureMessage(eventType, data, environment);
+  else if (eventType === 'NEW_ARRIVAL_SUBSCRIBER') message = newArrival(data, environment);
   else throw Object.assign(new Error('Unsupported transactional email event.'), { code: 'EMAIL_EVENT_UNSUPPORTED' });
   return { ...message, text: plainText(message.html) };
 }

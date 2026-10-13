@@ -9,6 +9,7 @@ import { CategoryService } from '../../services/category.service';
 import { ProductCardComponent } from '../../components/product-card/product-card.component';
 import { MEDIA } from '../../config/media-assets';
 import { ProductScrollRestorationService } from '../../services/product-scroll-restoration.service';
+import { NewsletterService } from '../../services/newsletter.service';
 
 @Component({
   selector: 'app-home',
@@ -22,6 +23,10 @@ export class HomeComponent implements AfterViewInit, OnInit, OnDestroy {
   newArrivals: Product[] = [];
   categories: Category[] = [];
   loading = true;
+  newsletterEmail = '';
+  newsletterMessage = '';
+  newsletterError = '';
+  newsletterSubmitting = false;
 
   readonly posters = MEDIA.hero.posters;
   // Repeat the first banner once so the final-to-first transition slides forward.
@@ -92,8 +97,31 @@ export class HomeComponent implements AfterViewInit, OnInit, OnDestroy {
   constructor(
     private productService: ProductService,
     private categoryService: CategoryService,
+    private newsletter: NewsletterService,
     @Optional() private productScroll?: ProductScrollRestorationService
   ) {}
+
+  subscribeToNewsletter(): void {
+    const email = this.newsletterEmail.trim().toLowerCase();
+    this.newsletterMessage = '';
+    this.newsletterError = '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      this.newsletterError = 'Enter a valid email address.';
+      return;
+    }
+    this.newsletterSubmitting = true;
+    this.newsletter.subscribe(email).subscribe({
+      next: ({ message }) => {
+        this.newsletterSubmitting = false;
+        this.newsletterMessage = message;
+        this.newsletterEmail = '';
+      },
+      error: error => {
+        this.newsletterSubmitting = false;
+        this.newsletterError = error?.error?.message || 'We could not add you to the list. Please try again.';
+      }
+    });
+  }
 
   ngOnInit(): void {
     this.productService.getProducts({ featured: true }).subscribe({

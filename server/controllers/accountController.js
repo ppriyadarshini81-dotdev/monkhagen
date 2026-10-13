@@ -273,11 +273,38 @@ async function enrichOrder(o) {
   return fmtOrder(o, itemsRes.rows, addrRes.rows[0]);
 }
 
+function orderDateFilter(value) {
+  if (value === undefined || value === '') return null;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000')) {
+    throw Object.assign(new Error('Invalid order date filter.'), { status: 400 });
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw Object.assign(new Error('Invalid order date filter.'), { status: 400 });
+  }
+  return value;
+}
+
+function orderYearFilter(value) {
+  if (value === undefined || value === '') return null;
+  if (typeof value !== 'string' || !/^\d{4}$/.test(value) || Number(value) < 2000 || Number(value) > 2100) {
+    throw Object.assign(new Error('Invalid order year filter.'), { status: 400 });
+  }
+  return Number(value);
+}
+
 exports.getOrders = asyncHandler(async (req, res) => {
   const { limit, offset } = require('../middleware/validation').pagination(req.query);
   const requestedStatus = String(req.query.status || '').toLowerCase();
   const statusFilter = { active: ['confirmed', 'processing', 'shipped', 'pickup_scheduled', 'awb_assigned'], cancelled: ['cancelled'], delivered: ['delivered'] }[requestedStatus];
   if (requestedStatus && !statusFilter) return res.status(400).json({ message: 'Invalid order status filter.' });
+  const requestedSort = String(req.query.sort || 'newest').toLowerCase();
+  if (!['newest', 'oldest'].includes(requestedSort)) return res.status(400).json({ message: 'Invalid order date sort.' });
+  const sortDirection = requestedSort === 'oldest' ? 'ASC' : 'DESC';
+  const dateFrom = orderDateFilter(req.query.dateFrom);
+  const dateTo = orderDateFilter(req.query.dateTo);
+  const year = orderYearFilter(req.query.year);
+  if (dateFrom && dateTo && dateFrom > dateTo) return res.status(400).json({ message: 'From date must be on or before To date.' });
   const { rows } = await pool.query(
     `SELECT o.*,
        s.awb_code AS shipment_awb_code,
@@ -291,12 +318,15 @@ exports.getOrders = asyncHandler(async (req, res) => {
        c.status AS cancellation_status, c.reason AS cancellation_reason, c.cancelled_at, c.refund_status AS cancellation_refund_status
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      LEFT JOIN order_cancellations c ON c.order_id = o.id
-     WHERE o.user_id = $1
+     WHERE o.user_id = $1 AND o.order_type = 'normal'
        AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
          OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))
        AND ($4::text[] IS NULL OR o.order_status = ANY($4))
-     ORDER BY o.created_at DESC LIMIT $2 OFFSET $3`,
-    [req.user.id, limit, offset, statusFilter || null]
+       AND ($5::date IS NULL OR o.created_at >= ($5::date::timestamp AT TIME ZONE 'Asia/Kolkata'))
+       AND ($6::date IS NULL OR o.created_at < (($6::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'))
+       AND ($7::integer IS NULL OR EXTRACT(YEAR FROM o.created_at AT TIME ZONE 'Asia/Kolkata') = $7)
+     ORDER BY o.created_at ${sortDirection}, o.id ${sortDirection} LIMIT $2 OFFSET $3`,
+    [req.user.id, limit, offset, statusFilter || null, dateFrom, dateTo, year]
   );
   const orders = await Promise.all(rows.map(enrichOrder));
   res.json(orders);
@@ -316,7 +346,7 @@ exports.getOrder = asyncHandler(async (req, res) => {
        c.status AS cancellation_status, c.reason AS cancellation_reason, c.cancelled_at, c.refund_status AS cancellation_refund_status
      FROM orders o LEFT JOIN shipments s ON s.order_id = o.id
      LEFT JOIN order_cancellations c ON c.order_id = o.id
-     WHERE o.id = $1 AND o.user_id = $2
+     WHERE o.id = $1 AND o.user_id = $2 AND o.order_type = 'normal'
        AND ((o.payment_method = 'razorpay' AND o.razorpay_payment_id IS NOT NULL)
          OR (o.payment_method = 'cod' AND o.payment_status IN ('pending','paid','partially_refunded','refunded')))`,
     [req.params.orderId, req.user.id]
@@ -353,11 +383,14 @@ exports.getReturns = asyncHandler(async (req, res) => {
   const requestedStatus = String(req.query.status || '').toLowerCase();
   const statusFilter = { open: ['requested', 'return_created', 'shiprocket_failed', 'pickup_scheduled', 'picked_up', 'in_transit', 'received', 'approved'], refund_initiated: ['refund_initiated'], refunded: ['refunded'], cancelled: ['cancelled', 'rejected'] }[requestedStatus];
   if (requestedStatus && !statusFilter) return res.status(400).json({ message: 'Invalid return status filter.' });
-  res.json(await returns.listCustomerReturns(req.user.id, pool, { limit, offset, statuses: statusFilter || null }));
+  res.json(await returns.listCustomerReturns(req.user.id, pool, { limit, offset, statuses: statusFilter || null, orderId: req.query.orderId }));
 });
 
 exports.createReturn = asyncHandler(async (req, res) => {
   res.status(201).json(await returns.createReturn(req.user.id, req.body));
+});
+exports.uploadDefectPhotos = asyncHandler(async (req, res) => {
+  res.status(201).json(await require('../services/defectPhotoService').upload(req.user.id, req.params.orderId, req.params.itemId, req.files));
 });
 
 exports.getReturnEligibility = asyncHandler(async (req, res) => {
@@ -368,6 +401,16 @@ exports.getReturn = asyncHandler(async (req, res) => {
   const row = await returns.findReturn(pool, req.params.returnId, req.user.id);
   if (!row) return res.status(404).json({ message: 'Return request not found.' });
   res.json(returns.formatReturn(row));
+});
+exports.cancelReturn = asyncHandler(async (req, res) => {
+  const row = await returns.findReturn(pool, req.params.returnId, req.user.id);
+  if (!row) return res.status(404).json({ message: 'Return request not found.' });
+  if (!['requested', 'return_created', 'shiprocket_failed'].includes(row.status)) {
+    return res.status(409).json({ message: 'This return can no longer be cancelled because return initiation has started.' });
+  }
+  res.json(await returns.rejectReturn(req.params.returnId, {
+    database: pool, confirmedNoRemote: !row.shiprocket_return_order_id && row.pending_operation !== 'create'
+  }));
 });
 
 exports.getCodRefundDestination = asyncHandler(async (req, res) => {

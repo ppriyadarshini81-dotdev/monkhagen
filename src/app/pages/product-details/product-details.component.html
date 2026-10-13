@@ -280,16 +280,16 @@
         <button type="button" class="mh-pd__image-close" (click)="closeImageViewer()" aria-label="Close enlarged image">&times;</button>
       </div>
     </header>
-    <div #productImageStage class="mh-pd__image-stage" (scroll)="viewerScrolled($event)"
+    <div #productImageStage class="mh-pd__image-stage" [class.is-zoomed]="imageZoom > 1" (scroll)="viewerScrolled($event)"
       (touchstart)="imageTouchStart($event)" (touchmove)="imageTouchMove($event)" (touchend)="imageTouchEnd($event)">
       <figure class="mh-pd__viewer-frame" *ngFor="let image of product.images; let i = index"
-        [attr.data-viewer-index]="i" [class.is-active]="i === activeImage">
-        <img [src]="cachedMediaUrl(viewerImageUrl(i))" (error)="viewerImageFailed($event, i)"
+        [attr.data-viewer-index]="i" [class.is-active]="i === activeImage" [class.is-zoomed]="i === activeImage && imageZoom > 1" [class.is-panning]="i === activeImage && imagePanning"
+        (pointerdown)="viewerImagePointerDown($event, i)" (pointermove)="viewerImagePointerMove($event)"
+        (pointerup)="viewerImagePointerUp($event, i)" (pointercancel)="viewerImagePointerCancel($event)" (lostpointercapture)="viewerImageCaptureLost($event)">
+        <img [src]="cachedMediaUrl(viewerImageUrl(i))" (error)="viewerImageFailed($event, i)" (load)="viewerImageLoaded($event, i)" [draggable]="false"
           (dblclick)="viewerImageDoubleClick($event, i)"
-          (pointerdown)="viewerImagePointerDown($event, i)"
-          (pointerup)="viewerImagePointerUp($event, i)"
           [alt]="product.name + ' enlarged image ' + (i + 1)"
-          [style.transform]="i === activeImage ? 'scale(' + imageZoom + ')' : 'scale(1)'" />
+          [style.transform]="i === activeImage ? 'translate(' + imagePanX + 'px, ' + imagePanY + 'px) scale(' + imageZoom + ')' : 'scale(1)'" />
       </figure>
     </div>
     <ng-container *ngIf="product.images.length > 1">

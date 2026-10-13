@@ -175,9 +175,12 @@
       <h2>Get early access to drops.</h2>
       <p>Be first in line. New releases sell out fast and never come back.</p>
     </div>
-    <form class="mh-newsletter__form" (ngSubmit)="$event.preventDefault()">
-      <input class="mh-input" type="email" placeholder="you@email.com" />
-      <button class="mh-btn mh-btn--gold" type="submit">Notify Me</button>
+    <form class="mh-newsletter__form" (ngSubmit)="subscribeToNewsletter()" novalidate>
+      <label class="mh-visually-hidden" for="newsletter-email">Email address</label>
+      <input id="newsletter-email" class="mh-input" type="email" name="newsletterEmail" [(ngModel)]="newsletterEmail" placeholder="you@email.com" autocomplete="email" [attr.aria-invalid]="newsletterError ? 'true' : null" />
+      <button class="mh-btn mh-btn--gold" type="submit" [disabled]="newsletterSubmitting">{{ newsletterSubmitting ? 'Joining…' : 'Notify Me' }}</button>
+      <p class="mh-newsletter__message mh-newsletter__message--success" *ngIf="newsletterMessage" role="status">{{ newsletterMessage }}</p>
+      <p class="mh-newsletter__message mh-newsletter__message--error" *ngIf="newsletterError" role="alert">{{ newsletterError }}</p>
     </form>
   </div>
 </section>

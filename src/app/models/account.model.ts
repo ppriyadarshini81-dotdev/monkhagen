@@ -120,23 +120,35 @@ export interface PincodeLocation {
 }
 
 export interface ReturnItem {
+  defectPhotos?: Array<{ id: string; url: string }>;
   id: string;
   orderItemId: string;
   productName: string;
+  imageUrl?: string | null;
   sku: string | null;
   size: string | null;
   color: string | null;
   quantity: number;
   reason: string | null;
   comments: string | null;
+  replacementSize?: string | null;
+  inspectionStatus?: 'pending' | 'approved' | 'rejected';
+  inspectionReason?: string | null;
+  inspectedAt?: string | null;
   refundAmount: number;
 }
 
 export interface ReturnRequest {
   id: string;
   orderId: string;
+  orderNumber?: string | null;
   returnNumber: string;
   reason: string;
+  requestType: 'return' | 'defect' | 'replacement';
+  defectPhotoReviewPending?: boolean;
+  defectPhotoReview?: { decision: 'approved' | 'rejected'; reason: string } | null;
+  requestedReplacementSize: string | null;
+  returnShippingDeduction: number;
   comments: string | null;
   status: string;
   refundAmount: number;
@@ -144,6 +156,15 @@ export interface ReturnRequest {
   paymentMethod: string;
   refundDestination: CodRefundDestination;
   returnAwb: string | null;
+  shiprocketReturnOrderId?: number | null;
+  shiprocketOutboundOrderId?: number | null;
+  outboundAwb?: string | null;
+  outboundStatus?: string | null;
+  outboundTrackingUrl?: string | null;
+  outboundCreatedAt?: string | null;
+  replacementShipmentPending?: boolean;
+  outboundStage?: number;
+  outboundOrder?: { id: string; orderNumber: string; orderType: 'replacement' | 'rejected_return'; status: string } | null;
   pickupStatus: string | null;
   pickupDelayed: boolean;
   cancellationPending: boolean;
@@ -174,17 +195,26 @@ export type CodRefundDestinationPayload =
 export interface ReturnPayload {
   orderId: string;
   idempotencyKey: string;
+  requestType: 'return' | 'defect' | 'replacement';
+  replacementSize?: string;
   comments?: string;
-  items: { orderItemId: string; quantity: number; reason: string; comments?: string }[];
+  refundDestination?: CodRefundDestinationPayload;
+  items: { orderItemId: string; quantity: number; reason: string; comments?: string; replacementSize?: string; photoIds?: string[] }[];
 }
 
 export interface ReturnEligibility {
   orderId: string;
   eligible: boolean;
+  hasExistingRequest?: boolean;
+  hasReturnHistory?: boolean;
+  shippingDeductionAmount?: number;
   reason: string | null;
   message: string | null;
   deliveredAt?: string;
   returnUntil: string | null;
+  defectUntil?: string | null;
+  defectReportingEnded?: boolean;
+  requestTypes: Array<{ code: 'return' | 'defect' | 'replacement'; label: string; eligible: boolean; message: string }>;
   reasons: Array<{ code: string; label: string }>;
   items: Array<{
     orderItemId: string;
@@ -195,6 +225,9 @@ export interface ReturnEligibility {
     purchasedQuantity: number;
     returnedQuantity: number;
     remainingQuantity: number;
+    alreadyRequested?: boolean;
+    replacementSizes: string[];
+    refundableUnitAmounts?: number[];
   }>;
 }
 

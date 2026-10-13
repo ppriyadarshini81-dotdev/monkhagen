@@ -26,12 +26,12 @@ function requireIdle(row) {
 
 function providerResult(message) { return shippingError(502, 'SHIPROCKET_INVALID_RESPONSE', message, true); }
 
-function parcelFromRow(row, overrides) {
+function parcelFromRow(row, overrides, items, environment) {
   const saved = row?.pickup_location ? {
     pickup_location: row.pickup_location, weight: row.package_weight, length: row.package_length,
     breadth: row.package_breadth, height: row.package_height
   } : {};
-  return packageDetails({ ...saved, ...overrides });
+  return packageDetails({ ...saved, ...overrides }, environment, items);
 }
 
 function indiaTimestamp(value) {
@@ -62,7 +62,7 @@ function invoiceFilename(source, shiprocketOrderId) {
   return `${orderReference}_Invoice_${shiprocketOrderId}.pdf`;
 }
 
-function createShippingService({ repository = Shipment, api = shiprocket, notifications = null } = {}) {
+function createShippingService({ repository = Shipment, api = shiprocket, notifications = null, environment = process.env } = {}) {
   const emailNotifications = notifications || (repository === Shipment && api === shiprocket ? emails : {
     orderShipped: async () => {}, orderOutForDelivery: async () => {}, orderDelivered: async () => {}, shipmentFailure: async () => {}
   });
@@ -126,11 +126,11 @@ function createShippingService({ repository = Shipment, api = shiprocket, notifi
       let payload;
       let parcel;
       try {
-        parcel = parcelFromRow(row, overrides);
         const details = await repository.details(client, orderId);
-        payload = buildOrderPayload(order, details.address, details.items, parcel);
+        parcel = parcelFromRow(row, overrides, details.items, environment);
+        payload = buildOrderPayload(order, details.address, details.items, parcel, environment);
       } catch (error) {
-        const configurationError = ['SHIPPING_PACKAGE_NOT_CONFIGURED'].includes(error.code);
+        const configurationError = ['SHIPPING_PACKAGE_NOT_CONFIGURED', 'SHIPROCKET_NOT_CONFIGURED'].includes(error.code);
         await repository.patch(client, orderId, {
           shipping_status: configurationError ? 'needs_configuration' : 'validation_failed',
           last_error_code: configurationError ? error.code : 'SHIPPING_VALIDATION',

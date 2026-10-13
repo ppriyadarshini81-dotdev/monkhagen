@@ -36,6 +36,10 @@ function statusLabel(payload) {
 
 function mappedForwardStatus(payload) {
   const label = statusLabel(payload).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!/return|rto/.test(label)) {
+    if (/awb assigned/.test(label)) return 'awb_assigned';
+    if (/pickup scheduled|pickup generated|out for pickup/.test(label)) return 'pickup_scheduled';
+  }
   if (/^delivered$|shipment delivered/.test(label) && !/return|rto/.test(label)) return 'delivered';
   if (/out for delivery/.test(label) && !/return|rto/.test(label)) return 'out_for_delivery';
   if (/^picked up$|^shipped$|^in transit$|shipment picked up|shipment in transit/.test(label) && !/return|rto/.test(label)) return 'shipped';
@@ -67,7 +71,7 @@ async function processForwardWebhook(payload, headers, database = pool, environm
   try {
     await client.query('BEGIN');
     const found = await client.query(
-      `SELECT s.*, o.order_status FROM shipments s JOIN orders o ON o.id = s.order_id
+      `SELECT s.*, o.order_status, o.order_type FROM shipments s JOIN orders o ON o.id = s.order_id
        WHERE ($1::text IS NOT NULL AND s.awb_code = $1)
           OR ($2::bigint IS NOT NULL AND s.shiprocket_order_id = $2)
           OR ($3::text IS NOT NULL AND (o.id::text = $3 OR o.order_number = $3))
@@ -91,7 +95,12 @@ async function processForwardWebhook(payload, headers, database = pool, environm
     await client.query(
       `UPDATE shipments SET awb_code = COALESCE(awb_code, $2), courier_name = COALESCE($3, courier_name),
        tracking_status = COALESCE(NULLIF($4, ''), tracking_status), tracking_url = COALESCE($5, tracking_url),
-       estimated_delivery = COALESCE($6, estimated_delivery), shipping_status = $7,
+       estimated_delivery = COALESCE($6, estimated_delivery), shipping_status = CASE
+         WHEN shipping_status = 'delivered' THEN shipping_status
+         WHEN shipping_status = 'out_for_delivery' AND $7 IN ('awb_assigned','pickup_scheduled','shipped') THEN shipping_status
+         WHEN shipping_status = 'shipped' AND $7 IN ('awb_assigned','pickup_scheduled') THEN shipping_status
+         ELSE $7 END,
+       pickup_status = CASE WHEN $7 = 'pickup_scheduled' THEN 'scheduled' ELSE pickup_status END,
        tracking_checked_at = NOW(), updated_at = NOW() WHERE order_id = $1`,
       [orderId, normalizedAwb, courierName, providerLabel, trackingUrl, estimated, next]
     );

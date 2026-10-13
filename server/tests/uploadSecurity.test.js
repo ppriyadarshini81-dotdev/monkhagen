@@ -26,6 +26,17 @@ test('oversized and wrong-folder files are rejected and arbitrary keys/foreign U
   for (const key of ['../other/private.txt','https://other.example/products/a.png','users/private.json','products/shared-imported.png']) await r2.deleteFile(key);
   assert.equal(calls, 0);
 });
+
+test('defect photos use the scoped order/product folder and generated names, with no traversal or video uploads', async () => {
+  const folder = 'ReturnDefectiveItem/10000000-0000-4000-8000-000000000001/20000000-0000-4000-8000-000000000001';
+  const commands = []; r2.s3.send = async command => commands.push(command.input);
+  const uploaded = await r2.uploadFile(PNG, 'image/png', folder);
+  assert.ok(uploaded.key.startsWith(folder + '/'));
+  assert.match(uploaded.key.slice(folder.length + 1), /^[0-9a-f-]{36}\.png$/);
+  assert.throws(() => r2.validateUpload('image/png','image/png',PNG.length,folder + '/../other'));
+  assert.throws(() => r2.validateUpload('video/mp4','video/mp4',100,folder));
+  await r2.deleteFile(uploaded.key); assert.equal(commands.length, 2);
+});
 test('disk-backed upload streams only validated content using generated keys and explicit length', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'monkhagen-test-'));
   try {

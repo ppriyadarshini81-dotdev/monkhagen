@@ -4,8 +4,15 @@ const ctrl = require('../controllers/adminReturnController');
 require('../middleware/validation').params(router);
 
 router.use(authenticate, requireAdmin);
+router.post('/eligibility-overrides', ctrl.grantEligibilityOverride);
+router.get('/eligibility-overrides', ctrl.eligibilityOverrideHistory);
 router.get('/', ctrl.list);
+router.get('/outbound-orders', ctrl.outboundOrders);
 router.get('/:returnId', ctrl.get);
+router.post('/:returnId/photo-review', ctrl.reviewDefectPhotos);
+router.post('/:returnId/items/:itemId/inspection', ctrl.inspectItem);
+router.post('/:returnId/submit-inspection', ctrl.submitInspection);
+router.post('/:returnId/replacement-shipment', ctrl.createReplacementShipment);
 router.post('/:returnId/approve', ctrl.approve);
 router.post('/:returnId/reject', ctrl.reject);
 router.post('/:returnId/refund', ctrl.refund);

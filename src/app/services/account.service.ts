@@ -59,8 +59,11 @@ export class AccountService {
   }
 
   // ── Orders ─────────────────────────────────────────────────
-  getOrders(limit = 10, offset = 0, status = ''): Observable<Order[]> {
-    const params: Record<string, string | number> = { limit, offset };
+  getOrders(limit = 10, offset = 0, status = '', sort: 'newest' | 'oldest' = 'newest', dateFrom = '', dateTo = '', year = ''): Observable<Order[]> {
+    const params: Record<string, string | number> = { limit, offset, sort };
+    if (dateFrom) params['dateFrom'] = dateFrom;
+    if (dateTo) params['dateTo'] = dateTo;
+    if (year) params['year'] = year;
     if (status) params['status'] = status;
     return this.http.get<Order[]>(`${this.api}/orders`, { params });
   }
@@ -87,14 +90,22 @@ export class AccountService {
   }
 
   // ── Returns ────────────────────────────────────────────────
-  getReturns(limit = 10, offset = 0, status = ''): Observable<ReturnRequest[]> {
+  getReturns(limit = 10, offset = 0, status = '', orderId = ''): Observable<ReturnRequest[]> {
     const params: Record<string, string | number> = { limit, offset };
+    if (orderId) params['orderId'] = orderId;
     if (status) params['status'] = status;
     return this.http.get<ReturnRequest[]>(`${this.api}/returns`, { params });
   }
 
   createReturn(payload: ReturnPayload): Observable<ReturnRequest> {
     return this.http.post<ReturnRequest>(`${this.api}/returns`, payload);
+  }
+  uploadDefectPhotos(orderId: string, itemId: string, files: File[]): Observable<Array<{ id: string; url: string }>> {
+    const form = new FormData(); files.forEach(file => form.append('images', file));
+    return this.http.post<Array<{ id: string; url: string }>>(`${this.api}/orders/${orderId}/items/${itemId}/defect-photos`, form);
+  }
+  cancelReturn(returnId: string): Observable<ReturnRequest> {
+    return this.http.post<ReturnRequest>(`${this.api}/returns/${returnId}/cancel`, {});
   }
 
   getReturnEligibility(orderId: string): Observable<ReturnEligibility> {

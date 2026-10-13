@@ -58,10 +58,13 @@ type OptionType = 'sizes' | 'colors';
   standalone: true,
   imports: [CommonModule, FormsModule, ProductPageContentEditorComponent],
   templateUrl: './admin.component.html',
-  styleUrl: './admin.component.css'
+  styleUrls: ['./admin.component.css', '../account/returns/returns.component.css', './admin-returns.css']
 })
 export class AdminComponent implements OnInit, DoCheck {
   @ViewChild('orderDialog') orderDialog?: ElementRef<HTMLDialogElement>;
+  @ViewChild('returnDetailsDialog') returnDetailsDialog?: ElementRef<HTMLDialogElement>;
+  selectedReturn: AdminReturn | null = null;
+  inspectionDrafts: Record<string, { decision: 'approved' | 'rejected' | ''; reason: string }> = {};
   tab: 'products' | 'categories' | 'badges' | 'sizes' | 'colors' | 'orders' | 'returns' | 'reviews' | 'content' = 'products';
   products: Product[] = [];
   categories: Category[] = [];
@@ -70,6 +73,14 @@ export class AdminComponent implements OnInit, DoCheck {
   colors: VariantOption[] = [];
   orders: Order[] = [];
   returns: AdminReturn[] = [];
+  returnTab = 'all';
+  readonly returnTabs = [
+    { id: 'all', label: 'All' }, { id: 'requested', label: 'Requested' },
+    { id: 'inspection_required', label: 'Inspection Required' }, { id: 'completed', label: 'Completed' },
+    { id: 'outbound_orders', label: 'Return & Replacement Orders' }
+  ];
+  afterSalesOrders: Order[] = [];
+  returnsPage = 0; readonly returnsPageSize = 10; returnsHasNext = false;
   returnsLoading = false;
   returnBusyId = '';
   codRefundReturn?: AdminReturn;
@@ -133,6 +144,8 @@ export class AdminComponent implements OnInit, DoCheck {
   ) {}
 
   ngOnInit(): void {
+    const routedTab = this.route?.snapshot.data['tab'];
+    if (['products', 'categories', 'badges', 'sizes', 'colors', 'orders', 'returns', 'reviews', 'content'].includes(routedTab)) this.tab = routedTab;
     this.requestedOrderId = this.route?.snapshot.queryParamMap.get('order') || '';
     this.loadProducts();
     this.loadCategories();
@@ -142,6 +155,10 @@ export class AdminComponent implements OnInit, DoCheck {
     this.loadOrders();
     this.loadReturns();
     this.loadCustomerReviews();
+  }
+
+  get adminTitle(): string {
+    return ({ orders: 'Orders', returns: 'Returns & Replacements', reviews: 'Reviews', products: 'Products', categories: 'Categories', badges: 'Badges', sizes: 'Sizes', colors: 'Colors', content: 'Product Page Content' } as Record<string, string>)[this.tab] || 'Admin';
   }
 
   ngDoCheck(): void {
@@ -220,10 +237,170 @@ export class AdminComponent implements OnInit, DoCheck {
   loadReturns(): void {
     if (this.returnsLoading) return;
     this.returnsLoading = true;
-    this.orderService.adminReturns().subscribe({
-      next: returns => { this.returns = returns; this.returnsLoading = false; },
+    if (this.returnTab === 'outbound_orders') {
+      this.orderService.adminAfterSalesOrders(this.returnsPageSize + 1, this.returnsPage * this.returnsPageSize).subscribe({
+        next: orders => { this.afterSalesOrders = orders.slice(0, this.returnsPageSize); this.returnsHasNext = orders.length > this.returnsPageSize; this.returnsLoading = false; },
+        error: () => { this.error = 'Could not load outbound orders.'; this.returnsLoading = false; }
+      });
+      return;
+    }
+    this.orderService.adminReturns(this.returnTab, this.returnsPageSize + 1, this.returnsPage * this.returnsPageSize).subscribe({
+      next: returns => {
+        this.returns = returns.slice(0, this.returnsPageSize);
+        this.returnsHasNext = returns.length > this.returnsPageSize;
+        if (this.selectedReturn) this.selectedReturn = returns.find(item => item.id === this.selectedReturn?.id) || this.selectedReturn;
+        this.returnsLoading = false;
+      },
       error: () => { this.error = 'Could not load returns.'; this.returnsLoading = false; }
     });
+  }
+
+  selectReturnTab(tab: string): void {
+    if (this.returnsLoading || this.returnTab === tab) return;
+    this.returnTab = tab; this.returnsPage = 0; this.returnsHasNext = false;
+    this.loadReturns();
+  }
+  changeReturnsPage(direction: number): void {
+    if (this.returnsLoading || (direction < 0 && this.returnsPage === 0) || (direction > 0 && !this.returnsHasNext)) return;
+    this.returnsPage += direction; this.loadReturns();
+  }
+  openAfterSalesOrder(order: Order): void {
+    if (!order.returnId || this.returnBusyId) return;
+    this.returnBusyId = order.id;
+    this.orderService.adminReturn(order.returnId).subscribe({
+      next: request => { this.returnBusyId = ''; this.openReturnDetails(request); },
+      error: () => { this.returnBusyId = ''; this.error = 'Could not load the linked return request.'; }
+    });
+  }
+  refreshOutboundTracking(order: Order): void {
+    if (this.returnBusyId || !order.shipment?.shiprocketShipmentId) return;
+    this.returnBusyId = order.id; this.error = '';
+    this.shippingService.getTracking(order.id).subscribe({
+      next: () => { this.returnBusyId = ''; this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.error = error?.error?.message || 'Could not refresh outbound tracking.'; }
+    });
+  }
+
+  openReturnDetails(request: AdminReturn): void {
+    this.selectedReturn = request;
+    this.photoReviewReason = '';
+    this.inspectionDrafts = Object.fromEntries(request.items.map(item => [item.id, { decision: item.inspectionStatus === 'pending' ? '' : (item.inspectionStatus || ''), reason: item.inspectionReason || '' }]));
+    this.error = '';
+    this.message = '';
+    queueMicrotask(() => {
+      const dialog = this.returnDetailsDialog?.nativeElement;
+      if (dialog && !dialog.open) dialog.showModal();
+    });
+  }
+  closeReturnDetails(): void { this.returnDetailsDialog?.nativeElement.close(); }
+  photoReviewReason = '';
+  reviewDefectPhotos(request: AdminReturn, decision: 'approved' | 'rejected'): void {
+    if (this.returnBusyId || !request.defectPhotoReviewPending) return;
+    if (decision === 'rejected' && !this.photoReviewReason.trim()) { this.error = 'Enter the reason for rejecting the photos.'; return; }
+    this.returnBusyId = request.id; this.error = '';
+    this.orderService.reviewDefectPhotos(request.id, decision, this.photoReviewReason.trim()).subscribe({
+      next: updated => { this.selectedReturn = updated; this.returnBusyId = ''; this.message = 'Photo review saved. Follow the return pickup status below.'; this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.error = error?.error?.message || 'Photo review could not be saved.'; }
+    });
+  }
+  clearReturnDetails(): void { this.selectedReturn = null; this.inspectionDrafts = {}; }
+  canInspectReplacementItem(request: AdminReturn, item: AdminReturn['items'][number]): boolean {
+    return request.status === 'received' && !request.replacementShipmentPending && !request.shiprocketOutboundOrderId &&
+      (!item.inspectionStatus || item.inspectionStatus === 'pending');
+  }
+  canSubmitInspection(request: AdminReturn): boolean {
+    return request.status === 'received' && !request.replacementShipmentPending &&
+      !request.shiprocketOutboundOrderId && request.items.length > 0 && request.items.every(item =>
+        item.inspectionStatus && item.inspectionStatus !== 'pending' ||
+        (!!this.inspectionDrafts[item.id]?.decision && !!this.inspectionDrafts[item.id]?.reason.trim()));
+  }
+  submitInspection(request: AdminReturn): void {
+    if (this.returnBusyId || !this.canSubmitInspection(request)) return;
+    const items = request.items.filter(item => !item.inspectionStatus || item.inspectionStatus === 'pending').map(item => ({
+      itemId: item.id, decision: this.inspectionDrafts[item.id].decision as 'approved' | 'rejected', reason: this.inspectionDrafts[item.id].reason.trim()
+    }));
+    this.returnBusyId = request.id;
+    this.error = ''; this.message = '';
+    this.orderService.submitReplacementInspection(request.id, items).subscribe({
+      next: updated => { this.selectedReturn = updated; this.returnBusyId = ''; this.message = updated.shiprocketOutboundOrderId
+        ? 'Inspection submitted. Track the outbound items from this request.'
+        : updated.refundStatus === 'processing' ? 'Inspection approved. Refund initiated to the original payment method.'
+        : updated.refundAmount ? 'Inspection approved. Refund details are ready for processing.' : 'Inspection completed. No refund is payable.'; this.loadReturns(); },
+      error: error => { this.returnBusyId = ''; this.error = error?.error?.message || 'Could not submit inspection.'; this.loadReturns(); }
+    });
+  }
+  returnStatusClass(s: string): string {
+    const m: Record<string, string> = {
+      requested: 'orange', return_created: 'orange', shiprocket_failed: 'orange',
+      pickup_scheduled: 'orange', picked_up: 'blue', in_transit: 'blue', received: 'blue',
+      approved: 'blue', refund_initiated: 'orange', refunded: 'green',
+      pickup_failed: 'red', rejected: 'red', cancelled: 'red'
+    };
+    return m[s] || 'grey';
+  }
+
+  returnStatusLabel(status: string): string {
+    const labels: Record<string, string> = {
+      requested: 'Return requested', return_created: 'Awaiting return initiation', shiprocket_failed: 'Return creation delayed',
+      pickup_scheduled: 'Pickup scheduled', picked_up: 'Picked up', in_transit: 'In transit',
+      received: 'Received', approved: 'Approved', refund_initiated: 'Refund processing', refunded: 'Refund completed',
+      pickup_failed: 'Pickup needs attention', manual_required: 'Manual refund required'
+    };
+    return labels[status] || status.replace(/_/g, ' ');
+  }
+
+  requestStatusLabel(request: AdminReturn): string {
+    if (request.defectPhotoReviewPending) return 'Awaiting photo review';
+    if (request.replacementShipmentPending) return 'Outbound shipment needs review';
+    if (request.shiprocketOutboundOrderId) return 'Outbound shipment ' + (request.outboundStatus || 'created').toLowerCase();
+    return this.returnStatusLabel(request.status);
+  }
+
+  returnStage(status: string): number {
+    if (['approved', 'refund_initiated', 'refunded'].includes(status)) return 5;
+    if (status === 'received') return 4;
+    if (status === 'in_transit') return 3;
+    if (status === 'picked_up') return 2;
+    if (status === 'pickup_scheduled') return 1;
+    return 0;
+  }
+
+  itemTrackingStage(request: AdminReturn, item: AdminReturn['items'][number]): number {
+    const stage = this.returnStage(request.status);
+    if (stage < 4) return stage;
+    if (request.requestType !== 'replacement' && item.inspectionStatus !== 'rejected') {
+      if (['refund_initiated', 'refunded'].includes(request.status)) return 5;
+      return request.status === 'approved' ? 4 : 3;
+    }
+    if (!item.inspectionStatus || item.inspectionStatus === 'pending') return 3;
+    return request.shiprocketOutboundOrderId || request.outboundAwb || request.outboundCreatedAt ? 5 + (request.outboundStage || 0) : 4;
+  }
+
+  itemTrackingOutcome(request: AdminReturn, item: AdminReturn['items'][number]): string {
+    return item.inspectionStatus === 'rejected' ? 'Original item return' : request.requestType === 'replacement' ? 'Replacement' : 'Refund';
+  }
+
+  itemJourneyTitle(request: AdminReturn, item: AdminReturn['items'][number]): string {
+    if (request.defectPhotoReviewPending) return 'Awaiting admin photo review';
+    if (this.returnStage(request.status) < 4) return this.returnStatusLabel(request.status);
+    if (!item.inspectionStatus || item.inspectionStatus === 'pending') return 'Awaiting inspection';
+    return item.inspectionStatus === 'approved' ? (request.requestType === 'replacement' ? 'Replacement approved' : 'Return approved')
+      : (request.requestType === 'replacement' ? 'Replacement rejected' : 'Return rejected');
+  }
+
+  itemJourneyDetail(request: AdminReturn, item: AdminReturn['items'][number]): string {
+    if (request.defectPhotoReviewPending) return 'Review the customer photos before creating the return pickup order.';
+    if (this.returnStage(request.status) < 4) {
+      return request.returnAwb ? `Shared return shipment · AWB ${request.returnAwb}` : 'All selected products are travelling together to Monk Hagen.';
+    }
+    if (!item.inspectionStatus || item.inspectionStatus === 'pending') return 'Warehouse inspection is pending for this product.';
+    if (request.requestType !== 'replacement' && item.inspectionStatus === 'approved') {
+      return `${request.refundAmount ? 'Refund after shipping deduction: ₹' + request.refundAmount : 'No refund payable after shipping deduction'}${item.inspectionReason ? ' · ' + item.inspectionReason : ''}`;
+    }
+    const shipment = request.outboundAwb ? `AWB ${request.outboundAwb}` : (request.outboundStatus || 'Outbound shipment is being prepared');
+    return item.inspectionStatus === 'approved'
+      ? `Replacement size ${item.replacementSize || 'selected'} · ${shipment}`
+      : `The original product will be sent back · ${shipment}${item.inspectionReason ? ` · ${item.inspectionReason}` : ''}`;
   }
 
   loadCustomerReviews(): void {
@@ -269,7 +446,7 @@ export class AdminComponent implements OnInit, DoCheck {
     });
   }
 
-  canApproveReturn(item: AdminReturn): boolean { return item.status === 'received'; }
+  canApproveReturn(item: AdminReturn): boolean { return false; }
   canRefundReturn(item: AdminReturn): boolean {
     return item.paymentMethod !== 'cod' && item.status === 'approved' && item.refundStatus === 'pending';
   }
@@ -284,7 +461,7 @@ export class AdminComponent implements OnInit, DoCheck {
     if (this.returnBusyId) return;
     this.returnBusyId = item.id; this.codRefundError = '';
     this.orderService.revealCodRefund(item.id).subscribe({
-      next: detail => { this.returnBusyId = ''; this.codRefundReturn = item; this.codRefundReveal = detail;
+      next: detail => { this.closeReturnDetails(); this.returnBusyId = ''; this.codRefundReturn = item; this.codRefundReveal = detail;
         this.codRefundReference = ''; this.codRefundNote = ''; },
       error: error => { this.returnBusyId = ''; this.error = error?.error?.message || 'Refund details could not be revealed.'; }
     });
@@ -322,7 +499,6 @@ export class AdminComponent implements OnInit, DoCheck {
     if (item.cancellationPending) return null;
     if (['requested','shiprocket_failed'].includes(item.status)) return 'Reject request';
     if (['return_created','pickup_scheduled','pickup_failed'].includes(item.status)) return 'Cancel return';
-    if (item.status === 'received') return 'Reject after inspection';
     return null;
   }
 
@@ -418,7 +594,7 @@ export class AdminComponent implements OnInit, DoCheck {
 
   canRetryShipment(order: Order): boolean {
     return order.paymentStatus === 'paid' &&
-      !order.shipment?.shiprocketShipmentId;
+      !order.shipment?.shiprocketShipmentId && !order.shipment?.pendingOperation;
   }
 
   retryShipment(order: Order): void {

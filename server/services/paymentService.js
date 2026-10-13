@@ -129,6 +129,7 @@ async function createPaymentOrder(userId, { addressId, checkoutToken }) {
     return { keyId, razorpayOrderId: remote.id, amount: payable, currency: CURRENCY, localOrderId, orderNumber: localOrderNumber };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
+    if (error.statusCode === 429) throw httpError(429, 'Online payment is busy. Please wait a moment and try again.');
     throw error;
   } finally { client.release(); }
 }

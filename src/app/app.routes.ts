@@ -36,37 +36,31 @@ export const routes: Routes = [
       import('./pages/login/login.component').then((m) => m.LoginComponent),
     title: 'Login — Monk Hagen'
   },
-  {
-    path: 'dashboard',
-    canActivate: [adminGuard],
-    loadComponent: () =>
-      import('./pages/admin-analytics/admin-analytics.component').then((m) => m.AdminAnalyticsComponent),
-    title: 'Dashboard — Monk Hagen'
-  },
+  { path: 'dashboard', redirectTo: 'admin/dashboard', pathMatch: 'full' },
   {
     path: 'admin/analytics',
-    redirectTo: 'dashboard',
+    redirectTo: 'admin/dashboard',
     pathMatch: 'full'
-  },
-  {
-    path: 'admin/ledger',
-    canActivate: [adminGuard],
-    loadComponent: () =>
-      import('./pages/admin-ledger/admin-ledger.component').then((m) => m.AdminLedgerComponent),
-    title: 'Financial Ledger — Monk Hagen'
-  },
-  {
-    path: 'admin/stock',
-    canActivate: [adminGuard],
-    loadComponent: () => import('./pages/admin-stock/admin-stock.component').then((m) => m.AdminStockComponent),
-    title: 'Stock Management — Monk Hagen'
   },
   {
     path: 'admin',
     canActivate: [adminGuard],
-    loadComponent: () =>
-      import('./pages/admin/admin.component').then((m) => m.AdminComponent),
-    title: 'Admin — Monk Hagen'
+    loadComponent: () => import('./pages/admin-portal/admin-portal.component').then((m) => m.AdminPortalComponent),
+    children: [
+      { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
+      { path: 'dashboard', loadComponent: () => import('./pages/admin-analytics/admin-analytics.component').then((m) => m.AdminAnalyticsComponent), title: 'Dashboard — Monk Hagen' },
+      { path: 'ledger', loadComponent: () => import('./pages/admin-ledger/admin-ledger.component').then((m) => m.AdminLedgerComponent), title: 'Ledger — Monk Hagen' },
+      { path: 'stock', loadComponent: () => import('./pages/admin-stock/admin-stock.component').then((m) => m.AdminStockComponent), title: 'Stock — Monk Hagen' },
+      { path: 'orders', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'orders' } },
+      { path: 'returns', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'returns' } },
+      { path: 'reviews', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'reviews' } },
+      { path: 'products', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'products' } },
+      { path: 'products/categories', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'categories' } },
+      { path: 'products/badges', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'badges' } },
+      { path: 'products/sizes', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'sizes' } },
+      { path: 'products/colors', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'colors' } },
+      { path: 'products/content', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'content' } }
+    ]
   },
   {
     path: 'about',
@@ -85,6 +79,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./pages/contact/contact.component').then((m) => m.ContactComponent),
     title: 'Contact — Monk Hagen'
+  },
+  {
+    path: 'newsletter/unsubscribe',
+    loadComponent: () => import('./pages/newsletter-unsubscribe/newsletter-unsubscribe.component').then((m) => m.NewsletterUnsubscribeComponent),
+    title: 'Email Preferences — Monk Hagen'
   },
   {
     path: 'refund-policy',

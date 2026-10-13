@@ -23,6 +23,7 @@ export class AccountAddressesComponent implements OnInit {
   showForm = false;
   editingId: string | null = null;
   form: AddressPayload = EMPTY_FORM();
+  customAddressType = '';
   saving = false;
   error = '';
   attempted = false;
@@ -55,20 +56,33 @@ export class AccountAddressesComponent implements OnInit {
   }
   load(): void { this.account.getAddresses().subscribe(a => this.addresses = a); }
 
-  openAdd(): void { this.editingId = null; this.legacyLocation = null; this.form = { ...EMPTY_FORM(), email: this.auth.currentUser?.email || '' }; this.verifiedPincode = ''; this.pincodeError = ''; this.showForm = true; this.resetValidation(); }
+  openAdd(): void { this.editingId = null; this.legacyLocation = null; this.form = { ...EMPTY_FORM(), email: this.auth.currentUser?.email || '' }; this.customAddressType = ''; this.verifiedPincode = ''; this.pincodeError = ''; this.showForm = true; this.resetValidation(); }
   openEdit(a: Address): void {
     this.editingId = a.id;
     this.legacyLocation = { state: a.state, city: a.city };
     this.form = { fullName: a.fullName, phone: a.phone, email: a.email || this.auth.currentUser?.email || '', addressLine1: a.addressLine1,
       addressLine2: a.addressLine2 || '', landmark: a.landmark || '',
       city: a.city, state: a.state, postalCode: a.postalCode,
-      country: a.country, addressType: a.addressType };
+      country: a.country, addressType: ['Home', 'Work', 'Other'].includes(a.addressType) ? a.addressType : 'Other' };
+    this.customAddressType = ['Home', 'Work', 'Other'].includes(a.addressType) ? '' : a.addressType;
     this.normaliseKnownLocation();
     this.verifiedPincode = a.postalCode;
     this.pincodeError = '';
     this.showForm = true; this.resetValidation();
   }
   cancel(): void { if (!this.saving) { this.showForm = false; this.resetValidation(); } }
+
+  addressTypeChanged(type: string): void {
+    this.form.addressType = type;
+    if (type !== 'Other') this.customAddressType = '';
+  }
+
+  get customAddressTypeError(): string {
+    const value = this.customAddressType.trim();
+    if (this.form.addressType !== 'Other') return '';
+    if (value.length < 2 || value.length > 30 || !/[\p{L}\p{N}]/u.test(value)) return 'Enter an address type between 2 and 30 characters.';
+    return '';
+  }
 
   private resetValidation(): void { this.error = ''; this.attempted = false; this.touched.clear(); }
 
@@ -164,6 +178,11 @@ export class AccountAddressesComponent implements OnInit {
       this.error = this.locationError || 'State and city options are still loading.';
       return;
     }
+    if (this.customAddressTypeError) {
+      this.error = this.customAddressTypeError;
+      this.addressFormElement?.nativeElement.querySelector<HTMLElement>('[name="customAddressType"]')?.focus();
+      return;
+    }
     const fields: (keyof AddressPayload)[] = ['fullName', 'phone', 'email', 'addressLine1', 'addressLine2', 'landmark', 'city', 'state', 'postalCode'];
     const invalidField = fields.find(field => this.fieldError(field));
     if (invalidField) {
@@ -173,7 +192,7 @@ export class AccountAddressesComponent implements OnInit {
     }
     if (this.pincodeLoading) { this.error = 'PIN code verification is still in progress.'; return; }
     if (this.verifiedPincode !== this.form.postalCode.trim()) { this.error = this.pincodeError || 'Please enter a valid Indian PIN code.'; return; }
-    const payload = { ...this.form };
+    const payload = { ...this.form, addressType: this.form.addressType === 'Other' ? this.customAddressType.trim() : this.form.addressType };
     for (const field of fields) payload[field] = String(this.form[field] || '').trim();
     const canonical = canonicalLocation(this.locations, payload.state, payload.city);
     if (canonical) Object.assign(payload, canonical);

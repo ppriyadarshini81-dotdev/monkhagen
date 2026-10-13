@@ -9,9 +9,10 @@ const inventory = require('../services/inventoryService');
 const transactionalEmail = require('../services/transactionalEmailService');
 process.env.RAZORPAY_KEY_SECRET = crypto.randomBytes(32).toString('hex');
 process.env.RAZORPAY_WEBHOOK_SECRET = crypto.randomBytes(32).toString('hex');
-let remoteCreates, providerPayment;
+let remoteCreates, providerPayment, remoteCreateError;
+const remoteAmounts=[];
 gateway.getRazorpay = () => ({ keyId: 'test-key', razorpay: {
-  orders: { create: async () => ({ id: `order_mock_${++remoteCreates}` }) },
+  orders: { create: async input => {if(remoteCreateError)throw remoteCreateError;remoteAmounts.push(input.amount);return { id: `order_mock_${++remoteCreates}` };} },
   payments: { fetch: async () => providerPayment }
 } });
 mail.sendOrderConfirmation = async () => false;
@@ -20,7 +21,7 @@ const Order = require('../models/Order');
 const originals = { query: pool.query, connect: pool.connect, process: shipping.processPendingOrder,
   refundCompleted: transactionalEmail.refundCompleted };
 afterEach(() => { pool.query = originals.query; pool.connect = originals.connect; shipping.processPendingOrder = originals.process;
-  transactionalEmail.refundCompleted = originals.refundCompleted; });
+  transactionalEmail.refundCompleted = originals.refundCompleted; remoteCreateError = null; });
 const USER = '20000000-0000-4000-8000-000000000001';
 const ADDRESS = '30000000-0000-4000-8000-000000000001';
 const VARIANT = '40000000-0000-4000-8000-000000000001';
@@ -174,6 +175,22 @@ test('prepaid checkout reserves stock once and same-token retries reuse the serv
   assert.equal(remoteCreates, 1);
   assert.equal(fixture.state.orders.length, 1);
   assert.equal(fixture.state.shipments.size, 0);
+});
+
+test('Razorpay rate limiting returns a safe retry message and rolls back reserved inventory', async () => {
+  const fixture = setup({ stock: 2 });
+  const input = attempt();
+  remoteCreateError = { statusCode: 429, error: { description: 'Private provider response' } };
+  await assert.rejects(payments.createPaymentOrder(USER, input), error => error.status === 429 &&
+    error.message === 'Online payment is busy. Please wait a moment and try again.');
+  assert.equal(fixture.state.stock, 2);
+  assert.equal(fixture.state.orders.length, 0);
+  assert.equal(fixture.state.items.length, 0);
+  assert.equal(remoteCreates, 0);
+  remoteCreateError = null;
+  await payments.createPaymentOrder(USER, input);
+  assert.equal(fixture.state.orders.length, 1);
+  assert.equal(fixture.state.stock, 1);
 });
 test('first prepaid offer is not applied after the customer has already placed a COD order', async () => {
   const fixture = setup({ priorOrders: [{ id: crypto.randomUUID(), user_id: USER, payment_method: 'cod',

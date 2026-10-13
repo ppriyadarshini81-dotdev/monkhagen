@@ -1,17 +1,19 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  RETURN_WINDOW_MS, evaluateEligibility, refundableItems, validateRequest,
+  DEFECT_WINDOW_MS, RETURN_TYPES, RETURN_WINDOW_MS, evaluateEligibility, refundableItems, validateRequest,
   createLocalReturn, returnPayload, provisionReturn, mappedWebhookStatus,
-  approveReturn, rejectReturn, initiateRefund, processShiprocketWebhook, resolveReturnWarehouse
+  approveReturn, rejectReturn, initiateRefund, processShiprocketWebhook, resolveReturnWarehouse, getEligibility, listCustomerReturns
 } = require('../services/returnService');
 const { shippingError } = require('../config/shiprocket');
+const { environment: packingEnvironment } = require('./helpers/shippingPackageFixtures');
 
 const ORDER = '10000000-0000-4000-8000-000000000001';
 const ITEM = '20000000-0000-4000-8000-000000000001';
 const OTHER = '20000000-0000-4000-8000-000000000002';
 const IDEM = '30000000-0000-4000-8000-000000000001';
 const RETURN = '40000000-0000-4000-8000-000000000001';
+const PHOTO = '90000000-0000-4000-8000-000000000001';
 const INVENTORY = '50000000-0000-4000-8000-000000000001';
 const PRODUCT = '60000000-0000-4000-8000-000000000001';
 const SIZE = '70000000-0000-4000-8000-000000000001';
@@ -19,13 +21,75 @@ const NOW = Date.parse('2026-10-17T09:30:00.000Z');
 const order = (age, changes = {}) => ({ id: ORDER, order_status: 'delivered', delivered_at: new Date(NOW - age), subtotal: '200.00', discount_amount: '20.00', ...changes });
 const items = (returned = 0) => [{ id: ITEM, product_name: 'Original tee', sku: 'TEE-M-BLUE', size: 'M', color: 'Blue', quantity: 2, unit_price: '100.00', returned_quantity: returned }];
 
-test('exact seven-day delivery eligibility uses delivered_at and supports remaining partial quantity', () => {
+test('exact seven-day delivery eligibility uses delivered_at and permits unrequested products', () => {
   for (const age of [0, 6 * 86400000, RETURN_WINDOW_MS]) {
-    const result = evaluateEligibility(order(age), items(1), NOW);
+    const result = evaluateEligibility(order(age), items(0), NOW);
     assert.equal(result.eligible, true);
-    assert.equal(result.items[0].remainingQuantity, 1);
+    assert.equal(result.items[0].remainingQuantity, 2);
   }
   assert.equal(evaluateEligibility(order(RETURN_WINDOW_MS + 1), items(), NOW).reason, 'WINDOW_CLOSED');
+});
+
+test('existing requests are flagged even for partial quantities, and cancelled requests release the flag within the window', () => {
+  const partial = evaluateEligibility(order(0), items(1), NOW);
+  assert.equal(partial.hasExistingRequest, true);
+  assert.equal(partial.eligible, true);
+  assert.equal(partial.items[0].alreadyRequested, false);
+  assert.equal(partial.items[0].remainingQuantity, 1);
+  const otherProduct = evaluateEligibility(order(0), [...items(1), { ...items()[0], id: OTHER }], NOW);
+  assert.equal(otherProduct.eligible, true);
+  assert.deepEqual(otherProduct.items.map(item => item.alreadyRequested), [false, false]);
+  const full = evaluateEligibility(order(0), items(2), NOW);
+  assert.equal(full.hasExistingRequest, true);
+  assert.equal(full.eligible, false);
+  const cancelled = evaluateEligibility(order(0), items(0), NOW);
+  assert.equal(cancelled.hasExistingRequest, false);
+  assert.equal(cancelled.eligible, true);
+  assert.equal(evaluateEligibility(order(RETURN_WINDOW_MS + 1), items(0), NOW).eligible, false);
+});
+
+test('cancelled history keeps the order link available without reserving products', async () => {
+  const database = { async query(sql) {
+    if (sql.startsWith('SELECT o.*')) return { rows: [{ ...order(0), has_return_history: true, has_existing_return_request: false }] };
+    if (sql.startsWith('SELECT oi.*')) return { rows: items(0) };
+    return { rows: [] };
+  } };
+  const result = await getEligibility('customer', ORDER, database, () => NOW);
+  assert.equal(result.hasReturnHistory, true); assert.equal(result.hasExistingRequest, false);
+  assert.equal(result.eligible, true); assert.equal(result.items[0].remainingQuantity, 2);
+});
+
+test('customer returns validate order filters and preserve authenticated user, status and pagination parameters', async () => {
+  const calls = [];
+  const database = { query: async (sql, params) => { calls.push(params); return { rows: [] }; } };
+  await assert.rejects(listCustomerReturns('customer', database, { orderId: 'invalid' }), error => error.status === 400);
+  assert.equal(calls.length, 0);
+  await listCustomerReturns('customer', database, { orderId: ORDER, statuses: ['received'], limit: 10, offset: 20 });
+  assert.deepEqual(calls[0], ['customer', 10, 20, ['received'], ORDER]);
+  await listCustomerReturns('customer', database);
+  assert.deepEqual(calls[1], ['customer', 100, 0, null, null]);
+});
+
+test('defect reports close immediately after the exact 48-hour delivery boundary', () => {
+  const atBoundary = evaluateEligibility(order(DEFECT_WINDOW_MS), items(), NOW);
+  assert.equal(atBoundary.requestTypes.find(type => type.code === RETURN_TYPES.defect).eligible, true);
+  assert.equal(atBoundary.requestTypes.find(type => type.code === RETURN_TYPES.return).eligible, true);
+
+  const justAfter = evaluateEligibility(order(DEFECT_WINDOW_MS + 1), items(), NOW);
+  assert.equal(justAfter.requestTypes.find(type => type.code === RETURN_TYPES.defect).eligible, false);
+  assert.equal(justAfter.requestTypes.find(type => type.code === RETURN_TYPES.return).eligible, true);
+  assert.equal(justAfter.defectReportingEnded, true);
+});
+
+test('normal returns and size replacements close immediately after the exact seven-day delivery boundary', () => {
+  const atBoundary = evaluateEligibility(order(RETURN_WINDOW_MS), items(), NOW);
+  assert.equal(atBoundary.requestTypes.find(type => type.code === RETURN_TYPES.return).eligible, true);
+  assert.equal(atBoundary.requestTypes.find(type => type.code === RETURN_TYPES.replacement).eligible, true);
+
+  const justAfter = evaluateEligibility(order(RETURN_WINDOW_MS + 1), items(), NOW);
+  assert.equal(justAfter.requestTypes.find(type => type.code === RETURN_TYPES.return).eligible, false);
+  assert.equal(justAfter.requestTypes.find(type => type.code === RETURN_TYPES.replacement).eligible, false);
+  assert.equal(justAfter.reason, 'WINDOW_CLOSED');
 });
 
 test('undelivered, cancelled, RTO, missing timestamp and fully returned orders are ineligible', () => {
@@ -49,6 +113,61 @@ test('request validation requires server reason codes, quantities, ownership IDs
   ]) assert.throws(() => validateRequest(body));
 });
 
+test('each selected size-exchange item carries its own replacement size and cannot use a shared payload value', () => {
+  const exchange = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, requestType: RETURN_TYPES.replacement,
+    items: [
+      { orderItemId: ITEM, quantity: 1, reason: 'size_issue', replacementSize: 'L' },
+      { orderItemId: OTHER, quantity: 1, reason: 'size_issue', replacementSize: 'XL' }
+    ]
+  });
+  assert.equal(exchange.items.length, 2);
+  assert.equal(exchange.items[0].replacementSize, 'L');
+  assert.equal(exchange.items[1].replacementSize, 'XL');
+  assert.equal(exchange.replacementSize, null);
+  assert.throws(() => validateRequest({ ...exchange, items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] }), /Replacement size/);
+});
+
+test('a client cannot relabel a defect as a normal return to bypass the 48-hour policy', async () => {
+  const relabelled = {
+    orderId: ORDER, idempotencyKey: IDEM, requestType: RETURN_TYPES.return,
+    items: [{ orderItemId: ITEM, quantity: 1, reason: 'product_damaged', comments: 'The garment arrived torn.', photoIds: [PHOTO] }]
+  };
+  for (const requestType of [RETURN_TYPES.return, RETURN_TYPES.defect]) {
+    const input = validateRequest({ ...relabelled, requestType });
+    assert.equal(input.requestType, requestType);
+    const db = localDatabase({ deliveredAt: new Date(NOW - DEFECT_WINDOW_MS - 1) });
+    await assert.rejects(createLocalReturn('customer', input, db, () => NOW), error => error.code === 'DEFECT_WINDOW_CLOSED');
+    assert.equal(db.queries.some(query => query.sql.startsWith('INSERT INTO return_requests')), false);
+  }
+});
+
+test('the selected return option is saved independently of quality, damage and wrong-product reasons', async () => {
+  for (const reason of ['quality_issue', 'product_damaged', 'wrong_item']) {
+    for (const requestType of [RETURN_TYPES.return, RETURN_TYPES.defect]) {
+      const body = { orderId: ORDER, idempotencyKey: IDEM, requestType,
+        items: [{ orderItemId: ITEM, quantity: 1, reason, comments: 'Customer selected this reason.', photoIds: [PHOTO] }] };
+      const input = validateRequest(body);
+      assert.equal(input.requestType, requestType);
+      const db = localDatabase();
+      await createLocalReturn('customer', input, db, () => NOW);
+      const insert = db.queries.find(query => query.sql.startsWith('INSERT INTO return_requests'));
+      assert.equal(insert.params[8], requestType);
+      const audit = db.queries.find(query => query.sql.startsWith('INSERT INTO return_request_audit') && query.params[3] === 'REQUEST_SUBMITTED');
+      assert.equal(JSON.parse(audit.params[5]).requestType, requestType);
+    }
+  }
+});
+
+test('a return can contain quality and fit reasons without becoming a defective-item request', async () => {
+  const input = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, requestType: RETURN_TYPES.return,
+    items: [{ orderItemId: ITEM, quantity: 1, reason: 'quality_issue', comments: 'Poor quality product.' },
+      { orderItemId: OTHER, quantity: 1, reason: 'size_issue' }] });
+  const db = localDatabase({ additionalItem: true });
+  await createLocalReturn('customer', input, db, () => NOW);
+  assert.equal(db.queries.find(query => query.sql.startsWith('INSERT INTO return_requests')).params[8], RETURN_TYPES.return);
+  assert.equal(db.queries.filter(query => query.sql.startsWith('INSERT INTO return_items')).length, 2);
+});
+
 test('partial refund allocation uses original snapshots, allocates discount in paise, and excludes charges', () => {
   const source = [
     { id: ITEM, quantity: 2, unit_price: '100.00' },
@@ -61,14 +180,16 @@ test('partial refund allocation uses original snapshots, allocates discount in p
   assert.equal(allocated.reduce((sum, item) => sum + item.refundFor(0, item.quantity), 0), 22500);
 });
 
-function localDatabase({ owner = true, returned = 0, deliveredAt = new Date(NOW), status = 'delivered', duplicate = null } = {}) {
+function localDatabase({ owner = true, returned = 0, deliveredAt = new Date(NOW), status = 'delivered', duplicate = null, additionalItem = false } = {}) {
   const queries = [];
   const client = { async query(sql, params) {
     queries.push({ sql: String(sql), params });
     if (String(sql).startsWith('SELECT * FROM return_requests WHERE user_id')) return { rows: duplicate ? [duplicate] : [] };
     if (String(sql).startsWith('SELECT o.*, u.email')) return { rows: owner ? [{ ...order(0, { delivered_at: deliveredAt, order_status: status }), customer_email: 'buyer@example.com' }] : [] };
-    if (String(sql).startsWith('SELECT oi.*')) return { rows: items(returned) };
+    if (String(sql).startsWith('SELECT oi.*')) return { rows: additionalItem
+      ? [{ ...items(returned)[0], quantity: 1 }, { ...items()[0], id: OTHER, quantity: 1 }] : items(returned) };
     if (String(sql).startsWith('INSERT INTO return_requests')) return { rows: [{ id: RETURN, order_id: ORDER, request_hash: params[7], status: 'requested' }] };
+    if (String(sql).startsWith('SELECT id,metadata FROM return_request_audit')) return { rows: [{ id: PHOTO, metadata: { orderItemId: ITEM, url: 'https://media.example/test.png', key: 'test.png', mimeType: 'image/png' } }] };
     return { rows: [] };
   }, release() {} };
   return { queries, connect: async () => client };
@@ -85,15 +206,39 @@ test('local return transaction enforces ownership, window and remaining quantiti
   await assert.rejects(createLocalReturn('customer', body, localDatabase({ returned: 2 }), () => NOW), /already have a return request/);
 });
 
+test('a fully requested product stays blocked while other products remain available', async () => {
+  const blocked = validateRequest({ orderId: ORDER, idempotencyKey: IDEM,
+    items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] });
+  const db = localDatabase({ returned: 1, additionalItem: true });
+  await assert.rejects(createLocalReturn('customer', blocked, db, () => NOW), error =>
+    error.code === 'RETURN_ITEM_ALREADY_REQUESTED' && error.details.orderItemId === ITEM);
+  assert.equal(db.queries.some(query => query.sql.startsWith('INSERT INTO return_requests')), false);
+  const allowed = validateRequest({ orderId: ORDER, idempotencyKey: IDEM,
+    items: [{ orderItemId: OTHER, quantity: 1, reason: 'changed_mind' }] });
+  assert.equal((await createLocalReturn('customer', allowed, localDatabase({ returned: 1, additionalItem: true }), () => NOW)).created, true);
+});
+
+test('remaining units can be requested, but an existing request cannot cause quantities to exceed the purchase', async () => {
+  const remaining = validateRequest({ orderId: ORDER, idempotencyKey: IDEM,
+    items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] });
+  assert.equal((await createLocalReturn('customer', remaining, localDatabase({ returned: 1 }), () => NOW)).created, true);
+  const excess = validateRequest({ orderId: ORDER, idempotencyKey: IDEM,
+    items: [{ orderItemId: ITEM, quantity: 2, reason: 'size_issue' }] });
+  const database = localDatabase({ returned: 1 });
+  await assert.rejects(createLocalReturn('customer', excess, database, () => NOW), error => error.code === 'RETURN_QUANTITY_EXCEEDED');
+  assert.equal(database.queries.some(query => query.sql.startsWith('INSERT INTO return_requests')), false);
+});
+
 test('same idempotency key replays the local return and a conflicting body is rejected', async () => {
   const first = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'size_issue' }] });
   const replay = localDatabase({ duplicate: { id: RETURN, request_hash: first.requestHash } });
   assert.equal((await createLocalReturn('customer', first, replay, () => NOW)).created, false);
-  const changed = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'quality_issue' }] });
+  const changed = validateRequest({ orderId: ORDER, idempotencyKey: IDEM, items: [{ orderItemId: ITEM, quantity: 1, reason: 'quality_issue', comments: 'Stitching is damaged.', photoIds: [PHOTO] }] });
   await assert.rejects(createLocalReturn('customer', changed, localDatabase({ duplicate: { id: RETURN, request_hash: first.requestHash } })), /different items/);
 });
 
 const env = {
+  ...packingEnvironment,
   SHIPROCKET_PACKAGE_WEIGHT_KG: '0.5', SHIPROCKET_PACKAGE_LENGTH_CM: '20', SHIPROCKET_PACKAGE_BREADTH_CM: '15', SHIPROCKET_PACKAGE_HEIGHT_CM: '5',
   SHIPROCKET_PICKUP_LOCATION: 'work'
 };
@@ -122,8 +267,22 @@ test('Shiprocket return payload uses customer pickup and the saved forward picku
   assert.equal(payload.pickup_phone, '9876543210');
   assert.equal(payload.shipping_address, 'Kabir Apparels Warehouse');
   assert.equal(payload.shipping_pincode, 110001);
-  assert.deepEqual(payload.order_items[0], { sku: 'TEE-M-BLUE', name: 'Original tee', units: 1, selling_price: 100, discount: 10, qc_enable: false, qc_size: 'M' });
+  assert.deepEqual(payload.order_items[0], { sku: 'TEE-M-BLUE', name: 'Original tee - Size M', units: 1, selling_price: 100, tax: 5, discount: 10, qc_enable: false, qc_size: 'M' });
   assert.equal(Object.hasOwn(payload, 'request_pickup'), false);
+  assert.equal(payload.weight, 0.3);
+  assert.equal(payload.length, 27);
+  assert.equal(payload.breadth, 33);
+  assert.equal(payload.height, 2.6);
+});
+
+test('a partial return packs only requested units, summed across product lines', async () => {
+  const product = { sku: 'TEE', name: 'Original tee', size: 'M', unitPrice: '100.00' };
+  const payload = await returnPayload(payloadDatabase({ items: [
+    { ...product, quantity: 2, refundAmount: '180.00' },
+    { ...product, quantity: 1, refundAmount: '90.00' }
+  ] }), RETURN, { ...packingEnvironment, SHIPROCKET_PICKUP_LOCATION: 'work' }, pickupApi());
+  assert.equal(payload.weight, 0.83);
+  assert.equal(payload.height, 5.08);
 });
 
 test('Shiprocket return payload rejects invalid customer and saved-location pincodes', async () => {

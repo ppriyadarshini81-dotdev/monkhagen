@@ -32,11 +32,13 @@ router.get('/orders/:orderId/tracking',  ctrl.getTracking);
 router.get('/orders/:orderId/cancellation-eligibility', ctrl.getCancellationEligibility);
 router.post('/orders/:orderId/cancel', ctrl.cancelOrder);
 router.get('/orders/:orderId/return-eligibility', ctrl.getReturnEligibility);
+router.post('/orders/:orderId/items/:itemId/defect-photos', returnLimiter, require('../middleware/defectPhotoUpload'), ctrl.uploadDefectPhotos);
 router.get('/orders/:orderId/invoice', invoiceLimiter, ctrl.getInvoice);
 
 // Returns
 router.get('/returns',   ctrl.getReturns);
 router.get('/returns/:returnId', ctrl.getReturn);
+router.post('/returns/:returnId/cancel', returnLimiter, ctrl.cancelReturn);
 router.get('/returns/:returnId/refund-destination', ctrl.getCodRefundDestination);
 router.put('/returns/:returnId/refund-destination', returnLimiter, ctrl.saveCodRefundDestination);
 router.post('/returns', returnLimiter, ctrl.createReturn);

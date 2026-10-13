@@ -1,0 +1,5 @@
+.mh-unsubscribe { min-height: 58vh; padding: 96px 20px; }
+.mh-unsubscribe h1 { margin: 12px 0; font-size: clamp(38px, 6vw, 60px); }
+.mh-unsubscribe__message, .mh-unsubscribe__error { margin: 0 0 26px; font-size: 16px; }
+.mh-unsubscribe__message { color: #087a55; }
+.mh-unsubscribe__error { color: var(--mh-danger); }

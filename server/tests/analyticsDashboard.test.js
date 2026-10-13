@@ -49,7 +49,9 @@ test('overview KPI catalogue documents ledger, privacy, returns and health metri
 });
 
 test('aggregate uses ledger credits minus completed refunds and safe zero denominators', async () => {
+  let sessionQuery = '';
   const database = { query: async sql => {
+    if (sql.includes('FROM visitors')) sessionQuery = sql;
     if (sql.includes('FROM visitors')) return { rows: [{ sessions: 2, visitors: 2, logged_in_visitors: 1,
       anonymous_visitors: 1, returning_visitors: 1, page_views: 6, product_views: 3, average_session_seconds: 45 }] };
     if (sql.includes('GROUP BY e.event_type')) return { rows: [{ event_type: 'ADD_TO_CART', count: 2 }] };
@@ -70,6 +72,9 @@ test('aggregate uses ledger credits minus completed refunds and safe zero denomi
   assert.equal(result.averageOrderValue, 400);
   assert.equal(result.paymentFailureRate, 0);
   assert.equal(result.cartAbandonmentRate, 0);
+  assert.match(sessionQuery, /CASE WHEN user_id IS NULL THEN 'visitor:'/);
+  assert.match(sessionQuery, /ELSE 'user:'\|\|user_id::text END AS identity/);
+  assert.match(sessionQuery, /old\.user_id IS NULL THEN 'visitor:'/);
 });
 
 test('period comparisons use equal inclusive business-day windows', () => {
@@ -78,4 +83,32 @@ test('period comparisons use equal inclusive business-day windows', () => {
   assert.equal(period.startDate, '2026-09-03');
   assert.equal(period.endDate, '2026-10-02');
   assert.equal(period.lengthDays, 30);
+});
+
+test('visitor aggregation runs in PostgreSQL with UUID users and groups devices by customer identity', async () => {
+  const { PGlite } = require('@electric-sql/pglite');
+  const db = new PGlite();
+  try {
+    await db.exec(`CREATE TABLE analytics_sessions (
+      user_id UUID, visitor_id UUID, started_at TIMESTAMPTZ, is_internal BOOLEAN,
+      page_views INT, product_views INT, active_seconds INT);
+      INSERT INTO analytics_sessions VALUES
+      ('11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222221','2026-10-01T02:00:00Z',false,2,1,20),
+      ('11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','2026-10-01T03:00:00Z',false,3,1,30),
+      (NULL,'22222222-2222-4222-8222-222222222223','2026-10-01T04:00:00Z',false,1,0,10),
+      ('11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222221','2026-09-30T02:00:00Z',false,5,1,50),
+      (NULL,'22222222-2222-4222-8222-222222222224','2026-10-01T05:00:00Z',true,100,100,100);`);
+    const database = { query: async (sql, values) => {
+      if (sql.includes('FROM visitors')) return db.query(sql, values);
+      return { rows: sql.includes('GROUP BY e.event_type') ? [] : [{}] };
+    } };
+    const result = await reports.aggregate('2026-10-01T00:00:00Z','2026-10-02T00:00:00Z',database);
+    assert.equal(result.visitors,2);
+    assert.equal(result.loggedInVisitors,1);
+    assert.equal(result.anonymousVisitors,1);
+    assert.equal(result.returningVisitors,1);
+    assert.equal(result.sessions,3);
+    assert.equal(result.pageViews,6);
+    assert.equal(result.totalActiveSeconds,60);
+  } finally { await db.close(); }
 });
