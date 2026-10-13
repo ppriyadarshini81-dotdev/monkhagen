@@ -105,7 +105,7 @@ describe('AccountOrdersComponent', () => {
     const fixture = TestBed.createComponent(AccountOrdersComponent);
     fixture.detectChanges();
     await fixture.whenStable();
-    expect(account.getOrders).toHaveBeenCalledWith(10, 0, '', 'newest', '', '');
+    expect(account.getOrders).toHaveBeenCalledWith(10, 0, '', 'newest', '', '', '');
     fixture.componentInstance.page = 3;
     fixture.componentInstance.statusFilter = 'delivered';
     const select = (fixture.nativeElement as HTMLElement).querySelectorAll('select')[1];
@@ -113,12 +113,12 @@ describe('AccountOrdersComponent', () => {
     select.dispatchEvent(new Event('change'));
     fixture.detectChanges();
     await fixture.whenStable();
-    expect(account.getOrders.calls.mostRecent().args).toEqual([10, 0, 'delivered', 'oldest', '', '']);
+    expect(account.getOrders.calls.mostRecent().args).toEqual([10, 0, 'delivered', 'oldest', '', '', '']);
     expect(fixture.componentInstance.page).toBe(0);
     fixture.componentInstance.hasNextPage = true;
     spyOn(window, 'scrollTo');
     fixture.componentInstance.changePage(1);
-    expect(account.getOrders.calls.mostRecent().args).toEqual([10, 10, 'delivered', 'oldest', '', '']);
+    expect(account.getOrders.calls.mostRecent().args).toEqual([10, 10, 'delivered', 'oldest', '', '', '']);
     fixture.destroy();
   });
 
@@ -137,12 +137,12 @@ describe('AccountOrdersComponent', () => {
     to.value = '2026-10-11'; to.dispatchEvent(new Event('input'));
     element.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
     fixture.detectChanges(); await fixture.whenStable();
-    expect(account.getOrders.calls.mostRecent().args).toEqual([10, 0, 'active', 'oldest', '2026-10-01', '2026-10-11']);
+    expect(account.getOrders.calls.mostRecent().args).toEqual([10, 0, 'active', 'oldest', '2026-10-01', '2026-10-11', '']);
     instance.hasNextPage = true; spyOn(window, 'scrollTo'); instance.changePage(1);
-    expect(account.getOrders.calls.mostRecent().args).toEqual([10, 10, 'active', 'oldest', '2026-10-01', '2026-10-11']);
+    expect(account.getOrders.calls.mostRecent().args).toEqual([10, 10, 'active', 'oldest', '2026-10-01', '2026-10-11', '']);
     const clear = Array.from(element.querySelectorAll('button')).find(button => button.textContent?.includes('Clear dates'))!;
     clear.click();
-    expect(account.getOrders.calls.mostRecent().args).toEqual([10, 0, 'active', 'oldest', '', '']);
+    expect(account.getOrders.calls.mostRecent().args).toEqual([10, 0, 'active', 'oldest', '', '', '']);
     expect(instance.dateFrom).toBe(''); expect(instance.dateTo).toBe('');
     fixture.destroy();
   });

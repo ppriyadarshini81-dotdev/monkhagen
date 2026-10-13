@@ -1,3 +1,6 @@
+-- Legacy optional historical backfill. Do not register or execute this file in
+-- the schema-only production release. The runner uses
+-- 027_after_sales_orders_schema.sql under a distinct migration record instead.
 -- One consolidated outbound order per inspected return. Mixed parcels classify
 -- their individual lines so replacements and rejected originals stay distinct.
 ALTER TABLE orders
