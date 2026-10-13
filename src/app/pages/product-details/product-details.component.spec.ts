@@ -226,6 +226,9 @@ describe('Product details shared content', () => {
     images[1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     fixture.detectChanges();
     expect(fixture.componentInstance.imageZoom).toBe(2);
+    images[1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.imageZoom).toBe(1);
   });
 
   it('toggles viewer zoom when a touch pointer double-taps an image', () => {
