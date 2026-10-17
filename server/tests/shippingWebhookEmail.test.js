@@ -7,6 +7,7 @@ const ORDER = '10000000-0000-4000-8000-000000000001';
 test('forward Shiprocket labels and shipment status IDs map to email milestones without return collisions', () => {
   for (const payload of [
     { shipment_status: 'SHIPPED' }, { shipment_status: 'PICKED UP' }, { shipment_status: 'IN TRANSIT' },
+    { shipment_status: 'REACHED AT DESTINATION HUB' },
     { shipment_status_id: 6 }, { current_status_id: '18' }, { shipment_status_id: 42 }
   ]) assert.equal(mappedForwardStatus(payload), 'shipped');
   assert.equal(mappedForwardStatus({ shipment_status: 'OUT FOR DELIVERY' }), 'out_for_delivery');
