@@ -238,6 +238,7 @@ function createShippingService({ repository = Shipment, api = shiprocket, notifi
       if (row?.awb_code && (!row.tracking_checked_at || Date.now() - new Date(row.tracking_checked_at).getTime() > 60000)) {
         const result = normalizeTracking(await api.request(`/courier/track/awb/${encodeURIComponent(row.awb_code)}`));
         available = result.available;
+        const normalized = mappedForwardStatus({ shipment_status_id: result.statusCode, shipment_status: result.status });
         const deliveredAt = result.statusCode === 7 ? indiaTimestamp(result.deliveredAt) : null;
         row = await repository.save(client, orderId, {
           tracking_status: result.status || row.tracking_status,
@@ -245,9 +246,8 @@ function createShippingService({ repository = Shipment, api = shiprocket, notifi
           estimated_delivery: result.estimatedDelivery || row.estimated_delivery,
           tracking_events: result.events,
           tracking_checked_at: new Date(),
-          ...(result.available && result.status ? { shipping_status: result.status } : {})
+          ...(result.available && normalized ? { shipping_status: normalized } : {})
         }, { pickedUpAt: indiaTimestamp(result.pickedUpAt), deliveredAt });
-        const normalized = mappedForwardStatus({ shipment_status_id: result.statusCode, shipment_status: result.status });
         if (normalized === 'shipped') await notifySafely(() => emailNotifications.orderShipped(orderId));
         if (normalized === 'out_for_delivery') await notifySafely(() => emailNotifications.orderOutForDelivery(orderId));
         if (normalized === 'delivered') await notifySafely(() => emailNotifications.orderDelivered(orderId));
