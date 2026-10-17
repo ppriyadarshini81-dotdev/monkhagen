@@ -273,6 +273,22 @@ async function enrichOrder(o) {
   return fmtOrder(o, itemsRes.rows, addrRes.rows[0]);
 }
 
+async function refreshListedShipment(order, user) {
+  if (!order.shipment_awb_code || ['delivered', 'cancelled', 'returned'].includes(order.order_status)) return;
+  const lastChecked = new Date(order.shipment_tracking_checked_at || 0).getTime();
+  if (Number.isFinite(lastChecked) && Date.now() - lastChecked <= 60000) return;
+  try {
+    const tracking = await shipping.tracking(order.id, user);
+    order.shipment_shipping_status = tracking.shippingStatus || order.shipment_shipping_status;
+    order.shipment_tracking_status = tracking.trackingStatus || order.shipment_tracking_status;
+    order.shipment_tracking_url = tracking.trackingUrl || order.shipment_tracking_url;
+    order.shipment_estimated_delivery = tracking.estimatedDelivery || order.shipment_estimated_delivery;
+    order.shipment_pickup_status = tracking.pickupStatus || order.shipment_pickup_status;
+  } catch (error) {
+    // The order list remains available when Shiprocket is temporarily unavailable.
+  }
+}
+
 function orderDateFilter(value) {
   if (value === undefined || value === '') return null;
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000')) {
@@ -312,6 +328,7 @@ exports.getOrders = asyncHandler(async (req, res) => {
        s.tracking_url AS shipment_tracking_url,
        s.shipping_status AS shipment_shipping_status,
        s.tracking_status AS shipment_tracking_status,
+       s.tracking_checked_at AS shipment_tracking_checked_at,
        s.pickup_status AS shipment_pickup_status,
        s.estimated_delivery AS shipment_estimated_delivery,
        (s.shiprocket_order_id IS NOT NULL) AS invoice_available,
@@ -328,6 +345,7 @@ exports.getOrders = asyncHandler(async (req, res) => {
      ORDER BY o.created_at ${sortDirection}, o.id ${sortDirection} LIMIT $2 OFFSET $3`,
     [req.user.id, limit, offset, statusFilter || null, dateFrom, dateTo, year]
   );
+  await Promise.all(rows.map(order => refreshListedShipment(order, req.user)));
   const orders = await Promise.all(rows.map(enrichOrder));
   res.json(orders);
 });
