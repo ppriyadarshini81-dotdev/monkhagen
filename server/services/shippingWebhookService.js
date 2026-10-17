@@ -42,7 +42,7 @@ function mappedForwardStatus(payload) {
   }
   if (/^delivered$|shipment delivered/.test(label) && !/return|rto/.test(label)) return 'delivered';
   if (/out for delivery/.test(label) && !/return|rto/.test(label)) return 'out_for_delivery';
-  if (/^picked up$|^shipped$|^in transit$|shipment picked up|shipment in transit/.test(label) && !/return|rto/.test(label)) return 'shipped';
+  if (/^picked up$|^shipped$|^in transit$|shipment picked up|shipment in transit|reached at destination hub/.test(label) && !/return|rto/.test(label)) return 'shipped';
   if (/cancell?ed|cancellation requested/.test(label)) return 'cancelled';
   if (/lost|damaged|pickup (error|exception)|undelivered/.test(label)) return 'failed';
   for (const value of [payload.shipment_status_id, payload.current_status_id, payload.sr_status, payload['sr-status']]) {
