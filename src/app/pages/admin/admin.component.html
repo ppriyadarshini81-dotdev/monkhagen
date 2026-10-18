@@ -521,6 +521,8 @@
 </div>
 
 <dialog #orderDialog class="mh-order-dialog" (close)="clearSelectedOrder()">
+  <p role="status" *ngIf="shippingBusyOrderId">Checking the latest delivery status...</p>
+  <p class="mh-error" role="alert" *ngIf="ordersError">{{ ordersError }}</p>
   <ng-container *ngIf="selectedOrder as order">
     <div class="mh-order-dialog__head">
       <div>
@@ -615,6 +617,9 @@
       <div>
         <button *ngIf="order.shipment?.shiprocketOrderId" class="mh-btn mh-btn--ghost" type="button" [disabled]="!!invoiceBusyOrderId" (click)="downloadInvoice(order)">
           {{ invoiceBusyOrderId === order.id ? 'Preparing invoice...' : 'Download invoice' }}
+        </button>
+        <button *ngIf="order.shipment?.shiprocketOrderId" class="mh-btn mh-btn--ghost" type="button" [disabled]="!!shippingBusyOrderId" (click)="refreshOrderTracking(order)">
+          {{ shippingBusyOrderId === order.id ? 'Refreshing...' : 'Refresh tracking' }}
         </button>
         <button class="mh-btn mh-btn--ghost" type="button" (click)="closeOrderDialog()">Close</button>
         <button *ngIf="canRetryShipment(order)" class="mh-btn mh-btn--gold" type="button" [disabled]="!!shippingBusyOrderId" (click)="retryShipment(order)">

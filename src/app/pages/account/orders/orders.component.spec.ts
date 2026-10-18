@@ -34,6 +34,7 @@ describe('AccountOrdersComponent', () => {
     account = jasmine.createSpyObj<AccountService>('AccountService',
       ['getOrders', 'getOrder', 'getTracking', 'getInvoice', 'getReturnEligibility', 'getCancellationEligibility', 'createReturn', 'uploadDefectPhotos']);
     account.getOrders.and.returnValue(of([]));
+    account.getOrder.and.returnValue(of(order));
     component = new AccountOrdersComponent(account, { queryParamMap: of(convertToParamMap({})) } as ActivatedRoute);
     spyOn(URL, 'createObjectURL').and.returnValue('blob:invoice');
     spyOn(URL, 'revokeObjectURL');
@@ -53,7 +54,8 @@ describe('AccountOrdersComponent', () => {
     ] }).compileComponents();
     const fixture = TestBed.createComponent(AccountOrdersComponent);
     fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
-    expect(account.getOrder).toHaveBeenCalledOnceWith(order.id);
+    expect(account.getOrder).toHaveBeenCalledTimes(2);
+    expect(account.getOrder).toHaveBeenCalledWith(order.id);
     expect(fixture.componentInstance.orders).toEqual([]);
     expect(fixture.componentInstance.selectedOrder).toEqual(linkedOrder);
     const element = fixture.nativeElement as HTMLElement;
@@ -80,6 +82,26 @@ describe('AccountOrdersComponent', () => {
     expect(account.getOrder).toHaveBeenCalledTimes(3);
     component.ngOnDestroy(); params.next(convertToParamMap({ orderId: 'another-order' }));
     expect(account.getOrder).toHaveBeenCalledTimes(3);
+  });
+
+  it('refreshes clicked order details before checking return eligibility and ignores stale responses', () => {
+    const response = new Subject<Order>();
+    account.getOrder.and.returnValue(response);
+    account.getReturnEligibility.and.returnValue(of(productEligibility()));
+    account.getCancellationEligibility.and.returnValue(of({ eligible: false } as CancellationEligibility));
+    component.orders = [order];
+    component.openDetails(order);
+    expect(component.detailsSyncing).toBeTrue();
+    expect(account.getReturnEligibility).not.toHaveBeenCalled();
+    const delivered = { ...order, status: 'delivered', awbNumber: 'RECOVERED' };
+    response.next(delivered);
+    expect(component.selectedOrder?.status).toBe('delivered');
+    expect(component.orders[0].awbNumber).toBe('RECOVERED');
+    expect(component.detailsSyncing).toBeFalse();
+    expect(account.getReturnEligibility).toHaveBeenCalledWith(order.id);
+    component.clearDetails();
+    response.next(order);
+    expect(component.selectedOrder).toBeNull();
   });
 
   it('downloads the customer invoice in the same tab and prevents duplicate requests', () => {

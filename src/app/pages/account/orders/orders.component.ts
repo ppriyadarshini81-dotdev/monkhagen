@@ -40,6 +40,9 @@ export class AccountOrdersComponent implements OnInit, OnDestroy {
   dateRange = { from: '', to: '' };
   dateRangeError = '';
   selectedOrder: Order | null = null;
+  detailsSyncing = false;
+  detailsSyncError = '';
+  private detailsSyncVersion = 0;
   trackingOrder: Order | null = null;
   tracking: TrackingInfo | null = null;
   trackingLoading = false;
@@ -259,6 +262,36 @@ export class AccountOrdersComponent implements OnInit, OnDestroy {
 
   openDetails(order: Order): void {
     this.selectedOrder = order;
+    const version = ++this.detailsSyncVersion;
+    this.detailsSyncError = '';
+    this.detailsSyncing = true;
+    this.returnEligibility = null;
+    this.returnEligibilityLoading = true;
+    this.cancellationEligibility = null;
+    this.cancellationLoading = true;
+    queueMicrotask(() => {
+      const dialog = this.detailsDialog?.nativeElement;
+      if (dialog && !dialog.open) dialog.showModal();
+    });
+    this.account.getOrder(order.id).subscribe({
+      next: updated => {
+        if (version !== this.detailsSyncVersion || this.selectedOrder?.id !== order.id) return;
+        this.selectedOrder = updated;
+        this.orders = this.orders.map(item => item.id === updated.id ? updated : item);
+        this.detailsSyncing = false;
+        if (updated.trackingSyncUnavailable) this.detailsSyncError = 'Live tracking is temporarily unavailable. Showing the last saved status.';
+        this.loadDetailsEligibility(updated);
+      },
+      error: () => {
+        if (version !== this.detailsSyncVersion || this.selectedOrder?.id !== order.id) return;
+        this.detailsSyncing = false;
+        this.detailsSyncError = 'Could not refresh this order. Showing the last saved status.';
+        this.loadDetailsEligibility(order);
+      }
+    });
+  }
+
+  private loadDetailsEligibility(order: Order): void {
     this.returnEligibility = null;
     this.returnEligibilityLoading = true;
     this.account.getReturnEligibility(order.id).subscribe({
@@ -273,7 +306,6 @@ export class AccountOrdersComponent implements OnInit, OnDestroy {
     this.cancellationEligibility = null;
     this.cancellationLoading = true;
     this.account.getCancellationEligibility(order.id).subscribe({ next: eligibility => { this.cancellationEligibility = eligibility; this.cancellationLoading = false; }, error: () => { this.cancellationLoading = false; } });
-    queueMicrotask(() => this.detailsDialog?.nativeElement.showModal());
   }
 
   openCancellation(order: Order): void {
@@ -721,6 +753,8 @@ export class AccountOrdersComponent implements OnInit, OnDestroy {
   }
 
   clearDetails(): void {
+    this.detailsSyncVersion++;
+    this.detailsSyncing = false;
     this.selectedOrder = null;
     this.returnEligibility = null;
     this.cancellationEligibility = null;

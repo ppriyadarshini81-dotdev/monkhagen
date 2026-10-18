@@ -554,6 +554,20 @@ export class AdminComponent implements OnInit, DoCheck {
       const dialog = this.orderDialog?.nativeElement;
       if (dialog && !dialog.open) dialog.showModal();
     });
+    if (!['cancelled', 'returned', 'delivered'].includes(order.status)) this.refreshOrderTracking(order);
+  }
+
+  refreshOrderTracking(order: Order): void {
+    if (this.shippingBusyOrderId || !order.shipment?.shiprocketOrderId) return;
+    this.shippingBusyOrderId = order.id;
+    this.ordersError = '';
+    this.shippingService.getTracking(order.id).subscribe({
+      next: () => { this.shippingBusyOrderId = ''; this.loadOrders(); },
+      error: error => {
+        this.shippingBusyOrderId = '';
+        this.ordersError = error?.error?.message || 'Could not refresh shipment tracking.';
+      }
+    });
   }
 
   closeOrderDialog(): void {

@@ -55,6 +55,7 @@ export interface OrderAddress {
 }
 
 export interface Order {
+  trackingSyncUnavailable?: boolean;
   id: string;
   orderNumber: string;
   status: string;
