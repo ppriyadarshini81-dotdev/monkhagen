@@ -66,11 +66,11 @@ function createReturnTrackingService({ database = pool, api = shiprocket, now = 
       const advances = next === 'cancelled' || next === 'pickup_failed' ||
         (RANK[next] != null && RANK[next] >= (RANK[current.status] ?? -1));
       if (advances) {
-        await client.query(`UPDATE return_requests SET status = $1, provider_status = $2, pickup_status = $6,
+        await client.query(`UPDATE return_requests SET status = $1::text, provider_status = $2, pickup_status = $6,
           return_awb = COALESCE(return_awb, $3),
-          received_at = CASE WHEN $1 = 'received' THEN COALESCE(received_at, $4::timestamptz, NOW()) ELSE received_at END,
-          pending_operation = CASE WHEN $1 = 'cancelled' AND pending_operation = 'cancel' THEN NULL ELSE pending_operation END,
-          operation_started_at = CASE WHEN $1 = 'cancelled' AND pending_operation = 'cancel' THEN NULL ELSE operation_started_at END,
+          received_at = CASE WHEN $1::text = 'received' THEN COALESCE(received_at, $4::timestamptz, NOW()) ELSE received_at END,
+          pending_operation = CASE WHEN $1::text = 'cancelled' AND pending_operation = 'cancel' THEN NULL ELSE pending_operation END,
+          operation_started_at = CASE WHEN $1::text = 'cancelled' AND pending_operation = 'cancel' THEN NULL ELSE operation_started_at END,
           updated_at = NOW() WHERE id = $5`, [next, String(label).slice(0, 100), awb ? String(awb) : null, receivedAt, row.id, String(label).slice(0, 50)]);
       }
       await client.query('COMMIT');
