@@ -156,3 +156,30 @@ test('provider labels respect the saved status column lengths', async () => {
   assert.equal(f.getRow().provider_status.length, 100);
   assert.equal(f.getRow().pickup_status.length, 50);
 });
+
+test('return sync executes its status UPDATE against PostgreSQL varchar columns without parameter type conflicts', async t => {
+  const { PGlite } = require('@electric-sql/pglite');
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(`CREATE TABLE return_requests (
+    id UUID PRIMARY KEY, user_id TEXT, return_number TEXT, status VARCHAR(50),
+    shiprocket_return_order_id BIGINT, shiprocket_return_shipment_id BIGINT, return_awb VARCHAR(100),
+    provider_status VARCHAR(100), pickup_status VARCHAR(50), pending_operation VARCHAR(50),
+    received_at TIMESTAMPTZ, operation_started_at TIMESTAMPTZ, inventory_restored_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+  )`);
+  await db.query(`INSERT INTO return_requests (id, user_id, return_number, status,
+    shiprocket_return_order_id, shiprocket_return_shipment_id) VALUES ($1,$2,'R-TEST','return_created',101,202)`, [ID, USER.id]);
+  const database = { connect: async () => ({ query: (sql, params) => db.query(sql, params), release() {} }) };
+  for (const status of ['RETURN PENDING', 'CANCELLED']) {
+    if (status === 'CANCELLED') await db.query("UPDATE return_requests SET pending_operation='cancel' WHERE id=$1", [ID]);
+    const row = (await db.query('SELECT * FROM return_requests WHERE id=$1', [ID])).rows[0];
+    const service = createReturnTrackingService({ database, api: { request: async () => ({ data: {
+      id: 101, channel_order_id: 'R-TEST', status, shipments: [{ id: 202 }]
+    } }) } });
+    assert.equal((await service.refresh(row, USER)).unavailable, false);
+    const saved = (await db.query('SELECT * FROM return_requests WHERE id=$1', [ID])).rows[0];
+    assert.equal(saved.status, status === 'CANCELLED' ? 'cancelled' : 'return_created');
+    assert.equal(saved.provider_status, status);
+    if (status === 'CANCELLED') assert.equal(saved.pending_operation, null);
+  }
+});
