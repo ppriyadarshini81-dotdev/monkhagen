@@ -6,6 +6,63 @@ import { ReturnRequest } from '../../../models/account.model';
 import { AccountReturnsComponent } from './returns.component';
 
 describe('AccountReturnsComponent order filter', () => {
+  it('uses an in-page confirmation and keeps the return until cancellation is explicitly confirmed', async () => {
+    const account = jasmine.createSpyObj<AccountService>('AccountService', ['getReturns', 'cancelReturn']);
+    account.getReturns.and.returnValue(of([]));
+    const response = new Subject<ReturnRequest>();
+    account.cancelReturn.and.returnValue(response);
+    const nativeConfirm = spyOn(window, 'confirm');
+    await TestBed.configureTestingModule({ imports: [AccountReturnsComponent], providers: [
+      { provide: AccountService, useValue: account }, provideRouter([])
+    ] }).compileComponents();
+    const fixture = TestBed.createComponent(AccountReturnsComponent);
+    fixture.detectChanges(); await fixture.whenStable();
+    const component = fixture.componentInstance;
+    const request = { id: 'return-1', returnNumber: 'R-1', orderNumber: 'MH-1', status: 'shiprocket_failed' } as ReturnRequest;
+    component.cancelReturn(request);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const dialog = (fixture.nativeElement as HTMLElement).querySelector<HTMLDialogElement>('.mh-cancel-return-dialog')!;
+    expect(dialog.open).toBeTrue();
+    expect(dialog.textContent).toContain('order #MH-1');
+    expect(nativeConfirm).not.toHaveBeenCalled();
+    expect(account.cancelReturn).not.toHaveBeenCalled();
+    const keep = Array.from(dialog.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Keep return')!;
+    keep.click(); await fixture.whenStable();
+    expect(dialog.open).toBeFalse();
+    expect(account.cancelReturn).not.toHaveBeenCalled();
+    component.cancelReturn(request);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    dialog.querySelector<HTMLButtonElement>('.mh-cancel-return-confirm')!.click();
+    component.confirmCancellation();
+    fixture.detectChanges();
+    expect(account.cancelReturn).toHaveBeenCalledOnceWith(request.id);
+    expect(dialog.querySelector<HTMLButtonElement>('.mh-cancel-return-confirm')!.disabled).toBeTrue();
+    const escape = new Event('cancel', { cancelable: true });
+    dialog.dispatchEvent(escape);
+    expect(escape.defaultPrevented).toBeTrue();
+    response.next({ ...request, status: 'cancelled' });
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(dialog.open).toBeFalse();
+    expect(component.returnToCancel).toBeNull();
+    fixture.destroy();
+  });
+
+  it('keeps cancellation errors visible and blocks unavailable requests', () => {
+    const account = jasmine.createSpyObj<AccountService>('AccountService', ['cancelReturn']);
+    const response = new Subject<ReturnRequest>();
+    account.cancelReturn.and.returnValue(response);
+    const component = new AccountReturnsComponent(account, {} as ActivatedRoute);
+    component.cancelReturn({ status: 'picked_up' } as ReturnRequest);
+    expect(component.returnToCancel).toBeNull();
+    const request = { id: 'return-1', status: 'requested' } as ReturnRequest;
+    component.cancelReturn(request);
+    component.confirmCancellation();
+    response.error({ error: { message: 'Pickup is already in progress.' } });
+    expect(component.returnToCancel).toBe(request);
+    expect(component.cancellationError).toBe('Pickup is already in progress.');
+    expect(component.cancellingReturnId).toBe('');
+  });
+
   it('allows cancellation while photos await review but prevents cancelling an unconfirmed in-flight creation', () => {
     const account = jasmine.createSpyObj<AccountService>('AccountService', ['getReturns']);
     const component = new AccountReturnsComponent(account, {} as ActivatedRoute);

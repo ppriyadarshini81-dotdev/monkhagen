@@ -253,7 +253,7 @@ const pickupApi = (changes = {}) => ({ request: async path => {
 } });
 function payloadDatabase(changes = {}) {
   return { query: async () => ({ rows: [{
-    id: RETURN, return_number: 'R-123', refund_amount: '90.00', customer_email: 'buyer@example.com',
+    id: RETURN, return_number: 'R-123', refund_amount: '90.00', pickup_email: 'delivery@example.com', customer_email: 'buyer@example.com',
     full_name: 'Buyer Name', phone: '+91 98765 43210', address_line1: 'Customer Home', address_line2: 'Street 2', landmark: 'Park',
     city: 'Mumbai', state: 'Maharashtra', country: 'India', postal_code: '400001',
     items: [{ sku: 'TEE-M-BLUE', variantId: OTHER, id: ITEM, name: 'Original tee', size: 'M', quantity: 1, unitPrice: '100.00', refundAmount: '90.00' }],
@@ -265,6 +265,7 @@ test('Shiprocket return payload uses customer pickup and the saved forward picku
   const payload = await returnPayload(payloadDatabase(), RETURN, env, pickupApi());
   assert.equal(payload.pickup_address, 'Customer Home');
   assert.equal(payload.pickup_phone, '9876543210');
+  assert.equal(payload.pickup_email, 'delivery@example.com');
   assert.equal(payload.shipping_address, 'Kabir Apparels Warehouse');
   assert.equal(payload.shipping_pincode, 110001);
   assert.deepEqual(payload.order_items[0], { sku: 'TEE-M-BLUE', name: 'Original tee - Size M', units: 1, selling_price: 100, tax: 5, discount: 10, qc_enable: false, qc_size: 'M' });
@@ -275,14 +276,69 @@ test('Shiprocket return payload uses customer pickup and the saved forward picku
   assert.equal(payload.height, 2.6);
 });
 
+test('return shipping uses the delivery email for mobile accounts without an account email', async () => {
+  const payload = await returnPayload(payloadDatabase({ customer_email: null, pickup_email: ' Delivery@Example.com ' }), RETURN, env, pickupApi());
+  assert.equal(payload.pickup_email, 'delivery@example.com');
+});
+
+test('return shipping rejects missing or invalid delivery email without substituting another contact', async () => {
+  for (const pickup_email of [null, '', 'invalid', 'buyer@example.com\r\nBcc:other@example.com']) {
+    await assert.rejects(returnPayload(payloadDatabase({ pickup_email }), RETURN, env, pickupApi()),
+      error => error.code === 'RETURN_CUSTOMER_EMAIL_REQUIRED');
+  }
+});
+
 test('a partial return packs only requested units, summed across product lines', async () => {
   const product = { sku: 'TEE', name: 'Original tee', size: 'M', unitPrice: '100.00' };
-  const payload = await returnPayload(payloadDatabase({ items: [
+  const payload = await returnPayload(payloadDatabase({ refund_amount: '270.00', items: [
     { ...product, quantity: 2, refundAmount: '180.00' },
     { ...product, quantity: 1, refundAmount: '90.00' }
   ] }), RETURN, { ...packingEnvironment, SHIPROCKET_PICKUP_LOCATION: 'work' }, pickupApi());
   assert.equal(payload.weight, 0.83);
   assert.equal(payload.height, 5.08);
+});
+
+test('Shiprocket return total matches the saved customer refund after shipping deduction', async () => {
+  const payload = await returnPayload(payloadDatabase({ refund_amount: '1641.00', request_type: 'return', items: [
+    { sku: 'TEE-XL', id: ITEM, name: 'Original tee', size: 'XL', quantity: 1, unitPrice: '1990.00', refundAmount: '1791.00' }
+  ] }), RETURN, env, pickupApi());
+  assert.equal(payload.sub_total, 1990);
+  assert.equal(payload.total_discount, 349);
+  assert.equal(payload.sub_total - payload.total_discount, 1641);
+  assert.equal(payload.order_items[0].discount, 349);
+  assert.equal(payload.order_items[0].selling_price - payload.order_items[0].discount, 1641);
+});
+
+test('partial multi-unit returns allocate the saved deduction across lines exactly once', async () => {
+  const payload = await returnPayload(payloadDatabase({ refund_amount: '120.00', items: [
+    { sku: 'ONE', id: ITEM, name: 'One', quantity: 2, unitPrice: '100.00', refundAmount: '180.00' },
+    { sku: 'TWO', id: OTHER, name: 'Two', quantity: 1, unitPrice: '100.00', refundAmount: '90.00' }
+  ] }), RETURN, env, pickupApi());
+  assert.equal(payload.sub_total, 300);
+  assert.equal(payload.total_discount, 180);
+  assert.equal(payload.sub_total - payload.total_discount, 120);
+  assert.deepEqual(payload.order_items.map(item => item.discount), [120, 60]);
+  assert.equal(payload.order_items.reduce((sum, item) => sum + item.selling_price * item.units - item.discount, 0), payload.sub_total - payload.total_discount);
+});
+
+test('net return allocation preserves paise and supports a fully deducted refund', async () => {
+  const items = [ITEM, OTHER, ORDER].map(id => ({ id, sku: id, name: 'Test', quantity: 1, unitPrice: '1.00', refundAmount: '1.00' }));
+  for (const refund_amount of ['2.00', '0.00']) {
+    const payload = await returnPayload(payloadDatabase({ refund_amount, items }), RETURN, env, pickupApi());
+    const netPaise = payload.order_items.reduce((sum, item) => sum + Math.round(item.selling_price * 100) * item.units - Math.round(item.discount * 100), 0);
+    assert.equal(netPaise, Math.round(Number(refund_amount) * 100));
+    assert.equal(payload.sub_total, 3);
+    assert.equal(Math.round(payload.sub_total * 100) - Math.round(payload.total_discount * 100), Math.round(Number(refund_amount) * 100));
+  }
+});
+
+test('size exchanges retain merchandise value while invalid refund totals are rejected', async () => {
+  const payload = await returnPayload(payloadDatabase({ request_type: 'replacement', refund_amount: '0.00' }), RETURN, env, pickupApi());
+  assert.equal(payload.sub_total, 100);
+  assert.equal(payload.total_discount, 10);
+  assert.equal(payload.sub_total - payload.total_discount, 90);
+  await assert.rejects(returnPayload(payloadDatabase({ refund_amount: '91.00' }), RETURN, env, pickupApi()),
+    error => error.code === 'RETURN_FINANCIAL_REVIEW');
 });
 
 test('Shiprocket return payload rejects invalid customer and saved-location pincodes', async () => {

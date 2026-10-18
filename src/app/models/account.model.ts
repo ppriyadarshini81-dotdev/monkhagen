@@ -140,6 +140,7 @@ export interface ReturnItem {
 }
 
 export interface ReturnRequest {
+  trackingSyncUnavailable?: boolean;
   id: string;
   orderId: string;
   orderNumber?: string | null;
