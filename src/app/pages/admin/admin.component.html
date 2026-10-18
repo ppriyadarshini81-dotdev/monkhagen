@@ -430,6 +430,7 @@
           </div>
         </section>
         <p class="mh-return-notice" *ngIf="r.pickupDelayed">Return creation needs attention. Check the request details before retrying.</p>
+        <p class="mh-return-notice" role="status" *ngIf="r.trackingSyncUnavailable">Live tracking is temporarily unavailable. Showing the last saved status.</p>
         <p class="mh-return-notice" *ngIf="r.cancellationPending">Cancellation is being confirmed with Shiprocket.</p>
         <footer class="mh-customer-return__foot">
           <span *ngIf="r.requestType !== 'replacement'"><small>Refund after shipping</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><em>{{ r.refundAmount ? returnStatusLabel(r.refundStatus) : 'No refund payable' }}</em></span>

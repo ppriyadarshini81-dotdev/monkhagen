@@ -59,6 +59,7 @@ export interface Order {
 }
 
 export interface AdminReturn {
+  trackingSyncUnavailable?: boolean;
   defectPhotoReviewPending?: boolean;
   defectPhotoReview?: { decision: 'approved' | 'rejected'; reason: string } | null;
   id: string;

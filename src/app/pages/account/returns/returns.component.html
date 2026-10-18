@@ -6,6 +6,7 @@
   <div class="mh-returns-list" *ngIf="!loading && returns.length"><article class="mh-customer-return" *ngFor="let r of returns">
     <header class="mh-customer-return__head"><div><span>{{ requestTypeLabel(r) }}</span><h3>#{{ r.returnNumber }}</h3><a class="mh-return-order-link" routerLink="/account/orders" [queryParams]="{ orderId: r.orderId }">{{ r.orderNumber ? 'Order #' + r.orderNumber : 'View original order' }}</a><small>Requested {{ r.requestedAt | date:'dd MMMM y, h:mm a' }}</small></div><span [class]="'mh-return-state mh-return-state--' + statusClass(r.status)">{{ r.cancellationPending ? 'Cancellation pending' : requestStatusLabel(r) }}</span></header>
     <section class="mh-customer-return__products"><div class="mh-return-product" *ngFor="let item of r.items"><span class="mh-return-product__image"><img *ngIf="item.imageUrl" [src]="item.imageUrl" [alt]="item.productName" /><span *ngIf="!item.imageUrl">{{ item.productName.charAt(0) }}</span></span><span class="mh-return-product__copy"><strong>{{ item.productName }}</strong><small>Size {{ item.size || 'One size' }} &middot; {{ item.color || 'Standard' }} &middot; Qty {{ item.quantity }}</small></span></div></section>
+    <p class="mh-return-notice" role="status" *ngIf="r.trackingSyncUnavailable">Live tracking is temporarily unavailable. Showing the last saved status.</p>
     <p class="mh-return-notice" *ngIf="r.pickupDelayed">Return creation needs attention. Your request is safely recorded.</p><p class="mh-return-notice" *ngIf="r.cancellationPending">Cancellation is being confirmed with Shiprocket.</p>
     <footer class="mh-customer-return__foot"><span *ngIf="r.requestType !== 'replacement'"><small>Refund after shipping</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><em>{{ r.refundAmount ? statusLabel(r.refundStatus) : 'No refund payable' }}</em></span><span *ngIf="r.requestType === 'replacement'" class="mh-return-footnote">Replacement is confirmed after inspection.</span><div><button type="button" class="mh-return-details-button" (click)="openReturnDetails(r)">View details</button><button *ngIf="canCancelReturn(r)" type="button" class="mh-return-cancel" [disabled]="!!cancellingReturnId" (click)="cancelReturn(r)">{{ cancellingReturnId === r.id ? 'Cancelling...' : 'Cancel return' }}</button></div></footer>
   </article><nav class="mh-pagination" *ngIf="page > 0 || hasNextPage"><button type="button" [disabled]="page === 0" (click)="changePage(-1)">← Previous</button><span>Page {{ page + 1 }}</span><button type="button" [disabled]="!hasNextPage" (click)="changePage(1)">Next →</button></nav></div>
@@ -47,3 +48,22 @@
   </div>
   <footer class="mh-return-dialog__foot"><button type="button" (click)="closeReturnDetails()">Close</button></footer>
 </ng-container></dialog>
+
+<dialog #cancelReturnDialog class="mh-return-dialog mh-cancel-return-dialog" aria-labelledby="cancel-return-title" aria-describedby="cancel-return-description" (cancel)="handleCancellationEscape($event)" (close)="clearCancellation()">
+  <ng-container *ngIf="returnToCancel as request">
+    <header class="mh-return-dialog__head">
+      <div><span class="mh-eyebrow">Return request</span><h2 id="cancel-return-title">Cancel your return?</h2></div>
+      <button type="button" aria-label="Close cancellation dialog" [disabled]="!!cancellingReturnId" (click)="closeCancellation()">&times;</button>
+    </header>
+    <div class="mh-return-dialog__body">
+      <p id="cancel-return-description">This will cancel the return request for <strong>{{ request.orderNumber ? 'order #' + request.orderNumber : 'this order' }}</strong>. Your original order will stay unchanged.</p>
+      <p class="mh-cancel-return-reference">Request #{{ request.returnNumber }}</p>
+      <p *ngIf="cancellationError" class="mh-cancel-return-error" role="alert">{{ cancellationError }}</p>
+      <p *ngIf="cancellingReturnId" role="status">Cancelling your return. Please wait...</p>
+    </div>
+    <footer class="mh-return-dialog__foot">
+      <button type="button" autofocus [disabled]="!!cancellingReturnId" (click)="closeCancellation()">Keep return</button>
+      <button type="button" class="mh-cancel-return-confirm" [disabled]="!!cancellingReturnId" (click)="confirmCancellation()">{{ cancellingReturnId ? 'Cancelling...' : 'Cancel return' }}</button>
+    </footer>
+  </ng-container>
+</dialog>

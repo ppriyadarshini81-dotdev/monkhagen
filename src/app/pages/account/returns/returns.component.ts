@@ -16,6 +16,7 @@ import { FEATURE_FLAGS } from '../../../config/feature-flags';
 })
 export class AccountReturnsComponent implements OnInit, OnDestroy {
   @ViewChild('returnDetailsDialog') returnDetailsDialog?: ElementRef<HTMLDialogElement>;
+  @ViewChild('cancelReturnDialog') cancelReturnDialog?: ElementRef<HTMLDialogElement>;
   readonly codEnabled = FEATURE_FLAGS.cashOnDelivery;
   returns: ReturnRequest[] = [];
   loading = true;
@@ -31,6 +32,8 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
   accountHolderName = ''; accountNumber = ''; confirmAccountNumber = ''; ifsc = ''; bankName = '';
   refundSaving = false; refundError = '';
   cancellingReturnId = '';
+  returnToCancel: ReturnRequest | null = null;
+  cancellationError = '';
   selectedReturn: ReturnRequest | null = null;
 
   constructor(private account: AccountService, private route: ActivatedRoute) {}
@@ -70,11 +73,38 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
   closeReturnDetails(): void { this.returnDetailsDialog?.nativeElement.close(); }
   clearReturnDetails(): void { this.selectedReturn = null; }
   cancelReturn(item: ReturnRequest): void {
-    if (this.cancellingReturnId || !window.confirm('Cancel this return request?')) return;
+    if (this.cancellingReturnId || !this.canCancelReturn(item)) return;
+    this.returnToCancel = item;
+    this.cancellationError = '';
+    queueMicrotask(() => {
+      const dialog = this.cancelReturnDialog?.nativeElement;
+      if (dialog && !dialog.open) dialog.showModal();
+    });
+  }
+  closeCancellation(): void {
+    if (this.cancellingReturnId) return;
+    this.cancelReturnDialog?.nativeElement.close();
+    this.clearCancellation();
+  }
+  clearCancellation(): void {
+    if (this.cancellingReturnId) return;
+    this.returnToCancel = null;
+    this.cancellationError = '';
+  }
+  handleCancellationEscape(event: Event): void {
+    if (this.cancellingReturnId) event.preventDefault();
+  }
+  confirmCancellation(): void {
+    const item = this.returnToCancel;
+    if (!item || this.cancellingReturnId || !this.canCancelReturn(item)) return;
     this.cancellingReturnId = item.id;
+    this.cancellationError = '';
     this.account.cancelReturn(item.id).subscribe({
-      next: () => { this.cancellingReturnId = ''; this.loadReturns(); },
-      error: () => { this.cancellingReturnId = ''; this.loadReturns(); }
+      next: () => { this.cancellingReturnId = ''; this.closeCancellation(); this.loadReturns(); },
+      error: error => {
+        this.cancellingReturnId = '';
+        this.cancellationError = error?.error?.message || 'We could not confirm cancellation. Please refresh the request status before trying again.';
+      }
     });
   }
 

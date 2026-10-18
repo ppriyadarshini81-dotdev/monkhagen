@@ -262,6 +262,7 @@ function formatReturn(row) {
     adminCategory: adminCategory(row),
     replacementShipmentPending: row.pending_operation === 'replacement_create',
     pickupStatus: row.pickup_status || null,
+    trackingSyncUnavailable: Boolean(row.tracking_sync_unavailable),
     pickupDelayed: row.status === 'shiprocket_failed' || (row.status === 'requested' && row.pending_operation === 'create'),
     cancellationPending: row.pending_operation === 'cancel',
     customer: row.customer_name == null ? undefined : { name: row.customer_name, email: row.customer_email, phone: row.customer_phone },
@@ -453,24 +454,45 @@ async function resolveReturnWarehouse(api = shiprocket, env = process.env) {
 
 async function returnPayload(database, returnId, env = process.env, api = shiprocket) {
   const result = await database.query(
-    `SELECT rr.id, rr.return_number, rr.refund_amount, o.payment_method, u.email AS customer_email, oa.*,
+    `SELECT rr.id, rr.return_number, rr.refund_amount, rr.request_type, o.payment_method, oa.email AS pickup_email, oa.*,
        COALESCE(json_agg(json_build_object('sku', oi.sku, 'variantId', oi.variant_id, 'id', oi.id,
          'name', oi.product_name, 'size', oi.size, 'quantity', ri.quantity, 'unitPrice', oi.unit_price,
          'refundAmount', ri.refund_amount) ORDER BY ri.created_at), '[]') AS items
-     FROM return_requests rr JOIN orders o ON o.id = rr.order_id JOIN users u ON u.id = rr.user_id
+     FROM return_requests rr JOIN orders o ON o.id = rr.order_id
      JOIN order_addresses oa ON oa.order_id = o.id JOIN return_items ri ON ri.return_request_id = rr.id
      JOIN order_items oi ON oi.id = ri.order_item_id WHERE rr.id = $1
-     GROUP BY rr.id, o.id, u.email, oa.id`, [returnId]
+     GROUP BY rr.id, o.id, oa.id`, [returnId]
   );
   const row = result.rows[0];
   if (!row) throw fault(404, 'RETURN_NOT_FOUND', 'Return request not found.');
-  if (!row.customer_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.customer_email)) throw fault(409, 'RETURN_CUSTOMER_EMAIL_REQUIRED', 'Add and verify an email address before pickup can be scheduled.');
+  // Use the immutable delivery contact, just as forward shipping does. Mobile
+  // accounts need not link a Google/email identity to return an existing order.
+  const pickupEmail = typeof row.pickup_email === 'string' ? row.pickup_email.trim().toLowerCase() : '';
+  if (!pickupEmail || pickupEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(pickupEmail)) {
+    throw fault(409, 'RETURN_CUSTOMER_EMAIL_REQUIRED', 'The saved delivery email needs review before a return shipment can be created.');
+  }
   const customer = splitName(cleanText(row.full_name, 'Customer name', 255, true));
   const warehouse = await resolveReturnWarehouse(api, env);
   const tax = productTaxPercent(env);
-  const items = row.items.map(item => {
+  const eligibleAmounts = row.items.map(item => moneyPaise(item.refundAmount));
+  const eligibleTotal = eligibleAmounts.reduce((sum, amount) => sum + amount, 0);
+  // The customer's saved refund already includes the return shipping deduction.
+  // Size exchanges retain their merchandise value: they do not pay a cash refund.
+  const refundTotal = row.request_type === RETURN_TYPES.replacement ? eligibleTotal : moneyPaise(row.refund_amount);
+  if (refundTotal > eligibleTotal) throw fault(409, 'RETURN_FINANCIAL_REVIEW', 'The saved return totals need review.');
+  // Allocate the net amount over lines in integer paise, retaining rounding cents.
+  const shares = eligibleAmounts.map((amount, index) => {
+    const numerator = BigInt(refundTotal) * BigInt(amount);
+    return { index, amount: eligibleTotal ? Number(numerator / BigInt(eligibleTotal)) : 0,
+      remainder: eligibleTotal ? numerator % BigInt(eligibleTotal) : 0n };
+  });
+  const remainder = refundTotal - shares.reduce((sum, share) => sum + share.amount, 0);
+  const ranked = [...shares].sort((a, b) => a.remainder === b.remainder ? a.index - b.index : a.remainder > b.remainder ? -1 : 1);
+  for (let index = 0; index < remainder; index++) ranked[index].amount++;
+  const items = row.items.map((item, index) => {
     const gross = moneyPaise(item.unitPrice) * Number(item.quantity);
-    const net = moneyPaise(item.refundAmount);
+    const net = shares[index].amount;
+    if (net > gross) throw fault(409, 'RETURN_FINANCIAL_REVIEW', 'The saved return item amounts need review.');
     return { sku: cleanText(item.sku || item.variantId || item.id, 'Item SKU', 100, true),
       name: productNameWithSize(item.name, item.size), units: Number(item.quantity),
       selling_price: Number(item.unitPrice), tax, discount: Number(rupees(gross - net)), qc_enable: false, qc_size: item.size || '' };
@@ -482,7 +504,7 @@ async function returnPayload(database, returnId, env = process.env, api = shipro
     pickup_address: cleanText(row.address_line1, 'Pickup address', 255, true),
     pickup_address_2: [row.address_line2, row.landmark].filter(Boolean).join(', ').slice(0, 255),
     pickup_city: cleanText(row.city, 'Pickup city', 100, true), pickup_state: cleanText(row.state, 'Pickup state', 100, true),
-    pickup_country: 'India', pickup_pincode: normalizePincode(row.postal_code, 'RETURN_ADDRESS_REVIEW', 'The saved delivery pincode needs review.'), pickup_email: row.customer_email,
+    pickup_country: 'India', pickup_pincode: normalizePincode(row.postal_code, 'RETURN_ADDRESS_REVIEW', 'The saved delivery pincode needs review.'), pickup_email: pickupEmail,
     pickup_phone: normalizePhone(row.phone), pickup_isd_code: '91',
     shipping_customer_name: warehouse.first, shipping_last_name: warehouse.last,
     shipping_address: warehouse.address, shipping_address_2: warehouse.address2,
@@ -491,6 +513,8 @@ async function returnPayload(database, returnId, env = process.env, api = shipro
     shipping_phone: warehouse.phone, shipping_isd_code: '91',
     order_items: items, payment_method: 'PREPAID',
     total_discount: Number(rupees(items.reduce((sum, item) => sum + moneyPaise(item.discount), 0))),
+    // Return creation subtracts total_discount from sub_total. Send the gross
+    // merchandise subtotal so purchase/shipping deductions are applied once.
     sub_total: Number(rupees(items.reduce((sum, item) => sum + moneyPaise(item.selling_price) * item.units, 0))),
     length, breadth, height, weight
   };
@@ -549,22 +573,43 @@ async function createReturn(userId, body = {}, database = pool, dependencies = {
   await notifySafely(() => notifier.returnRequested(local.row.id));
   return formatReturn(await findReturn(database, local.row.id, userId));
 }
-async function listCustomerReturns(userId, database = pool, { limit = 100, offset = 0, statuses = null, orderId = null } = {}) {
+
+async function refreshReturnPage(entries, database, userId, admin, dependencies) {
+  const tracking = dependencies.tracking || (database === pool ? require('./returnTrackingService') :
+    require('./returnTrackingService').createReturnTrackingService({ database, ...dependencies }));
+  const requests = new Array(entries.length);
+  let index = 0;
+  async function worker() {
+    while (index < entries.length) {
+      const position = index++;
+      let row = await findReturn(database, entries[position].id, userId, admin);
+      if (!row) continue;
+      const sync = await tracking.refresh(row, { id: admin ? row.user_id : userId, role: admin ? 'admin' : 'customer' });
+      if (sync.checked) row = await findReturn(database, entries[position].id, userId, admin);
+      if (row) requests[position] = formatReturn({ ...row, tracking_sync_unavailable: sync.unavailable });
+    }
+  }
+  // Limit provider concurrency while preserving the page's requested order.
+  await Promise.all(Array.from({ length: Math.min(3, entries.length) }, () => worker()));
+  return requests.filter(Boolean);
+}
+
+async function listCustomerReturns(userId, database = pool, { limit = 100, offset = 0, statuses = null, orderId = null } = {}, dependencies = {}) {
   if (orderId !== null) orderId = validId(orderId, 'order ID');
   const result = await database.query(
     `SELECT id FROM return_requests WHERE user_id = $1 AND ($4::text[] IS NULL OR status = ANY($4))
       AND ($5::uuid IS NULL OR order_id = $5) ORDER BY created_at DESC, id DESC LIMIT $2 OFFSET $3`,
     [userId, limit, offset, statuses, orderId]
   );
-  return Promise.all(result.rows.map(async row => formatReturn(await findReturn(database, row.id, userId))));
+  return refreshReturnPage(result.rows, database, userId, false, dependencies);
 }
-async function listAdminReturns(database = pool, { limit = 100, offset = 0, tab = 'all' } = {}) {
+async function listAdminReturns(database = pool, { limit = 100, offset = 0, tab = 'all' } = {}, dependencies = {}) {
   if (!['all', 'requested', 'inspection_required', 'completed'].includes(tab)) throw fault(400, 'RETURN_VALIDATION', 'Choose a valid returns tab.');
   const result = await database.query(`SELECT rr.id FROM return_requests rr JOIN orders original ON original.id = rr.order_id
     LEFT JOIN orders child ON child.return_request_id = rr.id LEFT JOIN shipments s ON s.order_id = child.id
     LEFT JOIN cod_refund_destinations d ON d.return_id = rr.id
     WHERE ($3 = 'all' OR (${ADMIN_CATEGORY_SQL}) = $3) ORDER BY rr.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset, tab]);
-  return Promise.all(result.rows.map(async row => formatReturn(await findReturn(database, row.id, null, true))));
+  return refreshReturnPage(result.rows, database, null, true, dependencies);
 }
 
 async function grantEligibilityOverride(adminUserId, body = {}, database = pool) {
