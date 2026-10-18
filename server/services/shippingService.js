@@ -229,12 +229,36 @@ function createShippingService({ repository = Shipment, api = shiprocket, notifi
   async function tracking(orderId, user) {
     orderId = uuid(orderId);
     return repository.withLock(orderId, async client => {
-      const order = await repository.order(client, orderId);
+      let order = await repository.order(client, orderId);
       if (!order || (order.user_id !== user.id && !['admin', 'super_admin'].includes(user.role))) {
         throw shippingError(404, 'ORDER_NOT_FOUND', 'Order not found.');
       }
       let row = await repository.find(client, orderId);
       let available = Boolean(row?.tracking_status);
+      // Courier assignment may happen in Shiprocket while webhooks are unavailable.
+      // Recover only the already-linked shipment; never create or assign anything here.
+      if (row?.shiprocket_order_id && !row.awb_code &&
+          (!row.tracking_checked_at || Date.now() - new Date(row.tracking_checked_at).getTime() > 60000)) {
+        const remoteId = providerId(row.shiprocket_order_id, 'shiprocket_order_id');
+        const { data: remote } = await api.request(`/orders/show/${remoteId}`);
+        const shipment = Array.isArray(remote?.shipments) ? remote.shipments[0] : remote?.shipments;
+        if (remote?.channel_order_id !== orderId || Number(remote.id) !== remoteId || !shipment?.id ||
+            (Array.isArray(remote.shipments) && remote.shipments.length !== 1) ||
+            (row.shiprocket_shipment_id && Number(row.shiprocket_shipment_id) !== Number(shipment.id))) {
+          throw shippingError(409, 'SHIPMENT_MISMATCH', 'Shiprocket did not confirm a matching order and shipment.');
+        }
+        const awb = shipment.awb || shipment.awb_code;
+        row = await repository.save(client, orderId, {
+          shiprocket_shipment_id: providerId(shipment.id, 'shipment_id'),
+          awb_code: awb ? String(awb) : null,
+          courier_id: optionalNumber(shipment.courier_id ?? shipment.courier_company_id) ?? row.courier_id,
+          courier_name: shipment.courier || shipment.courier_name || row.courier_name,
+          pickup_status: shipment.pickup_scheduled_date ? 'scheduled' : row.pickup_status,
+          pickup_scheduled_date: shipment.pickup_scheduled_date || row.pickup_scheduled_date,
+          // An acquired AWB must be tracked immediately; otherwise cache the discovery check.
+          tracking_checked_at: awb ? null : new Date()
+        });
+      }
       if (row?.awb_code && (!row.tracking_checked_at || Date.now() - new Date(row.tracking_checked_at).getTime() > 60000)) {
         const result = normalizeTracking(await api.request(`/courier/track/awb/${encodeURIComponent(row.awb_code)}`));
         available = result.available;
@@ -251,10 +275,13 @@ function createShippingService({ repository = Shipment, api = shiprocket, notifi
         if (normalized === 'shipped') await notifySafely(() => emailNotifications.orderShipped(orderId));
         if (normalized === 'out_for_delivery') await notifySafely(() => emailNotifications.orderOutForDelivery(orderId));
         if (normalized === 'delivered') await notifySafely(() => emailNotifications.orderDelivered(orderId));
+        order = await repository.order(client, orderId);
       }
       // Customer responses deliberately omit label links, internal operation state and provider IDs.
       return {
         orderId, available, awbCode: row?.awb_code || order.awb_number || null,
+        orderStatus: order.order_status,
+        shippedAt: order.shipped_at || null, deliveredAt: order.delivered_at || null,
         courierName: row?.courier_name || order.courier_name || null,
         shippingStatus: row?.shipping_status || 'not_created', trackingStatus: row?.tracking_status || null,
         trackingUrl: row?.tracking_url || order.tracking_url || null,

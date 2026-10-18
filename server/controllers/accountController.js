@@ -274,11 +274,17 @@ async function enrichOrder(o) {
 }
 
 async function refreshListedShipment(order, user) {
-  if (!order.shipment_awb_code || ['delivered', 'cancelled', 'returned'].includes(order.order_status)) return;
+  if ((!order.shipment_awb_code && !order.shipment_shiprocket_order_id) || ['delivered', 'cancelled', 'returned'].includes(order.order_status)) return;
   const lastChecked = new Date(order.shipment_tracking_checked_at || 0).getTime();
   if (Number.isFinite(lastChecked) && Date.now() - lastChecked <= 60000) return;
   try {
     const tracking = await shipping.tracking(order.id, user);
+    order.order_status = tracking.orderStatus || order.order_status;
+    order.shipped_at = tracking.shippedAt || order.shipped_at;
+    order.delivered_at = tracking.deliveredAt || order.delivered_at;
+    order.shipment_awb_code = tracking.awbCode || order.shipment_awb_code;
+    order.awb_number = tracking.awbCode || order.awb_number;
+    order.shipment_courier_name = tracking.courierName || order.shipment_courier_name;
     order.shipment_shipping_status = tracking.shippingStatus || order.shipment_shipping_status;
     order.shipment_tracking_status = tracking.trackingStatus || order.shipment_tracking_status;
     order.shipment_tracking_url = tracking.trackingUrl || order.shipment_tracking_url;
@@ -286,6 +292,7 @@ async function refreshListedShipment(order, user) {
     order.shipment_pickup_status = tracking.pickupStatus || order.shipment_pickup_status;
   } catch (error) {
     // The order list remains available when Shiprocket is temporarily unavailable.
+    order.tracking_sync_unavailable = true;
   }
 }
 
@@ -323,6 +330,7 @@ exports.getOrders = asyncHandler(async (req, res) => {
   if (dateFrom && dateTo && dateFrom > dateTo) return res.status(400).json({ message: 'From date must be on or before To date.' });
   const { rows } = await pool.query(
     `SELECT o.*,
+       s.shiprocket_order_id AS shipment_shiprocket_order_id,
        s.awb_code AS shipment_awb_code,
        s.courier_name AS shipment_courier_name,
        s.tracking_url AS shipment_tracking_url,
@@ -353,6 +361,7 @@ exports.getOrders = asyncHandler(async (req, res) => {
 exports.getOrder = asyncHandler(async (req, res) => {
   const { rows } = await pool.query(
     `SELECT o.*,
+       s.shiprocket_order_id AS shipment_shiprocket_order_id,
        s.awb_code AS shipment_awb_code,
        s.courier_name AS shipment_courier_name,
        s.tracking_url AS shipment_tracking_url,
@@ -370,7 +379,8 @@ exports.getOrder = asyncHandler(async (req, res) => {
     [req.params.orderId, req.user.id]
   );
   if (!rows[0]) return res.status(404).json({ message: 'Order not found.' });
-  res.json(await enrichOrder(rows[0]));
+  await refreshListedShipment(rows[0], req.user);
+  res.json({ ...await enrichOrder(rows[0]), trackingSyncUnavailable: Boolean(rows[0].tracking_sync_unavailable) });
 });
 
 exports.getInvoice = asyncHandler(async (req, res) => {

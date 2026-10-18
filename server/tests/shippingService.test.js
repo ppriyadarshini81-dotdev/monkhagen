@@ -314,6 +314,55 @@ test('tracking checks ownership before contacting Shiprocket, strips provider in
   assert.equal(normalizeTracking({ tracking_data: { track_status: 0, error: 'provider-private-text' } }).available, false);
 });
 
+test('tracking recovers an externally assigned AWB and persists the actual delivery timestamp', async () => {
+  const fixture = setup({ row: { order_id: ORDER_ID, shiprocket_order_id: 101, shiprocket_shipment_id: 202,
+    shipping_status: 'created', awb_code: null }, request: async path => {
+    if (path === '/orders/show/101') return { data: { id: 101, channel_order_id: ORDER_ID,
+      shipments: [{ id: 202, awb: 'RECOVERED-AWB', courier: 'Test Courier', pickup_scheduled_date: '12-Oct-2026' }] } };
+    assert.equal(path, '/courier/track/awb/RECOVERED-AWB');
+    return { tracking_data: { track_status: 1, shipment_status: 7,
+      shipment_track: [{ current_status: 'Delivered', pickup_date: '2026-10-16 10:27:32', delivered_date: '2026-10-18 18:21:00' }] } };
+  } });
+  const deliveries = [];
+  const save = fixture.repository.save;
+  fixture.repository.save = async function(client, id, changes, delivery) {
+    deliveries.push(delivery);
+    return save.call(this, client, id, changes);
+  };
+  const result = await fixture.service.tracking(ORDER_ID, { id: USER_ID, role: 'customer' });
+  assert.equal(result.awbCode, 'RECOVERED-AWB');
+  assert.equal(result.shippingStatus, 'delivered');
+  assert.equal(result.courierName, 'Test Courier');
+  assert.equal(deliveries[1].deliveredAt, '2026-10-18T12:51:00.000Z');
+  assert.equal(deliveries[1].pickedUpAt, '2026-10-16T04:57:32.000Z');
+  assert.equal(fixture.calls.length, 2);
+  assert.ok(fixture.calls.every(call => !call.options?.method || call.options.method === 'GET'));
+  await fixture.service.tracking(ORDER_ID, { id: USER_ID, role: 'customer' });
+  assert.equal(fixture.calls.length, 2);
+});
+
+test('AWB recovery refuses mismatched or ambiguous remote shipments without saving', async () => {
+  for (const remote of [
+    { id: 101, channel_order_id: 'another-order', shipments: [{ id: 202, awb: 'OTHER' }] },
+    { id: 101, channel_order_id: ORDER_ID, shipments: [{ id: 203, awb: 'OTHER' }] },
+    { id: 101, channel_order_id: ORDER_ID, shipments: [{ id: 202 }, { id: 203 }] }
+  ]) {
+    const fixture = setup({ row: { order_id: ORDER_ID, shiprocket_order_id: 101, shiprocket_shipment_id: 202, awb_code: null },
+      request: async () => ({ data: remote }) });
+    await assert.rejects(fixture.service.tracking(ORDER_ID, { id: USER_ID, role: 'customer' }), error => error.code === 'SHIPMENT_MISMATCH');
+    assert.equal(fixture.getRow().awb_code, null);
+    assert.equal(fixture.calls.length, 1);
+  }
+});
+
+test('AWB discovery without assignment is cached and never creates a shipment', async () => {
+  const fixture = setup({ row: { order_id: ORDER_ID, shiprocket_order_id: 101, shiprocket_shipment_id: 202 },
+    request: async () => ({ data: { id: 101, channel_order_id: ORDER_ID, shipments: [{ id: 202 }] } }) });
+  await fixture.service.tracking(ORDER_ID, { id: USER_ID, role: 'customer' });
+  await fixture.service.tracking(ORDER_ID, { id: USER_ID, role: 'customer' });
+  assert.equal(fixture.calls.length, 1);
+});
+
 test('invoice generation checks ownership and uses only the stored Shiprocket order ID', async () => {
   const fixture = setup({ row: { order_id: ORDER_ID, shiprocket_order_id: 101, shiprocket_shipment_id: 202 },
     request: async () => ({ is_invoice_created: true, invoice_url: 'https://example.test/invoice.pdf' }) });

@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { PGlite } = require('@electric-sql/pglite');
 const { pool } = require('../config/db');
-const { getOrders } = require('../controllers/accountController');
+const { getOrders, getOrder } = require('../controllers/accountController');
 const shipping = require('../services/shippingService');
 
 test('customer order sorting and date ranges apply before pagination and include whole India calendar days', async t => {
@@ -64,6 +64,35 @@ test('customer order sorting and date ranges apply before pagination and include
   assert.equal(tracking.mock.callCount(), 1);
   assert.equal(refreshed.body[0].shippingStatus, 'shipped');
   assert.equal(refreshed.body[0].trackingStatus, 'REACHED AT DESTINATION HUB');
+  await db.exec(`UPDATE shipments SET awb_code = NULL, shiprocket_order_id = 101;`);
+  tracking.mock.mockImplementation(async () => ({ orderStatus: 'delivered', shippingStatus: 'delivered',
+    trackingStatus: 'Delivered', awbCode: 'RECOVERED-AWB', courierName: 'Test Courier',
+    deliveredAt: '2026-10-18T12:51:00.000Z', shippedAt: '2026-10-16T04:57:32.000Z' }));
+  const recovered = await list({ sort: 'oldest' });
+  assert.equal(tracking.mock.callCount(), 2);
+  assert.equal(recovered.body[0].status, 'delivered');
+  assert.equal(recovered.body[0].awbNumber, 'RECOVERED-AWB');
+  assert.equal(recovered.body[0].deliveredAt, '2026-10-18T12:51:00.000Z');
+  let details;
+  await getOrder({ user: { id: '20000000-0000-4000-8000-000000000001' },
+    params: { orderId: '10000000-0000-4000-8000-000000000001' } },
+  { json(value) { details = value; } }, error => { throw error; });
+  assert.equal(details.status, 'delivered');
+  assert.equal(details.awbNumber, 'RECOVERED-AWB');
+  assert.equal(details.trackingSyncUnavailable, false);
+  const detailCalls = tracking.mock.callCount();
+  let unauthorizedStatus;
+  await getOrder({ user: { id: '20000000-0000-4000-8000-000000000099' },
+    params: { orderId: '10000000-0000-4000-8000-000000000001' } },
+  { status(value) { unauthorizedStatus = value; return this; }, json() {} }, error => { throw error; });
+  assert.equal(unauthorizedStatus, 404);
+  assert.equal(tracking.mock.callCount(), detailCalls);
+  tracking.mock.mockImplementation(async () => { throw new Error('provider unavailable'); });
+  await getOrder({ user: { id: '20000000-0000-4000-8000-000000000001' },
+    params: { orderId: '10000000-0000-4000-8000-000000000001' } },
+  { json(value) { details = value; } }, error => { throw error; });
+  assert.equal(details.status, 'processing');
+  assert.equal(details.trackingSyncUnavailable, true);
   await db.exec(`INSERT INTO orders (id, user_id, order_number, created_at) VALUES
     ('10000000-0000-4000-8000-000000000008', '20000000-0000-4000-8000-000000000001', 'before-range', '2026-10-05T18:29:59.999Z'),
     ('10000000-0000-4000-8000-000000000009', '20000000-0000-4000-8000-000000000001', 'start-of-day', '2026-10-05T18:30:00Z'),

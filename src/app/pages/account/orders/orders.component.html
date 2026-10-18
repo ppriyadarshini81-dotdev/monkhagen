@@ -116,6 +116,8 @@
       <button type="button" class="mh-customer-dialog__close" aria-label="Close order details" (click)="closeDetails()">&times;</button>
     </header>
     <div class="mh-customer-dialog__body">
+      <p role="status" *ngIf="detailsSyncing">Checking the latest delivery status...</p>
+      <p role="status" *ngIf="detailsSyncError">{{ detailsSyncError }}</p>
       <section class="mh-detail-section">
         <div class="mh-detail-section__head"><h3>Items in this order</h3><span>{{ order.items.length }} {{ order.items.length === 1 ? 'product' : 'products' }}</span></div>
         <div class="mh-detail-product" *ngFor="let item of order.items">
