@@ -1,5 +1,5 @@
-<section class="mh-admin mh-container">
-  <header class="mh-admin__head" style="margin-bottom: 14px;">
+<section class="mh-admin mh-container" [class.mh-admin--lists]="tab === 'orders' || tab === 'returns' || tab === 'reviews'">
+  <header class="mh-admin__head" style="margin-bottom: 14px;" *ngIf="tab !== 'orders' && tab !== 'returns' && tab !== 'reviews'">
     <div>
       <span class="mh-eyebrow">Admin management</span>
       <h1>{{ adminTitle }}</h1>
@@ -333,7 +333,7 @@
     <div class="mh-orders__toolbar">
       <div>
         <span class="mh-eyebrow">Fulfillment</span>
-        <h2>Orders at a glance</h2>
+        <h2>Orders</h2>
         <p>Open an order to see customer, payment and shipment details.</p>
       </div>
       <button class="mh-btn mh-btn--ghost" type="button" (click)="loadOrders()" [disabled]="ordersLoading">
@@ -341,88 +341,101 @@
       </button>
     </div>
 
-    <div class="mh-orders__filters" *ngIf="orders.length">
-      <label class="mh-orders__search">
-        <span aria-hidden="true"></span>
-        <input type="search" [(ngModel)]="orderSearch" placeholder="Search order, customer or product" aria-label="Search orders" />
-      </label>
-      <div class="mh-orders__filter-buttons" aria-label="Filter orders">
-        <button type="button" [class.active]="orderFilter === 'all'" (click)="orderFilter = 'all'">All</button>
-        <button type="button" [class.active]="orderFilter === 'attention'" (click)="orderFilter = 'attention'">Needs attention</button>
-        <button type="button" [class.active]="orderFilter === 'unfulfilled'" (click)="orderFilter = 'unfulfilled'">Awaiting shipment</button>
-        <button type="button" [class.active]="orderFilter === 'shipped'" (click)="orderFilter = 'shipped'">Shipped</button>
-      </div>
+    <details class="admin-filter-panel">
+      <summary><span>Search orders &amp; filters</span><span class="admin-filter-panel__toggle"><span class="admin-filter-panel__show">Show</span><span class="admin-filter-panel__hide">Hide</span><span aria-hidden="true">&#8964;</span></span></summary>
+      <form class="admin-list-filters" (ngSubmit)="applyOrderFilters()">
+      <fieldset [disabled]="ordersLoading">
+        <legend class="admin-list-sr">Filter orders</legend>
+        <label class="admin-list-search"><span>Search orders</span><input type="search" [(ngModel)]="orderSearch" name="orderSearch" maxlength="200" placeholder="Order ID, customer, phone, email or product" /></label>
+        <label><span>Order status</span><select [(ngModel)]="orderCriteria.status" name="orderStatus"><option value="">All statuses</option><option *ngFor="let status of orderStatuses" [value]="status">{{ statusLabel(status) }}</option></select></label>
+        <label><span>Payment status</span><select [(ngModel)]="orderCriteria.paymentStatus" name="paymentStatus"><option value="">All payments</option><option value="paid">Paid</option><option value="pending">Pending</option><option value="failed">Failed</option><option value="refunded">Refunded</option></select></label>
+        <label><span>Payment method</span><select [(ngModel)]="orderCriteria.paymentMethod" name="paymentMethod"><option value="">All methods</option><option value="razorpay">Razorpay</option><option value="cod">Cash on delivery</option></select></label>
+        <label><span>From date (IST)</span><input type="date" [(ngModel)]="orderCriteria.from" name="orderFrom" /></label>
+        <label><span>To date (IST)</span><input type="date" [(ngModel)]="orderCriteria.to" name="orderTo" [min]="orderCriteria.from || ''" /></label>
+        <label><span>Sort by</span><select [(ngModel)]="orderCriteria.sort" name="orderSort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label>
+        <label><span>Per page</span><select [(ngModel)]="ordersPageSize" name="orderLimit" (ngModelChange)="applyOrderFilters()"><option [ngValue]="10">10 orders</option><option [ngValue]="25">25 orders</option><option [ngValue]="50">50 orders</option></select></label>
+        <div class="admin-list-filter-actions"><button class="mh-btn mh-btn--gold" type="submit">Apply filters</button><button class="mh-btn mh-btn--ghost" type="button" (click)="clearOrderFilters()">Clear</button></div>
+      </fieldset>
+    </form>
+    </details>
+    <div class="admin-list-presets" aria-label="Order fulfillment filters">
+      <button *ngFor="let preset of [{id:'all',label:'All orders'},{id:'new',label:'New orders'},{id:'attention',label:'Needs attention'},{id:'unfulfilled',label:'Awaiting shipment'},{id:'shipped',label:'Shipped'},{id:'delivered',label:'Delivered'}]" type="button" [disabled]="ordersLoading" [attr.aria-pressed]="orderFilter === preset.id" [class.active]="orderFilter === preset.id" [class.admin-new-shortcut]="preset.id === 'new'" [attr.title]="preset.id === 'new' ? 'Today and tomorrow (IST)' : null" (click)="selectOrderPreset(preset.id)">{{ preset.label }}</button>
     </div>
-
+    <p class="admin-priority-hint" *ngIf="orderFilter === 'new'">Today and tomorrow (IST). Red rows need action.</p><p class="admin-list-result" role="status">{{ ordersLoading ? 'Loading orders...' : (orders.length ? ('Showing ' + (ordersPage * ordersPageSize + 1) + '–' + (ordersPage * ordersPageSize + orders.length) + ' · Page ' + (ordersPage + 1)) : 'No orders to show') }}</p>
     <p class="mh-error" role="alert" *ngIf="ordersError">{{ ordersError }}</p>
-    <p class="mh-empty" *ngIf="!ordersLoading && !ordersError && orders.length === 0">No orders yet.</p>
-    <p class="mh-empty" *ngIf="!ordersLoading && orders.length && visibleOrders.length === 0">No orders match these filters.</p>
+    <p class="mh-empty" *ngIf="!ordersLoading && !ordersError && orders.length === 0">No orders match these filters. Clear the filters to see all orders.</p>
 
-    <div class="mh-order-cards" *ngIf="visibleOrders.length">
-      <button class="mh-order-card" type="button" *ngFor="let o of visibleOrders" (click)="openOrder(o)">
-        <span class="mh-order-card__top">
-          <span class="mh-order-card__identity">
-            <small>Order</small>
-            <strong>{{ orderReference(o) }}</strong>
-            <span>{{ o.createdAt | date: 'dd MMM y' }} &middot; {{ o.createdAt | date: 'h:mm a' }}</span>
-          </span>
-          <span class="mh-order-card__amount">
-            <small>Order total</small>
-            <strong>&#8377;{{ (o.totalAmount ?? o.total ?? 0) | number }}</strong>
-          </span>
-        </span>
 
-        <span class="mh-order-card__content">
-          <span class="mh-order-card__customer">
-            <span class="mh-order-card__avatar">{{ o.address?.fullName?.charAt(0) || '?' }}</span>
-            <span>
-              <small>Customer</small>
-              <strong>{{ o.address?.fullName || 'Customer unavailable' }}</strong>
-              <span>{{ o.address?.city || o.address?.phone || 'Address unavailable' }}</span>
-            </span>
-          </span>
-          <span class="mh-order-card__items">
-            <small>{{ orderItemCount(o) }} {{ orderItemCount(o) === 1 ? 'item' : 'items' }}</small>
-            <strong>{{ orderItemSummary(o) }}</strong>
-          </span>
-          <span class="mh-order-card__fulfillment">
-            <small>Fulfillment</small>
-            <span class="mh-status" [ngClass]="statusClass(o.shipment?.shippingStatus)">{{ statusLabel(o.shipment?.shippingStatus) }}</span>
-            <span class="mh-order-card__warning" *ngIf="o.shipment?.lastErrorCode">Action required</span>
-          </span>
-        </span>
-
-        <span class="mh-order-card__foot">
-          <span>
-            <span class="mh-status" [ngClass]="statusClass(o.paymentStatus)">{{ statusLabel(o.paymentStatus) }}</span>
-            <small>{{ o.paymentMethod === 'cod' ? 'Cash on delivery' : statusLabel(o.paymentMethod) }}</small>
-          </span>
-          <strong>View order <span aria-hidden="true">&#8594;</span></strong>
-        </span>
-      </button>
+    <div class="admin-record-list" *ngIf="visibleOrders.length && !ordersLoading && !ordersError">
+      <article class="admin-record" *ngFor="let o of visibleOrders" [class.admin-record--action-required]="orderNeedsAction(o)">
+        <header class="admin-record-summary">
+          <button type="button" class="admin-record-toggle" [attr.aria-expanded]="isAdminRowExpanded('order', o.id)" [attr.aria-controls]="'admin-order-' + o.id" (click)="toggleAdminRow('order', o.id)">
+            <span class="admin-record-reference"><strong>{{ orderReference(o) }}</strong><small>{{ o.createdAt | date:'dd MMM y, h:mm a' }}</small></span>
+            <span class="admin-record-customer"><strong>{{ o.address?.fullName || 'Customer unavailable' }}</strong><small>{{ o.address?.city || o.address?.phone || 'Contact unavailable' }}</small></span>
+            <span class="admin-record-status"><span class="mh-status" [ngClass]="statusClass(o.shipment?.shippingStatus)">{{ statusLabel(o.shipment?.shippingStatus) }}</span><span class="mh-status" [ngClass]="statusClass(o.paymentStatus)">{{ statusLabel(o.paymentStatus) }}</span><small class="admin-priority-badge" *ngIf="orderNeedsAction(o)">Action required</small><small class="admin-record-warning" *ngIf="o.shipment?.lastErrorCode && !orderNeedsAction(o)">Action required</small></span>
+            <span class="admin-record-amount"><strong>&#8377;{{ (o.totalAmount ?? o.total ?? 0) | number }}</strong><small>{{ orderItemCount(o) }} {{ orderItemCount(o) === 1 ? 'item' : 'items' }}</small></span>
+            <span class="admin-record-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 9 6 6 6-6" /></svg></span>
+          </button>
+          <button type="button" class="admin-record-details" (click)="openOrder(o)">View details <span aria-hidden="true">&#8594;</span></button>
+        </header>
+        <div class="admin-record-body" [id]="'admin-order-' + o.id" [hidden]="!isAdminRowExpanded('order', o.id)">
+          <div class="admin-record-meta"><span><small>Payment method</small>{{ o.paymentMethod === 'cod' ? 'Cash on delivery' : statusLabel(o.paymentMethod) }}</span><span><small>Customer phone</small>{{ o.address?.phone || 'Not available' }}</span><span><small>Courier</small>{{ o.shipment?.courierName || 'Not assigned' }}</span><span><small>AWB / Tracking</small>{{ o.shipment?.awbCode || 'Awaiting assignment' }}</span></div>
+          <div class="admin-record-products"><div class="mh-return-product" *ngFor="let item of o.items"><span class="mh-return-product__image"><img *ngIf="item.imageUrl" [src]="item.imageUrl" [alt]="item.productName" /></span><span class="mh-return-product__copy"><strong>{{ item.productName }}</strong><small>Size {{ item.size || 'One size' }} &middot; {{ item.color || 'Standard' }} &middot; Qty {{ item.quantity }}</small></span></div></div>
+        </div>
+      </article>
     </div>
+    <nav class="admin-list-pagination" aria-label="Order pages" *ngIf="orders.length || ordersPage > 0"><span>Page {{ ordersPage + 1 }}</span><div><button type="button" [disabled]="ordersLoading || ordersPage === 0" (click)="changeOrdersPage(-1)">Previous</button><button type="button" [disabled]="ordersLoading || !ordersHasNext" (click)="changeOrdersPage(1)">Next</button></div></nav>
   </div>
 
   <div class="mh-orders mh-admin-returns" *ngIf="tab === 'returns'">
     <div class="mh-orders__toolbar">
-      <div><span class="mh-eyebrow">Reverse logistics</span><h2>Customer returns</h2><p>View each product's journey and record inspection decisions after warehouse receipt.</p></div>
+      <div><span class="mh-eyebrow">Reverse logistics</span><h2>Returns &amp; replacements</h2><p>View each product's journey and record inspection decisions after warehouse receipt.</p></div>
       <button class="mh-btn mh-btn--ghost" type="button" (click)="loadReturns()" [disabled]="returnsLoading">{{ returnsLoading ? 'Refreshing...' : 'Refresh returns' }}</button>
     </div>
+    <details class="admin-filter-panel">
+      <summary><span>Search returns &amp; filters</span><span class="admin-filter-panel__toggle"><span class="admin-filter-panel__show">Show</span><span class="admin-filter-panel__hide">Hide</span><span aria-hidden="true">&#8964;</span></span></summary>
+      <form class="admin-list-filters" (ngSubmit)="applyReturnFilters()">
+      <fieldset [disabled]="returnsLoading">
+        <legend class="admin-list-sr">Filter returns and replacements</legend>
+        <label class="admin-list-search"><span>Search requests</span><input type="search" [(ngModel)]="returnCriteria.search" name="returnSearch" maxlength="200" placeholder="Request, order, customer, email, phone or product" /></label>
+        <label><span>Request type</span><select [(ngModel)]="returnCriteria.requestType" name="requestType"><option value="">All types</option><ng-container *ngIf="returnTab !== 'outbound_orders'"><option value="return">Return</option><option value="defect">Defective item</option><option value="replacement">Size replacement</option></ng-container><ng-container *ngIf="returnTab === 'outbound_orders'"><option value="replacement">Replacement order</option><option value="rejected_return">Rejected item return</option></ng-container></select></label>
+        <label><span>Status</span><select [(ngModel)]="returnCriteria.status" name="returnStatus"><option value="">All statuses</option><option *ngFor="let status of (returnTab === 'outbound_orders' ? orderStatuses : returnStatuses)" [value]="status">{{ returnTab === 'outbound_orders' ? statusLabel(status) : returnStatusLabel(status) }}</option></select></label>
+        <label *ngIf="returnTab !== 'outbound_orders'"><span>Refund status</span><select [(ngModel)]="returnCriteria.refundStatus" name="refundStatus"><option value="">All refunds</option><option value="pending">Pending</option><option value="processing">Processing</option><option value="refunded">Refunded</option><option value="manual_required">Manual action needed</option><option value="failed">Failed</option><option value="not_applicable">Not applicable</option></select></label>
+        <label><span>Payment method</span><select [(ngModel)]="returnCriteria.paymentMethod" name="returnPayment"><option value="">All methods</option><option value="razorpay">Razorpay</option><option value="cod">Cash on delivery</option></select></label>
+        <label><span>From date (IST)</span><input type="date" [(ngModel)]="returnCriteria.from" name="returnFrom" /></label>
+        <label><span>To date (IST)</span><input type="date" [(ngModel)]="returnCriteria.to" name="returnTo" [min]="returnCriteria.from || ''" /></label>
+        <label><span>Sort by</span><select [(ngModel)]="returnCriteria.sort" name="returnSort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label>
+        <label><span>Per page</span><select [(ngModel)]="returnsPageSize" name="returnLimit" (ngModelChange)="applyReturnFilters()"><option [ngValue]="10">10 requests</option><option [ngValue]="25">25 requests</option><option [ngValue]="50">50 requests</option></select></label>
+        <div class="admin-list-filter-actions"><button class="mh-btn mh-btn--gold" type="submit">Apply filters</button><button class="mh-btn mh-btn--ghost" type="button" (click)="clearReturnFilters()">Clear</button></div>
+      </fieldset>
+    </form>
+    </details>
+    <p class="mh-error" role="alert" *ngIf="returnsError">{{ returnsError }}</p>
+    <p class="admin-list-result" role="status">{{ returnsLoading ? 'Loading requests...' : ('Page ' + (returnsPage + 1) + ' · ' + (returnTab === 'outbound_orders' ? afterSalesOrders.length : returns.length) + ' requests shown') }}</p>
     <nav class="mh-return-tabs" role="tablist" aria-label="Return workflow">
-      <button *ngFor="let entry of returnTabs" type="button" role="tab" [attr.aria-selected]="returnTab === entry.id" [class.is-active]="returnTab === entry.id" [disabled]="returnsLoading" (click)="selectReturnTab(entry.id)">{{ entry.label }}</button>
+      <button *ngFor="let entry of returnTabs" type="button" role="tab" [attr.aria-selected]="returnTab === entry.id" [class.is-active]="returnTab === entry.id" [class.admin-new-shortcut]="entry.id === 'new'" [attr.title]="entry.id === 'new' ? 'Today and tomorrow (IST)' : null" [disabled]="returnsLoading" (click)="selectReturnTab(entry.id)">{{ entry.label }}</button>
     </nav>
+    <p class="admin-priority-hint" *ngIf="returnTab === 'new'">Today and tomorrow (IST). Red rows need action.</p>
     <p class="mh-return-tab-explanation" *ngIf="returnTab === 'requested'">Customer requests awaiting return pickup or warehouse receipt.</p>
     <p class="mh-return-tab-explanation" *ngIf="returnTab === 'inspection_required'">Products ready for inspection, refunds requiring action, and submissions needing review.</p>
     <p class="mh-return-tab-explanation" *ngIf="returnTab === 'completed'">Requests with no pending administrator action. Courier delivery or refund processing may still be in progress.</p>
     <p class="mh-return-tab-explanation" *ngIf="returnTab === 'outbound_orders'">Outbound orders created after inspection, linked to the original purchase and return request. Approved products ship in their replacement sizes; rejected products ship back in their original sizes with the inspection reason. Mixed results share one parcel. Courier assignment and pickup scheduling are managed in Shiprocket.</p>
-    <p class="mh-empty" *ngIf="!returnsLoading && returnTab !== 'outbound_orders' && returns.length === 0">No requests in this tab.</p>
-    <p class="mh-empty" *ngIf="!returnsLoading && returnTab === 'outbound_orders' && afterSalesOrders.length === 0">Outbound orders will appear here after inspection is submitted.</p>
-    <div class="mh-returns-list" *ngIf="returnTab !== 'outbound_orders'">
-      <article class="mh-customer-return" *ngFor="let r of returns">
-        <header class="mh-customer-return__head">
-          <div><span>{{ r.requestType === 'replacement' ? 'Size replacement requested' : r.requestType === 'defect' ? 'Defective item return requested' : 'Return requested' }}</span><h3>#{{ r.returnNumber }}</h3><small>Order #{{ r.orderNumber || r.orderId }} &middot; Requested {{ r.requestedAt | date:'dd MMMM y, h:mm a' }}</small><small>{{ r.customer?.name || 'Customer' }} &middot; {{ r.customer?.email || r.customer?.phone || 'Contact unavailable' }}</small></div>
-          <span [class]="'mh-return-state mh-return-state--' + returnStatusClass(r.status)">{{ r.cancellationPending ? 'Cancellation pending' : requestStatusLabel(r) }}</span>
+    <p class="mh-empty" *ngIf="!returnsLoading && !returnsError && returnTab !== 'outbound_orders' && returns.length === 0">No requests match this workflow and your filters.</p>
+    <p class="mh-empty" *ngIf="!returnsLoading && !returnsError && returnTab === 'outbound_orders' && afterSalesOrders.length === 0">No outbound orders match these filters. Orders appear here after inspection is submitted.</p>
+    <div class="mh-returns-list" *ngIf="returnTab !== 'outbound_orders' && !returnsLoading && !returnsError">
+      <article class="mh-customer-return" *ngFor="let r of returns" [class.admin-record--action-required]="returnNeedsAction(r)">
+        <header class="admin-record-summary">
+          <button type="button" class="admin-record-toggle" [attr.aria-expanded]="isAdminRowExpanded('return', r.id)" [attr.aria-controls]="'admin-return-' + r.id" (click)="toggleAdminRow('return', r.id)">
+            <span class="admin-record-reference"><strong [title]="r.returnNumber">#{{ r.returnNumber }}</strong><small>Order #{{ r.orderNumber || r.orderId }}</small></span>
+            <span class="admin-record-customer"><strong>{{ r.customer?.name || 'Customer' }}</strong><small>{{ r.customer?.email || r.customer?.phone || 'Contact unavailable' }}</small></span>
+            <span class="admin-record-status"><span [class]="'mh-return-state mh-return-state--' + returnStatusClass(r.status)">{{ r.cancellationPending ? 'Cancellation pending' : requestStatusLabel(r) }}</span><small class="admin-priority-badge" *ngIf="returnNeedsAction(r)">Action required</small></span>
+            <span class="admin-record-amount"><strong *ngIf="r.requestType !== 'replacement'">&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><strong *ngIf="r.requestType === 'replacement'">Replacement</strong><small>{{ r.requestedAt | date:'dd MMM y' }}</small></span>
+            <span class="admin-record-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 9 6 6 6-6" /></svg></span>
+          </button>
+          <button type="button" class="admin-record-details" (click)="openReturnDetails(r)">View details <span aria-hidden="true">&#8594;</span></button>
         </header>
+        <div class="admin-record-body admin-record-body--return" [id]="'admin-return-' + r.id" [hidden]="!isAdminRowExpanded('return', r.id)">
+          <div class="admin-record-meta"><span><small>Request type</small>{{ r.requestType === 'replacement' ? 'Size replacement' : r.requestType === 'defect' ? 'Defective item return' : 'Return' }}</span><span><small>Requested</small>{{ r.requestedAt | date:'medium' }}</span><span><small>Customer phone</small>{{ r.customer?.phone || 'Not available' }}</span></div>
         <section class="mh-customer-return__products">
           <div class="mh-return-product" *ngFor="let item of r.items">
             <span class="mh-return-product__image"><img *ngIf="item.imageUrl" [src]="item.imageUrl" [alt]="item.productName" /><span *ngIf="!item.imageUrl">{{ item.productName.charAt(0) }}</span></span>
@@ -435,16 +448,25 @@
         <footer class="mh-customer-return__foot">
           <span *ngIf="r.requestType !== 'replacement'"><small>Refund after shipping</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><em>{{ r.refundAmount ? returnStatusLabel(r.refundStatus) : 'No refund payable' }}</em></span>
           <span *ngIf="r.requestType === 'replacement'" class="mh-return-footnote">Replacement is confirmed after inspection.</span>
-          <div><button type="button" class="mh-return-details-button" (click)="openReturnDetails(r)">View details</button></div>
+
         </footer>
+        </div>
       </article>
     </div>
-    <div class="mh-returns-list" *ngIf="returnTab === 'outbound_orders'">
-      <article class="mh-customer-return" *ngFor="let order of afterSalesOrders">
-        <header class="mh-customer-return__head">
-          <div><span>{{ order.orderType === 'rejected_return' ? 'Rejected item return order' : 'Replacement order' }}</span><h3>#{{ order.orderNumber }}</h3><small>Original order #{{ order.sourceOrderNumber }} &middot; Return #{{ order.returnNumber }}</small><small>{{ order.address?.fullName || 'Customer' }} &middot; Created {{ order.createdAt | date:'dd MMMM y, h:mm a' }}</small></div>
-          <span class="mh-status" [ngClass]="statusClass(order.fulfillmentHoldReason ? 'needs_review' : order.shipment?.shippingStatus)">{{ order.fulfillmentHoldReason ? 'Shipment needs review' : statusLabel(order.shipment?.shippingStatus) }}</span>
+    <div class="mh-returns-list" *ngIf="returnTab === 'outbound_orders' && !returnsLoading && !returnsError">
+      <article class="mh-customer-return" *ngFor="let order of afterSalesOrders" [class.admin-record--action-required]="orderNeedsAction(order)">
+        <header class="admin-record-summary">
+          <button type="button" class="admin-record-toggle" [attr.aria-expanded]="isAdminRowExpanded('outbound', order.id)" [attr.aria-controls]="'admin-outbound-' + order.id" (click)="toggleAdminRow('outbound', order.id)">
+            <span class="admin-record-reference"><strong [title]="order.orderNumber">#{{ order.orderNumber }}</strong><small>Original #{{ order.sourceOrderNumber }}</small></span>
+            <span class="admin-record-customer"><strong>{{ order.address?.fullName || 'Customer' }}</strong><small>{{ order.address?.city || order.address?.phone || 'Contact unavailable' }}</small></span>
+            <span class="admin-record-status"><span class="mh-status" [ngClass]="statusClass(order.fulfillmentHoldReason ? 'needs_review' : order.shipment?.shippingStatus)">{{ order.fulfillmentHoldReason ? 'Shipment needs review' : statusLabel(order.shipment?.shippingStatus) }}</span><small class="admin-priority-badge" *ngIf="orderNeedsAction(order)">Action required</small></span>
+            <span class="admin-record-amount"><strong>{{ order.orderType === 'rejected_return' ? 'Item return' : 'Replacement' }}</strong><small>{{ order.createdAt | date:'dd MMM y' }}</small></span>
+            <span class="admin-record-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 9 6 6 6-6" /></svg></span>
+          </button>
+          <button type="button" class="admin-record-details" [disabled]="!!returnBusyId" (click)="openAfterSalesOrder(order)">View details <span aria-hidden="true">&#8594;</span></button>
         </header>
+        <div class="admin-record-body admin-record-body--return" [id]="'admin-outbound-' + order.id" [hidden]="!isAdminRowExpanded('outbound', order.id)">
+          <div class="admin-record-meta"><span><small>Return reference</small>#{{ order.returnNumber }}</span><span><small>Created</small>{{ order.createdAt | date:'medium' }}</span></div>
         <section class="mh-customer-return__products">
           <div class="mh-return-product" *ngFor="let item of order.items">
             <span class="mh-return-product__image"><img *ngIf="item.imageUrl" [src]="item.imageUrl" [alt]="item.productName" /><span *ngIf="!item.imageUrl">{{ item.productName.charAt(0) }}</span></span>
@@ -454,17 +476,20 @@
         <p class="mh-return-notice" *ngIf="order.fulfillmentHoldReason || order.shipment?.lastErrorCode">Review the linked return request and provider order before retrying shipment creation.</p>
         <footer class="mh-customer-return__foot">
           <span class="mh-return-footnote">{{ order.shipment?.awbCode ? ('AWB ' + order.shipment?.awbCode) : 'Awaiting courier assignment' }} &middot; {{ statusLabel(order.shipment?.pickupStatus) }}</span>
-          <div><a class="mh-return-details-button" *ngIf="order.shipment?.trackingUrl" [href]="order.shipment?.trackingUrl" target="_blank" rel="noopener noreferrer">Track shipment</a><button type="button" class="mh-return-details-button" [disabled]="!!returnBusyId" *ngIf="order.shipment?.shiprocketShipmentId" (click)="refreshOutboundTracking(order)">Refresh tracking</button><button type="button" class="mh-return-details-button" [disabled]="!!returnBusyId" (click)="openAfterSalesOrder(order)">View details</button></div>
+          <div><a class="mh-return-details-button" *ngIf="order.shipment?.trackingUrl" [href]="order.shipment?.trackingUrl" target="_blank" rel="noopener noreferrer">Track shipment</a><button type="button" class="mh-return-details-button" [disabled]="!!returnBusyId" *ngIf="order.shipment?.shiprocketShipmentId" (click)="refreshOutboundTracking(order)">Refresh tracking</button></div>
         </footer>
+        </div>
       </article>
     </div>
-    <nav class="mh-pagination" *ngIf="returnsPage > 0 || returnsHasNext"><button type="button" [disabled]="returnsLoading || returnsPage === 0" (click)="changeReturnsPage(-1)">Previous</button><span>Page {{ returnsPage + 1 }}</span><button type="button" [disabled]="returnsLoading || !returnsHasNext" (click)="changeReturnsPage(1)">Next</button></nav>
+    <nav class="admin-list-pagination" aria-label="Return pages" *ngIf="returnsPage > 0 || returnsHasNext || returns.length || afterSalesOrders.length"><button type="button" [disabled]="returnsLoading || returnsPage === 0" (click)="changeReturnsPage(-1)">Previous</button><span>Page {{ returnsPage + 1 }}</span><button type="button" [disabled]="returnsLoading || !returnsHasNext" (click)="changeReturnsPage(1)">Next</button></nav>
   </div>
   <div class="mh-orders mh-admin-reviews" *ngIf="tab === 'reviews'">
     <div class="mh-orders__toolbar">
       <div><span class="mh-eyebrow">Customer feedback</span><h2>Customer reviews</h2><p>Hide inappropriate content without changing what the customer wrote.</p></div>
       <button class="mh-btn mh-btn--ghost" type="button" (click)="loadCustomerReviews()" [disabled]="reviewsLoading">{{ reviewsLoading ? 'Refreshing...' : 'Refresh reviews' }}</button>
     </div>
+    <details class="admin-filter-panel">
+      <summary><span>Search reviews &amp; filters</span><span class="admin-filter-panel__toggle"><span class="admin-filter-panel__show">Show</span><span class="admin-filter-panel__hide">Hide</span><span aria-hidden="true">&#8964;</span></span></summary>
     <div class="mh-admin-reviews__filters">
       <input type="search" [(ngModel)]="reviewSearch" placeholder="Search product" aria-label="Search reviews by product" />
       <select [(ngModel)]="reviewRatingFilter" aria-label="Filter reviews by rating">
@@ -475,15 +500,20 @@
       </select>
       <button class="mh-btn mh-btn--ghost" type="button" (click)="loadCustomerReviews()">Apply</button>
     </div>
+    </details>
     <p class="mh-empty" *ngIf="!reviewsLoading && customerReviews.length === 0">No customer reviews match these filters.</p>
-    <article class="mh-admin-review-card" *ngFor="let review of customerReviews">
-      <header><div><strong>{{ review.productName }}</strong><span>{{ review.rating }} / 5 stars &middot; {{ review.customerName }} &middot; Verified Buyer</span></div>
-        <span class="mh-status" [class.is-danger]="review.moderationStatus === 'hidden'" [class.is-success]="review.moderationStatus === 'approved'">{{ review.moderationStatus === 'approved' ? 'Visible' : 'Hidden' }}</span></header>
+    <details class="mh-admin-review-card" *ngFor="let review of customerReviews">
+      <summary class="admin-review-summary"><span class="admin-review-summary__copy"><strong>{{ review.productName }}</strong><span>{{ review.rating }} / 5 stars &middot; {{ review.customerName }} &middot; Verified Buyer</span></span>
+        <span class="mh-status" [class.is-danger]="review.moderationStatus === 'hidden'" [class.is-success]="review.moderationStatus === 'approved'">{{ review.moderationStatus === 'approved' ? 'Visible' : 'Hidden' }}</span>
+        <span class="admin-filter-panel__toggle"><span class="admin-review-show">Show review</span><span class="admin-review-hide">Collapse</span><span aria-hidden="true">&#8964;</span></span>
+      </summary>
+      <div class="admin-review-body">
       <p *ngIf="review.text">{{ review.text }}</p>
       <div class="mh-admin-review-card__photos" *ngIf="review.images.length"><a *ngFor="let image of review.images" [href]="image.url" target="_blank" rel="noopener"><img [src]="image.url" alt="Customer review photo" /></a></div>
       <footer><span>{{ review.createdAt | date:'mediumDate' }}<ng-container *ngIf="review.edited"> &middot; Edited</ng-container> &middot; Helpful {{ review.helpfulCount }}</span>
         <button class="mh-btn mh-btn--ghost" type="button" (click)="moderateReview(review)" [disabled]="!!reviewBusyId">{{ review.moderationStatus === 'approved' ? 'Hide review' : 'Restore review' }}</button></footer>
-    </article>
+      </div>
+    </details>
   </div>
 </section>
 

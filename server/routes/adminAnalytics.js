@@ -3,6 +3,7 @@ const controller = require('../controllers/adminAnalyticsController');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 
 router.use(authenticate, requireAdmin);
+router.get('/dashboard', controller.dashboard);
 router.get('/overview', controller.overview);
 router.get('/revenue', controller.revenue);
 router.get('/funnel', controller.funnel);

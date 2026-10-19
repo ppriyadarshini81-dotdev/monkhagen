@@ -132,7 +132,8 @@ const Order = {
     return Promise.all(rows.map(enrichOrder));
   },
 
-  async findAll({ limit = 100, offset = 0, afterSales = false } = {}) {
+  async findAll({ limit = 100, offset = 0, afterSales = false, ...filters } = {}) {
+    const filtered = require('../services/adminListFilters')(filters, { afterSales, values: [limit, offset] });
     const { rows } = await pool.query(`SELECT o.*, original.order_number AS source_order_number, rr.return_number, json_build_object(
       'shiprocketOrderId', s.shiprocket_order_id,
       'shiprocketShipmentId', s.shiprocket_shipment_id,
@@ -150,7 +151,7 @@ const Order = {
     LEFT JOIN shipments s ON s.order_id = o.id LEFT JOIN order_cancellations c ON c.order_id = o.id
     LEFT JOIN orders original ON original.id = o.source_order_id LEFT JOIN return_requests rr ON rr.id = o.return_request_id
     WHERE o.order_type ${afterSales ? "<> 'normal'" : "= 'normal'"}
-    ORDER BY o.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+    ${filtered.clause} ORDER BY ${filtered.order} LIMIT $1 OFFSET $2`, filtered.values);
     return Promise.all(rows.map(async row => ({ ...await enrichOrder(row), shipment: row.shipment,
       cancellation: row.cancellation?.cancelledByCustomer ? row.cancellation : null })));
   },

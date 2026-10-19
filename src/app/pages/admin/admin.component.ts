@@ -10,7 +10,7 @@ import { ProductService, ProductWrite } from '../../services/product.service';
 import { CategoryService } from '../../services/category.service';
 import { BadgeService } from '../../services/badge.service';
 import { VariantOptionService } from '../../services/variant-option.service';
-import { AdminReturn, CodRefundReveal, OrderService, Order } from '../../services/order.service';
+import { AdminReturn, AdminListFilters, CodRefundReveal, OrderService, Order } from '../../services/order.service';
 import { UploadService } from '../../services/upload.service';
 import { AuthService } from '../../services/auth.service';
 import { ShippingService } from '../../services/shipping.service';
@@ -20,6 +20,7 @@ import { ReviewService } from '../../services/review.service';
 import { AdminReview } from '../../models/review.model';
 import { fieldsFromImagePairs, imagePairsFromFields, moveImagePair, ProductImagePair, removeImagePair } from '../../utils/product-image-pairs';
 import { sortSizes } from '../../utils/size-order';
+import { newOrderNeedsAction, newRequestWindow, newReturnNeedsAction } from '../../utils/admin-action-highlights';
 
 interface SizeStockForm { stock: number | null; threshold: number | null; configured: boolean; }
 
@@ -58,7 +59,7 @@ type OptionType = 'sizes' | 'colors';
   standalone: true,
   imports: [CommonModule, FormsModule, ProductPageContentEditorComponent],
   templateUrl: './admin.component.html',
-  styleUrls: ['./admin.component.css', '../account/returns/returns.component.css', './admin-returns.css']
+  styleUrls: ['./admin.component.css', '../account/returns/returns.component.css', './admin-returns.css', './admin-list-controls.css', './admin-review-layout.css', './admin-record-layout.css', './admin-responsive.css', './admin-priority.css']
 })
 export class AdminComponent implements OnInit, DoCheck {
   @ViewChild('orderDialog') orderDialog?: ElementRef<HTMLDialogElement>;
@@ -75,12 +76,15 @@ export class AdminComponent implements OnInit, DoCheck {
   returns: AdminReturn[] = [];
   returnTab = 'all';
   readonly returnTabs = [
-    { id: 'all', label: 'All' }, { id: 'requested', label: 'Requested' },
+    { id: 'all', label: 'All' }, { id: 'new', label: 'New returns' }, { id: 'requested', label: 'Requested' },
     { id: 'inspection_required', label: 'Inspection Required' }, { id: 'completed', label: 'Completed' },
     { id: 'outbound_orders', label: 'Return & Replacement Orders' }
   ];
   afterSalesOrders: Order[] = [];
-  returnsPage = 0; readonly returnsPageSize = 10; returnsHasNext = false;
+  returnsPage = 0; returnsPageSize = 10; returnsHasNext = false;
+  returnCriteria: AdminListFilters = this.emptyListFilters();
+  private appliedReturnCriteria: AdminListFilters = {};
+  returnsError = '';
   returnsLoading = false;
   returnBusyId = '';
   codRefundReturn?: AdminReturn;
@@ -102,6 +106,52 @@ export class AdminComponent implements OnInit, DoCheck {
   selectedOrder: Order | null = null;
   orderSearch = '';
   orderFilter = 'all';
+  readonly orderNeedsAction = newOrderNeedsAction;
+  readonly returnNeedsAction = newReturnNeedsAction;
+  selectOrderPreset(preset: string): void {
+    if (this.ordersLoading) return;
+    if (preset === 'new') {
+      this.orderCriteria = { ...this.emptyListFilters(), ...newRequestWindow() };
+      this.orderSearch = '';
+    } else if (this.orderFilter === 'new') { this.orderCriteria.from = ''; this.orderCriteria.to = ''; }
+    this.applyOrderFilters(preset);
+  }
+  private expandedAdminRows = new Set<string>();
+  isAdminRowExpanded(kind: string, id: string): boolean { return this.expandedAdminRows.has(`${kind}:${id}`); }
+  toggleAdminRow(kind: string, id: string): void {
+    const key = `${kind}:${id}`;
+    if (this.expandedAdminRows.has(key)) this.expandedAdminRows.delete(key);
+    else this.expandedAdminRows.add(key);
+  }
+  orderCriteria: AdminListFilters = this.emptyListFilters();
+  private appliedOrderCriteria: AdminListFilters = {};
+  ordersPage = 0; ordersPageSize = 10; ordersHasNext = false;
+  readonly orderStatuses = ['placed','confirmed','processing','shipped','delivered','cancelled','return_requested','returned'];
+  readonly returnStatuses = ['requested','return_created','shiprocket_failed','pickup_scheduled','picked_up','in_transit','received','approved','refund_initiated','refunded','rejected','cancelled','pickup_failed'];
+  private emptyListFilters(): AdminListFilters { return { search: '', status: '', paymentStatus: '', paymentMethod: '', requestType: '', refundStatus: '', from: '', to: '', sort: 'newest' }; }
+  private invalidDates(filters: AdminListFilters): boolean { return !!(filters.from && filters.to && filters.from > filters.to); }
+  applyOrderFilters(preset = this.orderFilter): void {
+    if (this.ordersLoading) return;
+    if (this.invalidDates(this.orderCriteria)) { this.ordersError = 'From date must be before the end date.'; return; }
+    const window = newRequestWindow();
+    if (preset === 'new' && (this.orderCriteria.from !== window.from || this.orderCriteria.to !== window.to)) preset = 'all';
+    this.orderFilter = preset; this.ordersPage = 0;
+    this.appliedOrderCriteria = { ...this.orderCriteria, search: this.orderSearch.trim(), fulfillment: preset === 'new' ? 'all' : preset };
+    this.loadOrders();
+  }
+  clearOrderFilters(): void { if (this.ordersLoading) return; this.orderCriteria = this.emptyListFilters(); this.orderSearch = ''; this.applyOrderFilters('all'); }
+  changeOrdersPage(direction: number): void {
+    if (this.ordersLoading || (direction < 0 && this.ordersPage === 0) || (direction > 0 && !this.ordersHasNext)) return;
+    this.ordersPage += direction; this.loadOrders();
+  }
+  applyReturnFilters(): void {
+    if (this.returnsLoading) return;
+    if (this.invalidDates(this.returnCriteria)) { this.returnsError = 'From date must be before the end date.'; return; }
+    const window = newRequestWindow();
+    if (this.returnTab === 'new' && (this.returnCriteria.from !== window.from || this.returnCriteria.to !== window.to)) this.returnTab = 'all';
+    this.returnsPage = 0; this.appliedReturnCriteria = { ...this.returnCriteria }; this.loadReturns();
+  }
+  clearReturnFilters(): void { if (this.returnsLoading) return; this.returnCriteria = this.emptyListFilters(); this.applyReturnFilters(); }
   message = '';
   error = '';
 
@@ -147,6 +197,7 @@ export class AdminComponent implements OnInit, DoCheck {
     const routedTab = this.route?.snapshot.data['tab'];
     if (['products', 'categories', 'badges', 'sizes', 'colors', 'orders', 'returns', 'reviews', 'content'].includes(routedTab)) this.tab = routedTab;
     this.requestedOrderId = this.route?.snapshot.queryParamMap.get('order') || '';
+    if (this.requestedOrderId) { this.orderSearch = this.requestedOrderId; this.appliedOrderCriteria = { search: this.requestedOrderId }; }
     this.loadProducts();
     this.loadCategories();
     this.loadBadges();
@@ -211,9 +262,10 @@ export class AdminComponent implements OnInit, DoCheck {
     if (this.ordersLoading) return;
     this.ordersLoading = true;
     this.ordersError = '';
-    this.orderService.allOrders().subscribe({
+    this.orderService.allOrders(this.appliedOrderCriteria, this.ordersPageSize + 1, this.ordersPage * this.ordersPageSize).subscribe({
       next: (o) => {
-        this.orders = o;
+        this.orders = o.slice(0, this.ordersPageSize);
+        this.ordersHasNext = o.length > this.ordersPageSize;
         if (this.selectedOrder) {
           this.selectedOrder = o.find((order) => order.id === this.selectedOrder?.id) || null;
         }
@@ -237,26 +289,38 @@ export class AdminComponent implements OnInit, DoCheck {
   loadReturns(): void {
     if (this.returnsLoading) return;
     this.returnsLoading = true;
+    this.returnsError = '';
     if (this.returnTab === 'outbound_orders') {
-      this.orderService.adminAfterSalesOrders(this.returnsPageSize + 1, this.returnsPage * this.returnsPageSize).subscribe({
+      this.orderService.adminAfterSalesOrders(this.returnsPageSize + 1, this.returnsPage * this.returnsPageSize, this.appliedReturnCriteria).subscribe({
         next: orders => { this.afterSalesOrders = orders.slice(0, this.returnsPageSize); this.returnsHasNext = orders.length > this.returnsPageSize; this.returnsLoading = false; },
-        error: () => { this.error = 'Could not load outbound orders.'; this.returnsLoading = false; }
+        error: () => { this.returnsError = 'Could not load outbound orders. Please retry.'; this.returnsLoading = false; }
       });
       return;
     }
-    this.orderService.adminReturns(this.returnTab, this.returnsPageSize + 1, this.returnsPage * this.returnsPageSize).subscribe({
+    this.orderService.adminReturns(this.returnTab === 'new' ? 'all' : this.returnTab, this.returnsPageSize + 1, this.returnsPage * this.returnsPageSize, this.appliedReturnCriteria).subscribe({
       next: returns => {
         this.returns = returns.slice(0, this.returnsPageSize);
         this.returnsHasNext = returns.length > this.returnsPageSize;
         if (this.selectedReturn) this.selectedReturn = returns.find(item => item.id === this.selectedReturn?.id) || this.selectedReturn;
         this.returnsLoading = false;
       },
-      error: () => { this.error = 'Could not load returns.'; this.returnsLoading = false; }
+      error: () => { this.returnsError = 'Could not load returns. Please retry.'; this.returnsLoading = false; }
     });
   }
 
   selectReturnTab(tab: string): void {
     if (this.returnsLoading || this.returnTab === tab) return;
+    if (tab === 'new') {
+      this.returnCriteria = { ...this.emptyListFilters(), ...newRequestWindow() };
+      this.appliedReturnCriteria = { ...this.returnCriteria };
+    } else if (this.returnTab === 'new') {
+      this.returnCriteria.from = ''; this.returnCriteria.to = '';
+      this.appliedReturnCriteria = { ...this.appliedReturnCriteria, from: '', to: '' };
+    }
+    if ((this.returnTab === 'outbound_orders') !== (tab === 'outbound_orders')) {
+      this.returnCriteria.status = ''; this.returnCriteria.requestType = ''; this.returnCriteria.refundStatus = '';
+      this.appliedReturnCriteria = { ...this.appliedReturnCriteria, status: '', requestType: '', refundStatus: '' };
+    }
     this.returnTab = tab; this.returnsPage = 0; this.returnsHasNext = false;
     this.loadReturns();
   }
@@ -502,27 +566,7 @@ export class AdminComponent implements OnInit, DoCheck {
     return null;
   }
 
-  get visibleOrders(): Order[] {
-    const query = this.orderSearch.trim().toLowerCase();
-    return this.orders.filter((order) => {
-      const hasShipmentIssue = Boolean(order.shipment?.lastErrorCode);
-      const matchesFilter = this.orderFilter === 'all' ||
-        (this.orderFilter === 'attention' && hasShipmentIssue) ||
-        (this.orderFilter === 'unfulfilled' && order.paymentStatus === 'paid' && !order.shipment?.awbCode) ||
-        (this.orderFilter === 'shipped' && Boolean(order.shipment?.awbCode));
-      if (!matchesFilter) return false;
-      if (!query) return true;
-      const searchable = [
-        order.orderNumber,
-        order.id,
-        order.address?.fullName,
-        order.address?.phone,
-        order.address?.city,
-        ...order.items.map((item) => item.productName)
-      ].filter(Boolean).join(' ').toLowerCase();
-      return searchable.includes(query);
-    });
-  }
+  get visibleOrders(): Order[] { return this.orders; }
 
   orderReference(order: Order): string {
     const reference = order.orderNumber || order.id.slice(0, 8).toUpperCase();

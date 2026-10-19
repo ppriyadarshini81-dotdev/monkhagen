@@ -120,8 +120,16 @@ export type CodRefundReveal = { method: 'UPI'; upiId: string; refundAmount: numb
   | { method: 'BANK'; accountHolderName: string; accountNumber: string; ifsc: string; bankName: string | null;
       refundAmount: number; status: string; masked: string };
 
+export interface AdminListFilters {
+  search?: string; status?: string; paymentStatus?: string; paymentMethod?: string;
+  requestType?: string; refundStatus?: string; fulfillment?: string; from?: string; to?: string; sort?: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class OrderService {
+  private filterParams(filters: AdminListFilters): Record<string, string> {
+    return Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== '').map(([key, value]) => [key, value]));
+  }
   private readonly api = '/api/orders';
 
   constructor(private http: HttpClient) {}
@@ -138,19 +146,19 @@ export class OrderService {
     return this.http.get<Order[]>(`${this.api}/mine`);
   }
 
-  allOrders(): Observable<Order[]> {
-    return this.http.get<Order[]>(this.api);
+  allOrders(filters: AdminListFilters = {}, limit = 100, offset = 0): Observable<Order[]> {
+    return this.http.get<Order[]>(this.api, { params: { ...this.filterParams(filters), limit, offset } });
   }
 
   updateStatus(id: string, status: string): Observable<Order> {
     return this.http.put<Order>(`${this.api}/${id}/status`, { status });
   }
 
-  adminReturns(tab = 'all', limit = 100, offset = 0): Observable<AdminReturn[]> {
-    return this.http.get<AdminReturn[]>('/api/admin/returns', { params: { tab, limit, offset } });
+  adminReturns(tab = 'all', limit = 100, offset = 0, filters: AdminListFilters = {}): Observable<AdminReturn[]> {
+    return this.http.get<AdminReturn[]>('/api/admin/returns', { params: { ...this.filterParams(filters), tab, limit, offset } });
   }
-  adminAfterSalesOrders(limit = 100, offset = 0): Observable<Order[]> {
-    return this.http.get<Order[]>('/api/admin/returns/outbound-orders', { params: { limit, offset } });
+  adminAfterSalesOrders(limit = 100, offset = 0, filters: AdminListFilters = {}): Observable<Order[]> {
+    return this.http.get<Order[]>('/api/admin/returns/outbound-orders', { params: { ...this.filterParams(filters), limit, offset } });
   }
   adminReturn(id: string): Observable<AdminReturn> { return this.http.get<AdminReturn>(`/api/admin/returns/${id}`); }
   approveReturn(id: string): Observable<AdminReturn> { return this.http.post<AdminReturn>(`/api/admin/returns/${id}/approve`, {}); }

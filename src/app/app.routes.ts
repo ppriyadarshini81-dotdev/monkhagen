@@ -36,10 +36,15 @@ export const routes: Routes = [
       import('./pages/login/login.component').then((m) => m.LoginComponent),
     title: 'Login — Monk Hagen'
   },
-  { path: 'dashboard', redirectTo: 'admin/dashboard', pathMatch: 'full' },
+  {
+    path: 'dashboard',
+    canActivate: [adminGuard],
+    loadComponent: () => import('./pages/admin-analytics/admin-analytics.component').then((m) => m.AdminAnalyticsComponent),
+    title: 'Dashboard — Monk Hagen'
+  },
   {
     path: 'admin/analytics',
-    redirectTo: 'admin/dashboard',
+    redirectTo: 'dashboard',
     pathMatch: 'full'
   },
   {
@@ -47,8 +52,8 @@ export const routes: Routes = [
     canActivate: [adminGuard],
     loadComponent: () => import('./pages/admin-portal/admin-portal.component').then((m) => m.AdminPortalComponent),
     children: [
-      { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
-      { path: 'dashboard', loadComponent: () => import('./pages/admin-analytics/admin-analytics.component').then((m) => m.AdminAnalyticsComponent), title: 'Dashboard — Monk Hagen' },
+      { path: '', redirectTo: 'orders', pathMatch: 'full' },
+      { path: 'dashboard', redirectTo: '/dashboard', pathMatch: 'full' },
       { path: 'ledger', loadComponent: () => import('./pages/admin-ledger/admin-ledger.component').then((m) => m.AdminLedgerComponent), title: 'Ledger — Monk Hagen' },
       { path: 'stock', loadComponent: () => import('./pages/admin-stock/admin-stock.component').then((m) => m.AdminStockComponent), title: 'Stock — Monk Hagen' },
       { path: 'orders', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'orders' } },
