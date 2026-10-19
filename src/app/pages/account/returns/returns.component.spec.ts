@@ -6,6 +6,37 @@ import { ReturnRequest } from '../../../models/account.model';
 import { AccountReturnsComponent } from './returns.component';
 
 describe('AccountReturnsComponent order filter', () => {
+  it('collapses cancelled and rejected requests by default and allows each card to be toggled', async () => {
+    const requests = ['cancelled', 'rejected', 'return_created'].map((status, index) => ({
+      id: `return-${index}`, returnNumber: `R-${index}`, status, requestType: 'return',
+      items: [], refundAmount: 100, refundStatus: 'pending', requestedAt: '2026-10-12T04:20:00Z',
+      orderId: `order-${index}`, reason: 'size_issue', requestedReplacementSize: null,
+      returnShippingDeduction: 150, comments: null, paymentMethod: 'razorpay', returnAwb: null,
+      pickupStatus: null, pickupDelayed: false, cancellationPending: false,
+      receivedAt: null, approvedAt: null, rejectedAt: null, refundedAt: null,
+      createdAt: '2026-10-12T04:20:00Z', refundDestination: { required: false, provided: false,
+        method: null, masked: null, status: null, canEdit: false, transactionReference: null, completedAt: null }
+    } as ReturnRequest));
+    const account = jasmine.createSpyObj<AccountService>('AccountService', ['getReturns']);
+    account.getReturns.and.returnValue(of(requests));
+    await TestBed.configureTestingModule({ imports: [AccountReturnsComponent], providers: [
+      { provide: AccountService, useValue: account }, provideRouter([])
+    ] }).compileComponents();
+    const fixture = TestBed.createComponent(AccountReturnsComponent);
+    fixture.detectChanges(); await fixture.whenStable();
+    const root: HTMLElement = fixture.nativeElement;
+    const toggles = Array.from(root.querySelectorAll<HTMLButtonElement>('.mh-return-toggle'));
+    expect(toggles.map(button => button.getAttribute('aria-expanded'))).toEqual(['false', 'false', 'true']);
+    expect(root.querySelector<HTMLElement>('#return-body-return-0')!.hidden).toBeTrue();
+    toggles[0].click(); fixture.detectChanges();
+    expect(root.querySelector<HTMLElement>('#return-body-return-0')!.hidden).toBeFalse();
+    expect(toggles[0].getAttribute('aria-expanded')).toBe('true');
+    expect(toggles[1].getAttribute('aria-expanded')).toBe('false');
+    toggles[2].click(); fixture.detectChanges();
+    expect(root.querySelector<HTMLElement>('#return-body-return-2')!.hidden).toBeTrue();
+    fixture.destroy();
+  });
+
   it('uses an in-page confirmation and keeps the return until cancellation is explicitly confirmed', async () => {
     const account = jasmine.createSpyObj<AccountService>('AccountService', ['getReturns', 'cancelReturn']);
     account.getReturns.and.returnValue(of([]));

@@ -70,4 +70,18 @@ describe('AccountProfileComponent email recovery', () => {
     expect(firebase.signInWithGoogle).not.toHaveBeenCalled();
     expect(component.error).toContain('valid email');
   });
+
+  it('shows a verified email without verification controls when editing', () => {
+    component.user = recoveredUser;
+    component.resetForm();
+    component.startEdit();
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelector('.mh-profile__email-link')?.textContent).toContain('customer@example.com');
+    expect(root.querySelector('.mh-profile__email-link .mh-badge')?.textContent).toContain('Verified');
+    expect(root.querySelector('#profile-email')).toBeNull();
+    expect(root.querySelector('.mh-profile__email-link button')).toBeNull();
+    expect(root.querySelector('#profile-name')).not.toBeNull();
+    expect(root.querySelector('#profile-phone')).not.toBeNull();
+  });
 });
