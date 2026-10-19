@@ -10,10 +10,12 @@ import { CartService } from '../../services/cart.service';
 describe('Product exploration carousel', () => {
   let fixture: ComponentFixture<ProductExploreComponent>;
   let component: ProductExploreComponent;
+  let width: jasmine.Spy;
   const pixel = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
   const products = ['A', 'B', 'C', 'D'].map(id => ({ id, name: id, slug: id, images: [pixel, pixel], price: 100, category: 'Shirts' } as Product));
 
   beforeEach(async () => {
+    width = spyOnProperty(window, 'innerWidth', 'get').and.returnValue(1440);
     spyOn(window, 'matchMedia').and.returnValue({ matches: false } as MediaQueryList);
     spyOnProperty(document, 'hidden', 'get').and.returnValue(false);
     spyOn(window, 'IntersectionObserver').and.callFake(function(callback: IntersectionObserverCallback) { return {
@@ -85,6 +87,44 @@ describe('Product exploration carousel', () => {
     component.toggleAutoplay(); tick(6000);
     expect(component.items.length).toBe(1);
     expect(component.animating).toBeFalse();
+    fixture.destroy();
+  }));
+
+  it('uses a native scroll row on mobile with no arrows, clones or inaccessible cards', () => {
+    width.and.returnValue(390);
+    render();
+    expect(fixture.nativeElement.querySelector('[aria-label="Next products"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[aria-label="Previous products"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[inert]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.mh-explore__rail').style.transform).toBe('');
+    const cards = fixture.debugElement.queryAll(By.css('[data-primary] app-product-card'));
+    expect(cards.length).toBe(4);
+    cards.forEach(card => {
+      expect(card.componentInstance.swipeImages).toBeFalse();
+      expect(card.componentInstance.cycleImages).toBeTrue();
+    });
+    fixture.destroy();
+  });
+
+  it('scrolls mobile products automatically, waits after touch and wraps at the end', fakeAsync(() => {
+    width.and.returnValue(390);
+    render();
+    const viewport = component.viewport!.nativeElement;
+    spyOnProperty(viewport, 'scrollWidth', 'get').and.returnValue(800);
+    spyOnProperty(viewport, 'clientWidth', 'get').and.returnValue(400);
+    spyOn(viewport.querySelector<HTMLElement>('[data-primary]')!, 'getBoundingClientRect').and.returnValue({ width: 190 } as DOMRect);
+    const scroll = spyOn(viewport, 'scrollTo');
+    tick(3000);
+    expect(scroll.calls.mostRecent().args).toEqual([{ left: 210, behavior: 'smooth' }] as any);
+    scroll.calls.reset();
+    component.touch(true); tick(3000);
+    expect(scroll).not.toHaveBeenCalled();
+    component.touch(false); tick(1000); component.scrolled(); tick(2000);
+    expect(scroll).not.toHaveBeenCalled();
+    spyOnProperty(viewport, 'scrollLeft', 'get').and.returnValue(400);
+    tick(3000);
+    expect(scroll.calls.mostRecent().args).toEqual([{ left: 0, behavior: 'smooth' }] as any);
+    expect(component.items.map(item => item.id)).toEqual(['A', 'B', 'C', 'D']);
     fixture.destroy();
   }));
 });

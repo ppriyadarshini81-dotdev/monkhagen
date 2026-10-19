@@ -16,6 +16,7 @@ export class ProductExploreComponent implements OnChanges, AfterViewInit, OnDest
   @ViewChild('viewport') viewport?: ElementRef<HTMLElement>;
   items: Product[] = [];
   visibleCount = 4;
+  mobile = window.innerWidth <= 1023;
   offset = 0;
   animating = false;
   transitioning = false;
@@ -23,6 +24,7 @@ export class ProductExploreComponent implements OnChanges, AfterViewInit, OnDest
   private hovered = false;
   private focused = false;
   private touching = false;
+  private resumeAt = 0;
   private inView = false;
   private direction = 1;
   private interval?: ReturnType<typeof setInterval>;
@@ -45,7 +47,7 @@ export class ProductExploreComponent implements OnChanges, AfterViewInit, OnDest
     } else this.inView = true;
     this.zone.runOutsideAngular(() => {
       this.interval = setInterval(() => {
-        if (this.autoplay && this.inView && !document.hidden && !this.hovered && !this.focused && !this.touching) {
+        if (this.autoplay && this.inView && !document.hidden && !this.hovered && !this.focused && !this.touching && Date.now() >= this.resumeAt) {
           this.zone.run(() => this.advance(1));
         }
       }, 3000);
@@ -54,14 +56,21 @@ export class ProductExploreComponent implements OnChanges, AfterViewInit, OnDest
 
   @HostListener('window:resize') resize(): void {
     if (this.animating) this.finish();
-    const columns = window.innerWidth <= 1023 ? 2 : 4;
+    this.mobile = window.innerWidth <= 1023;
+    const columns = this.mobile ? 2 : 4;
     this.visibleCount = this.items.length > 1 ? Math.min(columns, this.items.length) : columns;
   }
 
   trackProduct(_index: number, product: Product): string { return product.id; }
   pointerEntered(event: PointerEvent): void { if (event.pointerType === 'mouse') this.hovered = true; }
   pointerLeft(event: PointerEvent): void { if (event.pointerType === 'mouse') this.hovered = false; }
-  touch(active: boolean): void { this.touching = active; }
+  touch(active: boolean): void {
+    this.touching = active;
+    if (!active) this.resumeAt = Date.now() + 3000;
+  }
+  scrolled(): void {
+    if (this.mobile && (this.touching || Date.now() < this.resumeAt)) this.resumeAt = Date.now() + 3000;
+  }
   focusEntered(): void { this.focused = true; }
   focusLeft(event: FocusEvent): void { this.focused = this.host.nativeElement.contains(event.relatedTarget as Node | null); }
   toggleAutoplay(): void {
@@ -74,6 +83,16 @@ export class ProductExploreComponent implements OnChanges, AfterViewInit, OnDest
     const viewport = this.viewport?.nativeElement;
     const first = viewport?.querySelector<HTMLElement>('[data-primary]');
     const step = (first?.getBoundingClientRect().width || 0) + 20;
+    if (this.mobile) {
+      if (!viewport || !first || step <= 20) return;
+      const maximum = viewport.scrollWidth - viewport.clientWidth;
+      if (maximum <= 0) return;
+      const left = direction > 0
+        ? (viewport.scrollLeft >= maximum - 2 ? 0 : Math.min(maximum, viewport.scrollLeft + step))
+        : (viewport.scrollLeft <= 2 ? maximum : Math.max(0, viewport.scrollLeft - step));
+      viewport.scrollTo({ left, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+      return;
+    }
     if (!viewport || !first || step <= 20 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       this.rotate(direction); return;
     }
