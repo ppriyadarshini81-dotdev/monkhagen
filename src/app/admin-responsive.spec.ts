@@ -66,7 +66,13 @@ describe('Admin responsive layout in browser viewports', () => {
     copy.querySelector('.admin-portal__workspace')!.append(content.cloneNode(true));
     const header = doc.createElement('header');
     header.style.cssText = 'height:var(--mh-header-h);position:relative';
-    if (siteHeader) header.append(siteHeader.cloneNode(true));
+    if (siteHeader) {
+      header.append(siteHeader.cloneNode(true));
+      // Keep layout checks independent of the external logo image loading.
+      const logo = header.querySelector<HTMLImageElement>('.mh-logo__img')!;
+      logo.src = pixel;
+      logo.style.width = '200px';
+    }
     const footer = doc.createElement('app-footer');
     footer.style.height = '300px';
     doc.body.append(header, copy, footer);

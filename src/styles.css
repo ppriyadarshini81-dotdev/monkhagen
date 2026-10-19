@@ -39,11 +39,11 @@ body { min-width: 0; max-width: 100%; }
 body.mh-scroll-locked { overflow: hidden; }
 
 /* Admin navigation has its own reserved row; only the workspace scrolls. */
-html:has(app-admin-portal),
-body:has(app-admin-portal) { height: 100dvh; overflow: hidden; }
-body:has(app-admin-portal) { position: fixed; inset: 0; width: 100%; }
-body:has(app-admin-portal) .mh-main { min-height: 0; }
-body:has(app-admin-portal) app-footer { display: none; }
+html:has(:is(app-admin-portal,app-admin-analytics)),
+body:has(:is(app-admin-portal,app-admin-analytics)) { height: 100dvh; overflow: hidden; }
+body:has(:is(app-admin-portal,app-admin-analytics)) { position: fixed; inset: 0; width: 100%; }
+body:has(:is(app-admin-portal,app-admin-analytics)) .mh-main { min-height: 0; }
+body:has(:is(app-admin-portal,app-admin-analytics)) app-footer { display: none; }
 
 /* Native dialogs can scroll their own body, but the document behind them must
    remain still.  :has() covers every customer/admin dialog on desktop, tablet

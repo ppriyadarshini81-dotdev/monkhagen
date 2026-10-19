@@ -13,17 +13,29 @@ import {
 import { AdminAnalyticsService, AnalyticsFilter } from '../../services/admin-analytics.service';
 
 interface KpiDefinition { key: string; label: string; format?: 'currency' | 'percent' | 'duration' | 'decimal'; }
-interface KpiGroup { title: string; description: string; items: KpiDefinition[]; }
+type DashboardSection = 'traffic' | 'customers' | 'products' | 'orders' | 'payments' | 'returns' | 'health';
+interface KpiGroup { section: DashboardSection; title: string; description: string; items: KpiDefinition[]; }
 
 @Component({
   selector: 'app-admin-analytics',
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './admin-analytics.component.html',
-  styleUrl: './admin-analytics.component.css'
+  styleUrls: ['./admin-analytics.component.css', './dashboard-navigation.css']
 })
 export class AdminAnalyticsComponent implements OnInit, OnDestroy {
   private dashboardRequest?: Subscription;
+  private drilldownRequest?: Subscription;
+  activeSection: DashboardSection = 'traffic';
+  readonly sections: Array<{ key: DashboardSection; label: string; icon: string; metric: string }> = [
+    { key: 'traffic', label: 'Traffic', icon: '↗', metric: 'visitors' },
+    { key: 'customers', label: 'Customers', icon: '◎', metric: 'uniqueUsersLoggedIn' },
+    { key: 'products', label: 'Products & carts', icon: '◇', metric: 'productViews' },
+    { key: 'orders', label: 'Orders & revenue', icon: '▤', metric: 'revenue' },
+    { key: 'payments', label: 'Payments', icon: '₹', metric: 'paymentAttempts' },
+    { key: 'returns', label: 'Returns', icon: '↺', metric: 'returnRequests' },
+    { key: 'health', label: 'Site health', icon: '♡', metric: 'frontendErrors' }
+  ];
   range = '7d';
   customStart = '';
   customEnd = '';
@@ -44,8 +56,8 @@ export class AdminAnalyticsComponent implements OnInit, OnDestroy {
   logins?: LoginAnalyticsReport;
   returns?: ReturnAnalyticsReport;
   errors?: ErrorAnalyticsReport;
-  selectedMetric = 'revenue';
-  activeKpi: KpiDefinition = { key: 'revenue', label: 'Net realized revenue', format: 'currency' };
+  selectedMetric = 'visitors';
+  activeKpi: KpiDefinition = { key: 'visitors', label: 'Unique visitors' };
   modalTitle = 'Net realized revenue';
   modalDescription = '';
   modalValue = '₹0';
@@ -56,7 +68,7 @@ export class AdminAnalyticsComponent implements OnInit, OnDestroy {
   metricModalOpen = false;
 
   readonly kpiGroups: KpiGroup[] = [
-    { title: 'Traffic & engagement', description: 'Customer traffic only; admin sessions are excluded.', items: [
+    { section: 'traffic', title: 'Traffic & engagement', description: 'Understand how shoppers find and explore your store. Admin sessions are excluded.', items: [
       { key: 'visitors', label: 'Unique visitors' }, { key: 'newVisitors', label: 'New visitors' },
       { key: 'returningVisitors', label: 'Returning visitors' }, { key: 'loggedInVisitors', label: 'Logged-in visitors' },
       { key: 'anonymousVisitors', label: 'Guest visitors' }, { key: 'sessions', label: 'Sessions' },
@@ -64,18 +76,18 @@ export class AdminAnalyticsComponent implements OnInit, OnDestroy {
       { key: 'totalActiveSeconds', label: 'Total active time', format: 'duration' },
       { key: 'averagePageViewsPerSession', label: 'Pages / session', format: 'decimal' }
     ]},
-    { title: 'Customers', description: 'Successful authentication events—not visits or page views.', items: [
+    { section: 'customers', title: 'Customers', description: 'Successful authentication events—not visits or page views.', items: [
       { key: 'uniqueUsersLoggedIn', label: 'Unique users logged in' }, { key: 'loginEvents', label: 'Successful logins' },
       { key: 'repeatLoginUsers', label: 'Repeat-login users' }, { key: 'signups', label: 'New signups' }
     ]},
-    { title: 'Product & cart intent', description: 'Includes signed-in and anonymous shopping activity.', items: [
+    { section: 'products', title: 'Products & shopping intent', description: 'Follow product discovery, cart activity and the journey to checkout.', items: [
       { key: 'productViews', label: 'Product views' }, { key: 'uniqueProductViewers', label: 'Unique product viewers' },
       { key: 'productsViewed', label: 'Products viewed' }, { key: 'addToCarts', label: 'Added to cart' },
       { key: 'addToCartVisitors', label: 'Add-to-cart visitors' },
       { key: 'removeFromCarts', label: 'Removed from cart' }, { key: 'cartAbandonmentRate', label: 'Cart abandonment', format: 'percent' },
       { key: 'checkoutStarted', label: 'Checkout starters' }, { key: 'checkoutAbandonmentRate', label: 'Checkout abandonment', format: 'percent' }
     ]},
-    { title: 'Orders & realized revenue', description: 'Money values come from the immutable financial ledger.', items: [
+    { section: 'orders', title: 'Orders & realized revenue', description: 'Track purchases and revenue. Money values come from the immutable financial ledger.', items: [
       { key: 'ordersPlaced', label: 'Orders placed' }, { key: 'successfulOrders', label: 'Successful payments' },
       { key: 'uniquePurchasers', label: 'Unique purchasers' },
       { key: 'grossOrderValue', label: 'Gross order value', format: 'currency' },
@@ -84,13 +96,17 @@ export class AdminAnalyticsComponent implements OnInit, OnDestroy {
       { key: 'revenue', label: 'Net realized revenue', format: 'currency' }, { key: 'averageOrderValue', label: 'Average order value', format: 'currency' },
       { key: 'conversionRate', label: 'Visitor conversion', format: 'percent' }
     ]},
-    { title: 'Payments, returns & health', description: 'Operational signals that need attention.', items: [
+    { section: 'payments', title: 'Payments', description: 'Understand successful payments, failures and attempts that need attention.', items: [
       { key: 'paymentAttempts', label: 'Payment attempts' }, { key: 'paymentSuccesses', label: 'Payment successes' },
       { key: 'paymentFailures', label: 'Payment failures' }, { key: 'paymentSuccessRate', label: 'Payment success rate', format: 'percent' },
-      { key: 'paymentFailureRate', label: 'Payment failure rate', format: 'percent' },
+      { key: 'paymentFailureRate', label: 'Payment failure rate', format: 'percent' }
+    ]},
+    { section: 'returns', title: 'Returns & refunds', description: 'Follow return requests, completed returns and refund activity.', items: [
       { key: 'returnRequests', label: 'Return requests' }, { key: 'completedReturns', label: 'Completed returns' },
       { key: 'returnRate', label: 'Return rate', format: 'percent' },
-      { key: 'refundsInitiated', label: 'Refunds initiated' }, { key: 'refundsCompleted', label: 'Refunds completed' },
+      { key: 'refundsInitiated', label: 'Refunds initiated' }, { key: 'refundsCompleted', label: 'Refunds completed' }
+    ]},
+    { section: 'health', title: 'Site health', description: 'Spot frontend errors and understand how many shopping sessions are affected.', items: [
       { key: 'frontendErrors', label: 'Frontend errors' }, { key: 'affectedErrorSessions', label: 'Affected sessions' },
       { key: 'errorRate', label: 'Error rate', format: 'percent' }
     ]}
@@ -100,7 +116,22 @@ export class AdminAnalyticsComponent implements OnInit, OnDestroy {
 
   constructor(private analytics: AdminAnalyticsService) {}
   ngOnInit(): void { this.refresh(); }
-  ngOnDestroy(): void { this.dashboardRequest?.unsubscribe(); }
+  ngOnDestroy(): void { this.dashboardRequest?.unsubscribe(); this.drilldownRequest?.unsubscribe(); }
+
+  get activeGroup(): KpiGroup { return this.kpiGroups.find(group => group.section === this.activeSection)!; }
+  selectSection(key: DashboardSection): void {
+    const section = this.sections.find(item => item.key === key);
+    if (!section || key === this.activeSection) return;
+    this.activeSection = key;
+    this.setChartMetric(section.metric);
+  }
+  setChartMetric(key: string): void {
+    const selected = this.primaryKpis.find(item => item.key === key);
+    if (!selected) return;
+    this.closeMetricModal();
+    this.selectedMetric = key;
+    this.activeKpi = selected;
+  }
 
   refresh(): void {
     if (this.range === 'custom' && (!this.customStart || !this.customEnd || this.customStart > this.customEnd)) {
@@ -156,7 +187,7 @@ export class AdminAnalyticsComponent implements OnInit, OnDestroy {
   selectMetric(key: string): void {
     const selected = this.primaryKpis.find(item => item.key === key);
     if (!selected) return;
-    this.selectedMetric = key; this.activeKpi = selected;
+    this.setChartMetric(key);
     this.modalTitle = selected.label;
     this.modalDescription = this.definition(key);
     this.modalValue = this.value(selected);
@@ -165,7 +196,10 @@ export class AdminAnalyticsComponent implements OnInit, OnDestroy {
     const latest = [...(this.trend?.points || [])].reverse().find(point => Number(point[key] || 0) > 0);
     if (latest) this.openDrilldown(latest);
   }
-  closeMetricModal(): void { this.metricModalOpen = false; this.drilldown = undefined; this.drilldownError = ''; }
+  closeMetricModal(): void {
+    this.drilldownRequest?.unsubscribe();
+    this.metricModalOpen = false; this.drilldown = undefined; this.drilldownError = ''; this.drilldownLoading = false;
+  }
   @HostListener('document:keydown.escape') onEscape(): void { if (this.metricModalOpen) this.closeMetricModal(); }
   definition(key: string): string { return this.overview?.definitions?.[key] || ''; }
   get selectedDefinition(): KpiDefinition {
@@ -183,10 +217,15 @@ export class AdminAnalyticsComponent implements OnInit, OnDestroy {
     return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(value);
   }
   openDrilldown(point: TrendPoint): void {
+    this.drilldownRequest?.unsubscribe();
+    this.modalTitle = this.selectedDefinition.label;
+    this.modalDescription = this.definition(this.selectedMetric);
+    this.modalValue = this.value(this.selectedDefinition);
+    this.modalChange = this.changeLabel(this.metric(this.selectedMetric));
     const date = String(point['date']).slice(0, 10);
     this.metricModalOpen = true;
     this.drilldownLoading = true; this.drilldownError = ''; this.drilldown = undefined;
-    this.analytics.drilldown(this.selectedMetric,date).pipe(finalize(() => (this.drilldownLoading=false))).subscribe({
+    this.drilldownRequest = this.analytics.drilldown(this.selectedMetric,date).pipe(finalize(() => (this.drilldownLoading=false))).subscribe({
       next: value => (this.drilldown=value),
       error: error => (this.drilldownError=error?.error?.message || 'Metric details could not be loaded.')
     });
