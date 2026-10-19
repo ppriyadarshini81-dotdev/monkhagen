@@ -5,10 +5,10 @@ const { pool } = require('../config/db');
 const codRefunds = require('../services/codRefundService');
 
 exports.list = asyncHandler(async (req, res) => res.json(
-  await returns.listAdminReturns(pool, { ...validation.pagination(req.query), tab: req.query.tab || 'all' })
+  await returns.listAdminReturns(pool, { ...req.query, ...validation.pagination(req.query), tab: req.query.tab || 'all' })
 ));
 exports.outboundOrders = asyncHandler(async (req, res) => res.json(
-  await require('../models/Order').findAll({ ...validation.pagination(req.query), afterSales: true })
+  await require('../models/Order').findAll({ ...req.query, ...validation.pagination(req.query), afterSales: true })
 ));
 exports.get = asyncHandler(async (req, res) => {
   const row = await returns.findReturn(pool, req.params.returnId, null, true);

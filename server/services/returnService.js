@@ -603,12 +603,13 @@ async function listCustomerReturns(userId, database = pool, { limit = 100, offse
   );
   return refreshReturnPage(result.rows, database, userId, false, dependencies);
 }
-async function listAdminReturns(database = pool, { limit = 100, offset = 0, tab = 'all' } = {}, dependencies = {}) {
+async function listAdminReturns(database = pool, { limit = 100, offset = 0, tab = 'all', ...filters } = {}, dependencies = {}) {
   if (!['all', 'requested', 'inspection_required', 'completed'].includes(tab)) throw fault(400, 'RETURN_VALIDATION', 'Choose a valid returns tab.');
+  const filtered = require('./adminListFilters')(filters, { returns: true, values: [limit, offset, tab] });
   const result = await database.query(`SELECT rr.id FROM return_requests rr JOIN orders original ON original.id = rr.order_id
     LEFT JOIN orders child ON child.return_request_id = rr.id LEFT JOIN shipments s ON s.order_id = child.id
     LEFT JOIN cod_refund_destinations d ON d.return_id = rr.id
-    WHERE ($3 = 'all' OR (${ADMIN_CATEGORY_SQL}) = $3) ORDER BY rr.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset, tab]);
+    WHERE ($3 = 'all' OR (${ADMIN_CATEGORY_SQL}) = $3) ${filtered.clause} ORDER BY ${filtered.order} LIMIT $1 OFFSET $2`, filtered.values);
   return refreshReturnPage(result.rows, database, null, true, dependencies);
 }
 

@@ -28,7 +28,7 @@ exports.mine = asyncHandler(async (req, res) => {
 
 // GET /api/orders — admin
 exports.all = asyncHandler(async (req, res) => {
-  const orders = await Order.findAll(require('../middleware/validation').pagination(req.query));
+  const orders = await Order.findAll({ ...req.query, ...require('../middleware/validation').pagination(req.query), afterSales: false });
   res.json(orders);
 });
 
