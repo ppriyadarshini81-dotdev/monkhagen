@@ -1,30 +1,37 @@
 <section class="mh-acct-section">
   <div class="mh-acct-section__head">
-    <h2>Profile</h2>
-    <button *ngIf="!editing" class="mh-btn mh-btn--ghost" (click)="startEdit()">Edit</button>
+    <div><span class="mh-eyebrow">Your account</span><h2>My profile</h2><p class="mh-profile__intro">A little about you. Keep your details up to date.</p></div>
+    <button *ngIf="!editing" type="button" class="mh-btn mh-btn--gold" (click)="startEdit()">Edit profile</button>
   </div>
 
-  <p class="mh-success" *ngIf="message && !editing">{{ message }}</p>
+  <p class="mh-success" role="status" *ngIf="message && !editing">{{ message }}</p>
 
-  <div *ngIf="!editing" class="mh-profile__fields">
+  <div *ngIf="!editing" class="mh-profile__card">
+    <div class="mh-profile__identity">
+      <span class="mh-profile__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></span>
+      <div><h3>{{ user?.name || 'Your profile' }}</h3><p>Your personal details</p></div>
+    </div>
+    <dl class="mh-profile__fields">
     <div class="mh-profile__field">
-      <span class="mh-label">Full name</span>
-      <span>{{ user?.name || '—' }}</span>
+      <dt class="mh-label">Full name</dt>
+      <dd>{{ user?.name || 'Not added' }}</dd>
     </div>
     <div class="mh-profile__field">
-      <span class="mh-label">Email</span>
-      <span>{{ user?.email || 'Not linked' }}
-        <span *ngIf="user?.emailVerified" class="mh-badge mh-badge--green">Verified</span>
-      </span>
+      <dt class="mh-label">Email address</dt>
+      <dd class="mh-profile__email">{{ user?.email || 'Not linked' }}
+        <span *ngIf="user?.emailVerified" class="mh-badge mh-badge--green"><span aria-hidden="true">✓</span> Verified</span>
+      </dd>
     </div>
     <div class="mh-profile__field">
-      <span class="mh-label">Phone</span>
-      <span>{{ user?.phone || '—' }}</span>
+      <dt class="mh-label">Phone number</dt>
+      <dd>{{ user?.phone || 'Not added' }}</dd>
     </div>
     <div class="mh-profile__field">
-      <span class="mh-label">Date of birth</span>
-      <span>{{ user?.dateOfBirth || '—' }}</span>
+      <dt class="mh-label">Date of birth</dt>
+      <dd [class.mh-profile__missing]="!user?.dateOfBirth">{{ user?.dateOfBirth ? (user?.dateOfBirth | date:'d MMMM yyyy') : 'Not added yet' }}</dd>
     </div>
+    </dl>
+    <div class="mh-profile__note">Need to make a change? You can update your details with Edit profile.</div>
   </div>
 
   <div *ngIf="!editing && !user?.emailVerified" class="mh-profile__email-prompt">
@@ -34,20 +41,26 @@
   </div>
 
   <form *ngIf="editing" (ngSubmit)="save()" class="mh-profile__form">
+    <div class="mh-profile__form-head"><h3>Edit personal details</h3><p>Make yourself at home. Update your details below.</p></div>
     <div class="mh-field">
       <label class="mh-label" for="profile-name">Full name</label>
-      <input id="profile-name" class="mh-input" [(ngModel)]="form.name" name="name" required />
+      <input id="profile-name" class="mh-input" [(ngModel)]="form.name" name="name" required autocomplete="name" />
     </div>
     <div class="mh-field">
       <label class="mh-label" for="profile-phone">Phone</label>
-      <input id="profile-phone" class="mh-input" [(ngModel)]="form.phone" name="phone" placeholder="10-digit number" />
+      <input id="profile-phone" class="mh-input" [(ngModel)]="form.phone" name="phone" type="tel" autocomplete="tel-national" placeholder="10-digit number" />
     </div>
     <div class="mh-field">
       <label class="mh-label" for="profile-dob">Date of birth</label>
-      <input id="profile-dob" class="mh-input" type="date" [(ngModel)]="form.dateOfBirth" name="dateOfBirth" />
+      <input id="profile-dob" class="mh-input" type="date" [(ngModel)]="form.dateOfBirth" name="dateOfBirth" autocomplete="bday" />
     </div>
 
-    <div class="mh-profile__email-link">
+    <div *ngIf="user?.emailVerified" class="mh-profile__email-link">
+      <span class="mh-label">Email address</span>
+      <div class="mh-profile__email">{{ user?.email }} <span class="mh-badge mh-badge--green"><span aria-hidden="true">✓</span> Verified</span></div>
+      <p>Your email is verified. No further verification is needed.</p>
+    </div>
+    <div *ngIf="!user?.emailVerified" class="mh-profile__email-link">
       <div class="mh-field">
         <label class="mh-label" for="profile-email">Email address</label>
         <input
@@ -72,7 +85,7 @@
       <div class="mh-email-otp" *ngIf="emailOtpSent"><label class="mh-label" for="email-otp">6-digit email code</label><input id="email-otp" class="mh-input" [(ngModel)]="emailOtp" name="emailOtp" inputmode="numeric" maxlength="6" placeholder="Enter code" /><button class="mh-btn mh-btn--gold" type="button" (click)="verifyEmailOtp()" [disabled]="emailOtpLoading">{{ emailOtpLoading ? 'Verifying…' : 'Verify code' }}</button></div>
     </div>
 
-    <p class="mh-error" *ngIf="error">{{ error }}</p>
+    <p class="mh-error" role="alert" *ngIf="error">{{ error }}</p>
     <div class="mh-profile__actions">
       <button class="mh-btn mh-btn--gold" type="submit" [disabled]="saving || verifyingEmail">
         {{ saving ? 'Saving…' : 'Save' }}

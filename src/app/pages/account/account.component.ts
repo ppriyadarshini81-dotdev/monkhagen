@@ -13,6 +13,7 @@ import { User } from '../../models/user.model';
 })
 export class AccountComponent implements OnInit {
   user: User | null = null;
+  failedProfileImage: string | null = null;
 
   constructor(private auth: AuthService, private router: Router) {}
 

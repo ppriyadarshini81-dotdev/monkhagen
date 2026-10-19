@@ -1,7 +1,11 @@
 <section class="mh-acct-section">
   <div class="mh-acct-section__head">
-    <h2>Address Book</h2>
-    <button class="mh-btn mh-btn--gold" (click)="openAdd()" *ngIf="!showForm">+ Add Address</button>
+    <div>
+      <span class="mh-eyebrow">Your saved places</span>
+      <h2>Address book</h2>
+      <p class="mh-addr-intro">Delivery details, all in one place. Ready for your next order.</p>
+    </div>
+    <button class="mh-btn mh-btn--gold" type="button" (click)="openAdd()" *ngIf="!showForm">+ Add address</button>
   </div>
 
   <!-- Address form -->
@@ -62,22 +66,35 @@
 
   <!-- Address cards -->
   <div class="mh-addr-list" *ngIf="!showForm">
-    <div *ngIf="addresses.length === 0" class="mh-empty">No saved addresses yet.</div>
-    <div class="mh-addr-card mh-card" *ngFor="let a of addresses">
-      <div class="mh-addr-card__header">
-        <span class="mh-addr-card__type">{{ a.addressType }}</span>
-        <span *ngIf="a.isDefault" class="mh-badge mh-badge--blue">Default</span>
+    <div *ngIf="addresses.length === 0" class="mh-empty"><h3>A place for your next delivery</h3><p>Add an address and its contact details for a quicker checkout.</p><button class="mh-btn mh-btn--ghost" type="button" (click)="openAdd()">Add your first address</button></div>
+    <details class="mh-addr-card mh-card" *ngFor="let a of addresses" [open]="a.isDefault" [class.mh-addr-card--default]="a.isDefault">
+      <summary class="mh-addr-card__summary">
+        <span class="mh-addr-card__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+        <span class="mh-addr-card__overview">
+          <span class="mh-addr-card__labels"><span class="mh-addr-card__type">{{ a.addressType }}</span><span *ngIf="a.isDefault" class="mh-addr-card__badge">Default address</span></span>
+          <span class="mh-addr-card__name">{{ a.fullName }}</span>
+          <span class="mh-addr-card__preview">{{ a.city }}, {{ a.state }} {{ a.postalCode }}</span>
+        </span>
+        <span class="mh-addr-card__toggle"><span class="mh-addr-card__expand">View details</span><span class="mh-addr-card__collapse">Hide details</span><svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 9 6 6 6-6"/></svg></span>
+      </summary>
+      <div class="mh-addr-card__body">
+      <div class="mh-addr-card__details">
+        <div class="mh-addr-card__delivery">
+          <h4>Delivery address</h4>
+          <address>{{ a.addressLine1 }}<br *ngIf="a.addressLine2" /><span *ngIf="a.addressLine2">{{ a.addressLine2 }}</span><br />{{ a.city }}, {{ a.state }} {{ a.postalCode }}<br />{{ a.country }}</address>
+          <p class="mh-addr-card__landmark" *ngIf="a.landmark"><span>Landmark</span>{{ a.landmark }}</p>
+        </div>
+        <dl class="mh-addr-card__contact">
+          <div><dt>Phone number</dt><dd>{{ a.phone || 'Not added' }}</dd></div>
+          <div><dt>Email for delivery updates</dt><dd [class.mh-addr-card__missing]="!a.email">{{ a.email || 'Not added — edit this address to add an email' }}</dd></div>
+        </dl>
       </div>
-      <p><strong>{{ a.fullName }}</strong></p>
-      <p>{{ a.addressLine1 }}<span *ngIf="a.addressLine2">, {{ a.addressLine2 }}</span></p>
-      <p *ngIf="a.landmark">Near {{ a.landmark }}</p>
-      <p>{{ a.city }}, {{ a.state }} – {{ a.postalCode }}</p>
-      <p>{{ a.country }} &nbsp;·&nbsp; {{ a.phone }}</p>
       <div class="mh-addr-card__actions">
-        <button class="mh-link-btn" (click)="openEdit(a)">Edit</button>
-        <button class="mh-link-btn mh-link-btn--danger" (click)="delete(a.id)">Delete</button>
-        <button class="mh-link-btn" *ngIf="!a.isDefault" (click)="setDefault(a.id)">Set Default</button>
+        <button type="button" class="mh-link-btn" (click)="openEdit(a)" [attr.aria-label]="'Edit ' + a.addressType + ' address'">Edit address</button>
+        <button type="button" class="mh-link-btn" *ngIf="!a.isDefault" (click)="setDefault(a.id)">Make default</button>
+        <button type="button" class="mh-link-btn mh-link-btn--danger" (click)="delete(a.id)" [attr.aria-label]="'Delete ' + a.addressType + ' address'">Delete</button>
       </div>
-    </div>
+      </div>
+    </details>
   </div>
 </section>

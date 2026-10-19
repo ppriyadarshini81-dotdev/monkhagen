@@ -1,8 +1,8 @@
 <div class="mh-acct mh-container">
   <aside class="mh-acct__sidebar">
     <div class="mh-acct__avatar">
-      <img *ngIf="user?.profileImage" [src]="user!.profileImage!" [alt]="user!.name || ''" />
-      <span *ngIf="!user?.profileImage" class="mh-acct__initials">{{ initials }}</span>
+      <img *ngIf="user?.profileImage && user?.profileImage !== failedProfileImage" [src]="user!.profileImage!" [alt]="user!.name || ''" (error)="failedProfileImage = user?.profileImage || null" />
+      <span *ngIf="!user?.profileImage || user?.profileImage === failedProfileImage" class="mh-acct__initials">{{ initials }}</span>
     </div>
     <div class="mh-acct__name">{{ user?.name || 'My Account' }}</div>
     <div class="mh-acct__email">{{ user?.email }}</div>

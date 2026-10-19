@@ -1,13 +1,45 @@
-.mh-addr-list { display: flex; flex-direction: column; gap: 16px; margin-top: 20px; }
-.mh-addr-card { padding: 20px; }
-.mh-addr-card p { font-size: 14px; color: var(--mh-text-dim); margin: 3px 0; }
-.mh-addr-card p strong { color: var(--mh-text); }
-.mh-addr-card__header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.mh-addr-card__type { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mh-text-dim); }
-.mh-addr-card__actions { display: flex; gap: 14px; margin-top: 12px; border-top: 1px solid var(--mh-line); padding-top: 12px; }
-.mh-link-btn { background: none; border: none; font-size: 13px; font-weight: 600; color: var(--mh-accent); cursor: pointer; padding: 0; }
-.mh-link-btn--danger { color: var(--mh-danger); }
-.mh-badge--blue { background: #dbeafe; color: #1e40af; }
+:host { display: block; min-width: 0; }
+.mh-acct-section__head { align-items: center; gap: 20px; margin-bottom: 28px; }
+.mh-acct-section__head h2 { margin: 8px 0; font-size: clamp(26px, 3vw, 34px); }
+.mh-addr-intro { margin: 0; color: var(--mh-text-dim); font-size: 14px; line-height: 1.6; }
+.mh-addr-list { display: grid; gap: 20px; margin-top: 20px; }
+.mh-addr-card { background: var(--mh-bg); border-radius: 18px; box-shadow: 0 6px 24px rgb(20 26 48 / 4%); overflow-wrap: anywhere; }
+.mh-addr-card--default { border-color: #cdd3ff; }
+.mh-addr-card__summary { display: flex; align-items: center; gap: 16px; padding: 24px 26px; cursor: pointer; list-style: none; border-radius: 18px; }
+.mh-addr-card__summary::-webkit-details-marker { display: none; }
+.mh-addr-card__summary:hover { background: var(--mh-bg-elev); }
+.mh-addr-card__summary:focus-visible { outline: 2px solid var(--mh-accent); outline-offset: 3px; }
+.mh-addr-card__overview { flex: 1; min-width: 0; }
+.mh-addr-card__labels { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.mh-addr-card__preview { display: block; color: var(--mh-text-dim); font-size: 13px; line-height: 1.6; }
+.mh-addr-card__toggle { display: flex; align-items: center; gap: 8px; color: var(--mh-accent); font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.mh-addr-card__toggle svg { width: 20px; height: 20px; }
+.mh-addr-card__collapse, .mh-addr-card[open] .mh-addr-card__expand { display: none; }
+.mh-addr-card[open] .mh-addr-card__collapse { display: inline; }
+.mh-addr-card[open] .mh-addr-card__toggle svg { transform: rotate(180deg); }
+.mh-addr-card__body { margin-inline: 26px; padding-block: 24px; border-top: 1px solid var(--mh-line); }
+.mh-addr-card__icon { display: grid; place-items: center; flex-shrink: 0; width: 38px; height: 38px; border-radius: 12px; background: #f0f2ff; color: var(--mh-accent); }
+.mh-addr-card__icon svg { width: 21px; height: 21px; }
+.mh-addr-card__type { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+.mh-addr-card__badge { padding: 4px 9px; border-radius: 20px; background: #eef1ff; color: #263bc5; font-size: 11px; font-weight: 600; }
+.mh-addr-card__name { display: block; margin-bottom: 5px; font-size: 17px; font-weight: 600; }
+.mh-addr-card__details { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 28px; }
+.mh-addr-card h4, .mh-addr-card dt { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--mh-text-dim); }
+.mh-addr-card address { font-size: 14px; font-style: normal; line-height: 1.8; }
+.mh-addr-card__landmark { margin: 14px 0 0; font-size: 13px; line-height: 1.6; }
+.mh-addr-card__landmark span { display: block; color: var(--mh-text-dim); font-size: 11px; }
+.mh-addr-card__contact { margin: 0; padding-left: 28px; border-left: 1px solid var(--mh-line); display: grid; align-content: start; gap: 22px; }
+.mh-addr-card dd { margin: 0; font-size: 14px; line-height: 1.6; }
+.mh-addr-card__missing { color: var(--mh-text-dim); }
+.mh-addr-card__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 24px; border-top: 1px solid var(--mh-line); padding-top: 16px; }
+.mh-link-btn { background: none; border: 1px solid transparent; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--mh-accent); cursor: pointer; padding: 9px 12px; min-height: 44px; }
+.mh-link-btn:first-child { border-color: var(--mh-line); }
+.mh-link-btn:hover { background: var(--mh-bg-elev); }
+.mh-link-btn:focus-visible { outline: 2px solid var(--mh-accent); outline-offset: 3px; }
+.mh-link-btn--danger { color: var(--mh-danger); margin-left: auto; }
+.mh-empty { border: 1px dashed var(--mh-line); border-radius: 18px; padding: 36px 24px; text-align: center; }
+.mh-empty h3 { margin: 0 0 10px; }
+.mh-empty p { color: var(--mh-text-dim); line-height: 1.6; margin-bottom: 20px; }
 .mh-addr-form { padding: 24px; margin-top: 20px; }
 .mh-addr-form h3 { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
 .mh-addr-form__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -16,7 +48,17 @@
 .mh-field-error { margin: 6px 0 0; color: var(--mh-danger, #dc2626); font-size: 12px; line-height: 1.5; }
 .mh-field-hint { margin: 6px 0 0; color: #99948c; font-size: 12px; font-style: italic; line-height: 1.5; }
 .mh-input[aria-invalid="true"] { border-color: var(--mh-danger, #dc2626); }
-@media (max-width: 600px) { .mh-addr-form__grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .mh-acct-section__head { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .mh-addr-form__grid, .mh-addr-card__details { grid-template-columns: 1fr; }
+  .mh-addr-card__summary { padding: 20px 16px; gap: 12px; flex-wrap: wrap; }
+  .mh-addr-card__body { margin-inline: 16px; padding-block: 20px; }
+  .mh-addr-card__toggle { width: 100%; justify-content: flex-end; }
+  .mh-addr-card__details { gap: 20px; }
+  .mh-addr-card__contact { padding: 20px 0 0; border-left: none; border-top: 1px solid var(--mh-line); gap: 18px; }
+  .mh-addr-card__actions { gap: 8px; }
+  .mh-link-btn { padding-inline: 8px; }
+}
 @media (max-width: 420px) {
   .mh-addr-form { padding: 18px 14px; }
   .mh-addr-form__actions { align-items: stretch; flex-direction: column; }
