@@ -11,5 +11,6 @@
 .mh-explore__rail{display:flex;gap:20px}
 .mh-explore__rail.is-moving{transition:transform .35s ease}
 .mh-explore__item{flex:0 0 calc((100% - (var(--visible-count) - 1)*20px)/var(--visible-count));min-width:0}
+@media(max-width:1023px){.mh-explore__viewport{overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory}.mh-explore__item{scroll-snap-align:start}.mh-explore__rail{transform:none!important}}
 @media(max-width:600px){.mh-explore__head{align-items:flex-start;gap:12px;flex-wrap:wrap}.mh-explore__controls{margin-left:auto}.mh-explore__head p{font-size:13px}}
 @media(prefers-reduced-motion:reduce){.mh-explore__rail.is-moving{transition:none}}

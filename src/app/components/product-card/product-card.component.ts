@@ -18,6 +18,7 @@ import { ProductScrollRestorationService } from '../../services/product-scroll-r
 export class ProductCardComponent implements AfterViewInit, OnChanges, OnDestroy {
   @Input({ required: true }) product!: Product;
   @Input() cycleImages = false;
+  @Input() swipeImages = true;
   added = false;
   adding = false;
   loadingSizes = false;
@@ -126,7 +127,7 @@ export class ProductCardComponent implements AfterViewInit, OnChanges, OnDestroy
   }
 
   onImageTouchStart(event: TouchEvent): void {
-    if (!this.cycleImages || this.product.images.length < 2 || event.touches.length !== 1) return;
+    if (!this.swipeImages || !this.cycleImages || this.product.images.length < 2 || event.touches.length !== 1) return;
     this.imagesActivated = true;
     this.touchStartX = event.touches[0].clientX;
     this.touchStartY = event.touches[0].clientY;
