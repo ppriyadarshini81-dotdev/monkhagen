@@ -1,5 +1,5 @@
-<section class="mh-admin mh-container" [class.mh-admin--lists]="tab === 'orders' || tab === 'returns'">
-  <header class="mh-admin__head" style="margin-bottom: 14px;" *ngIf="tab !== 'orders' && tab !== 'returns'">
+<section class="mh-admin mh-container" [class.mh-admin--lists]="tab === 'orders' || tab === 'returns' || tab === 'reviews'">
+  <header class="mh-admin__head" style="margin-bottom: 14px;" *ngIf="tab !== 'orders' && tab !== 'returns' && tab !== 'reviews'">
     <div>
       <span class="mh-eyebrow">Admin management</span>
       <h1>{{ adminTitle }}</h1>

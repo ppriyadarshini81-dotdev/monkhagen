@@ -37,18 +37,33 @@ describe('Admin responsive layout in browser viewports', () => {
     fixtures.push(fixture);
     return fixture;
   }
-  async function viewport(shell: HTMLElement, content: HTMLElement, width: number): Promise<Document> {
+  async function viewport(shell: HTMLElement, content: HTMLElement, width: number, height = 900): Promise<Document> {
     const frame = document.createElement('iframe'); frames.push(frame);
-    frame.style.cssText = `position:absolute;left:-10000px;top:0;width:${width}px;height:900px;border:0`;
+    frame.style.cssText = `position:absolute;left:-10000px;top:0;width:${width}px;height:${height}px;border:0`;
     document.body.append(frame);
     const ready = new Promise<void>(resolve => frame.onload = () => resolve());
-    const styles = Array.from(document.querySelectorAll('style,link[rel="stylesheet"]')).map(style => style.outerHTML).join('');
-    frame.srcdoc = `<html><head><base href="${document.baseURI}">${styles}</head><body></body></html>`;
+    const styles = Array.from(document.querySelectorAll('style,link[rel="stylesheet"]')).map(style => {
+      if (style instanceof HTMLLinkElement) {
+        const link = style.cloneNode(true) as HTMLLinkElement;
+        link.href = style.href;
+        return link.outerHTML;
+      }
+      return style.outerHTML;
+    }).join('');
+    frame.srcdoc = `<!doctype html><html><head><base href="${document.baseURI}">${styles}</head><body></body></html>`;
     await ready;
     const doc = frame.contentDocument!;
-    const copy = shell.cloneNode(true) as HTMLElement;
+    // TestBed uses a div host; reproduce the actual routed component tag so
+    // global admin-shell selectors apply exactly as they do in the app.
+    const copy = doc.createElement('app-admin-portal');
+    Array.from(shell.attributes).forEach(attribute => copy.setAttribute(attribute.name, attribute.value));
+    copy.innerHTML = shell.innerHTML;
     copy.querySelector('.admin-portal__workspace')!.append(content.cloneNode(true));
-    doc.body.append(copy);
+    const header = doc.createElement('header');
+    header.style.cssText = 'height:var(--mh-header-h);position:relative';
+    const footer = doc.createElement('app-footer');
+    footer.style.height = '300px';
+    doc.body.append(header, copy, footer);
     doc.querySelectorAll('details').forEach(details => details.open = true);
     doc.querySelectorAll<HTMLElement>('.admin-record-body,.stock-group .table-wrap').forEach(body => body.hidden = false);
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -105,4 +120,37 @@ describe('Admin responsive layout in browser viewports', () => {
       }
     }
   }, 20000);
+
+  it('reserves space for navigation and scrolls details without overlap or header movement', async () => {
+    const shell = create<AdminPortalComponent>(AdminPortalComponent); shell.detectChanges();
+    const content = create<AdminComponent>(AdminComponent);
+    Object.assign(content.componentInstance, { tab:'orders', ordersLoading:false }); content.detectChanges();
+    for (const [width,height] of [[1440,900],[1024,900],[768,900],[390,900],[320,900],[844,390],[1024,600]]) {
+      const doc = await viewport(shell.nativeElement,content.nativeElement,width,height);
+      const nav = doc.querySelector<HTMLElement>('.admin-portal__nav')!;
+      const win = doc.defaultView!;
+      expect(win.getComputedStyle(doc.documentElement).overflow).withContext(`admin viewport scroll lock at ${width}px`).toBe('clip');
+      const before = nav.getBoundingClientRect();
+      const workspace = doc.querySelector<HTMLElement>('.admin-portal__workspace')!;
+      expect(before.top).toBeGreaterThanOrEqual(parseFloat(win.getComputedStyle(doc.documentElement).getPropertyValue('--mh-header-h')));
+      expect(workspace.getBoundingClientRect().top - before.bottom).withContext(`reserved gap at ${width}px`).toBeGreaterThanOrEqual(12);
+      expect(nav.getBoundingClientRect().height).withContext(`menu height at ${width}px`).toBeLessThan(width > 1200 ? 85 : 130);
+      const toolbar = doc.querySelector<HTMLElement>('.mh-orders__toolbar')!;
+      expect(toolbar.getBoundingClientRect().height).withContext(`compact heading at ${width}px`).toBeLessThan(112);
+      (workspace.lastElementChild as HTMLElement).style.minHeight = '2200px';
+      workspace.scrollTop = 500;
+      win.scrollTo(0,500);
+      await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      expect(workspace.scrollTop).withContext(`details scroll at ${width}px`).toBe(500);
+      expect(win.scrollY).withContext(`no outer page scroll at ${width}px`).toBe(0);
+      expect(Math.abs(nav.getBoundingClientRect().top-before.top)).withContext(`stable navigation at ${width}px`).toBeLessThan(1);
+      expect(workspace.getBoundingClientRect().bottom).toBeLessThanOrEqual(win.innerHeight);
+      const menu = doc.querySelector<HTMLElement>('.admin-portal__primary')!;
+      if (width <= 390) {
+        menu.scrollLeft = menu.scrollWidth;
+        expect(menu.scrollLeft).withContext(`swipeable menu at ${width}px`).toBeGreaterThan(0);
+      }
+      expect(doc.documentElement.scrollWidth).toBeLessThanOrEqual(width+1);
+    }
+  });
 });

@@ -8,5 +8,5 @@
       <span>Inside Products</span><div><a routerLink="products" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}">Products</a><a routerLink="products/categories" routerLinkActive="active">Categories</a><a routerLink="products/badges" routerLinkActive="active">Badges</a><a routerLink="products/sizes" routerLinkActive="active">Sizes</a><a routerLink="products/colors" routerLinkActive="active">Colors</a><a routerLink="products/content" routerLinkActive="active">Product Page Content</a></div>
     </div>
   </nav>
-  <div class="admin-portal__workspace"><router-outlet></router-outlet></div>
+  <div class="admin-portal__workspace" #workspace role="region" aria-label="Admin page details" tabindex="0"><router-outlet (activate)="workspace.scrollTo(0, 0)"></router-outlet></div>
 </section>
