@@ -10,6 +10,11 @@ import { Category } from '../../models/category.model';
 import { VariantOption } from '../../models/variant-option.model';
 import { sortSizes } from '../../utils/size-order';
 
+interface ProductStockGroup {
+  productId: string; name: string; imageUrl: string | null; category: string;
+  items: StockItem[]; units: number; low: number; out: number; setup: number;
+}
+
 @Component({ selector: 'app-admin-stock', standalone: true, imports: [CommonModule, FormsModule],
   templateUrl: './admin-stock.component.html', styleUrl: './admin-stock.component.css' })
 export class AdminStockComponent implements OnInit, OnDestroy {
@@ -17,6 +22,35 @@ export class AdminStockComponent implements OnInit, OnDestroy {
   filters: StockFilters = { page: 1, limit: 25, status: 'ALL', sort: 'lowest' };
   selected?: StockItem; adjustment: number | null = null; reason = ''; saving = false;
   historyItem?: StockItem; movements: StockMovement[] = []; historyLoading = false;
+  productGroups: ProductStockGroup[] = [];
+  private expandedProducts = new Set<string>();
+
+  private groupProducts(items: StockItem[]): void {
+    const groups = new Map<string, ProductStockGroup>();
+    for (const item of items) {
+      let group = groups.get(item.productId);
+      if (!group) {
+        group = { productId: item.productId, name: item.productName, imageUrl: item.imageUrl,
+          category: item.category, items: [], units: 0, low: 0, out: 0, setup: 0 };
+        groups.set(item.productId, group);
+      }
+      group.items.push(item);
+      if (item.configured) group.units += item.currentStock;
+      if (item.status === 'LOW_STOCK') group.low++;
+      if (item.status === 'OUT_OF_STOCK') group.out++;
+      if (item.status === 'SETUP_REQUIRED') group.setup++;
+    }
+    this.productGroups = [...groups.values()];
+    for (const group of this.productGroups) {
+      const order = sortSizes(group.items.map(item => item.size));
+      group.items.sort((a, b) => order.indexOf(a.size) - order.indexOf(b.size));
+    }
+  }
+  isExpanded(productId: string): boolean { return this.expandedProducts.has(productId); }
+  toggleProduct(productId: string): void {
+    if (this.expandedProducts.has(productId)) this.expandedProducts.delete(productId);
+    else this.expandedProducts.add(productId);
+  }
   private search$ = new Subject<string>(); private destroy$ = new Subject<void>();
   constructor(private stock: AdminStockService, private categoryService: CategoryService, private options: VariantOptionService) {}
   ngOnInit(): void {
@@ -29,7 +63,7 @@ export class AdminStockComponent implements OnInit, OnDestroy {
   }
   ngOnDestroy(): void { this.destroy$.next(); this.destroy$.complete(); }
   load(): void { this.loading = true; this.error = ''; this.stock.list(this.filters).subscribe({
-    next: value => { this.data = value; this.loading = false; },
+    next: value => { this.data = value; this.groupProducts(value.items); this.loading = false; },
     error: error => { this.error = error?.error?.message || 'Stock information could not be loaded.'; this.loading = false; }
   }); }
   search(value: string): void { this.search$.next(value); }

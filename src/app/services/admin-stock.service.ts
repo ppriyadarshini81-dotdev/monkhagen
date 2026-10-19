@@ -10,7 +10,7 @@ export class AdminStockService {
   private readonly api = '/api/admin/stock';
   constructor(private http: HttpClient) {}
   list(filters: StockFilters): Observable<StockResponse> {
-    let params = new HttpParams().set('page', filters.page).set('limit', filters.limit);
+    let params = new HttpParams().set('page', filters.page).set('limit', filters.limit).set('groupBy', 'product');
     for (const key of ['search','status','category','size','sort'] as const) if (filters[key]) params = params.set(key, filters[key]!);
     return this.http.get<StockResponse>(this.api, { params });
   }

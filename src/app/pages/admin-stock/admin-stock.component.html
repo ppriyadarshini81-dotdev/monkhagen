@@ -14,19 +14,32 @@
     <label><span>Category</span><select [(ngModel)]="filters.category" (change)="filterChanged()"><option value="">All categories</option><option *ngFor="let item of categories" [value]="item.id">{{ item.name }}</option></select></label>
     <label><span>Size</span><select [(ngModel)]="filters.size" (change)="filterChanged()"><option value="">All sizes</option><option *ngFor="let item of sizes" [value]="item.id">{{ item.name }}</option></select></label>
     <label><span>Sort</span><select [(ngModel)]="filters.sort" (change)="filterChanged()"><option value="lowest">Problems first</option><option value="highest">Highest stock</option><option value="product">Product name</option><option value="updated">Recently updated</option></select></label>
-    <label><span>Rows</span><select [(ngModel)]="filters.limit" (change)="filterChanged()"><option [ngValue]="25">25</option><option [ngValue]="50">50</option><option [ngValue]="100">100</option></select></label>
+    <label><span>Products per page</span><select [(ngModel)]="filters.limit" (change)="filterChanged()"><option [ngValue]="25">25</option><option [ngValue]="50">50</option><option [ngValue]="100">100</option></select></label>
   </section>
-  <section class="table-card">
-    <div class="loading" *ngIf="loading">Loading size inventory…</div>
-    <div class="table-wrap" *ngIf="!loading && data"><table><thead><tr><th>Product</th><th>Category</th><th>Size</th><th>Current stock</th><th>Threshold</th><th>Remaining</th><th>Status</th><th>Last updated</th><th>Actions</th></tr></thead>
-      <tbody><tr *ngFor="let item of data.items" [class.low]="item.status === 'LOW_STOCK'" [class.out]="item.status === 'OUT_OF_STOCK'" [class.needs-setup]="item.status === 'SETUP_REQUIRED'">
-        <td><div class="product"><img *ngIf="item.imageUrl" [src]="item.imageUrl" [alt]="item.productName" /><span><strong>{{ item.productName }}</strong></span></div></td>
-        <td>{{ item.category }}</td><td><b>{{ item.size }}</b></td><td>{{ item.configured ? item.currentStock : '—' }}</td><td>{{ item.configured ? item.threshold : '—' }}</td><td>{{ item.remainingPercent === null ? '—' : (item.remainingPercent + '%') }}</td>
-        <td><span class="badge" [attr.data-status]="item.status">{{ statusLabel(item.status) }}</span></td><td>{{ item.updatedAt | date:'mediumDate' }}</td>
-        <td><div class="actions"><button (click)="openAdjust(item)" [disabled]="!item.configured">Adjust</button><button (click)="viewHistory(item)">History</button></div></td>
-      </tr></tbody></table></div>
-    <div class="empty" *ngIf="!loading && data && !data.items.length">No stock records match these filters.</div>
-    <footer *ngIf="data"><span>{{ data.pagination.total }} size records</span><div><button (click)="page(-1)" [disabled]="filters.page <= 1">Previous</button><b>Page {{ filters.page }} of {{ data.pagination.pages }}</b><button (click)="page(1)" [disabled]="filters.page >= data.pagination.pages">Next</button></div></footer>
+  <section class="stock-groups">
+    <div class="loading" *ngIf="loading">Loading product inventory...</div>
+    <ng-container *ngIf="!loading && data">
+      <p class="stock-groups__hint" *ngIf="productGroups.length">Expand a product to manage its sizes. Counts reflect sizes matching your filters.</p>
+      <article class="stock-group" *ngFor="let group of productGroups">
+        <button type="button" class="stock-group__toggle" [attr.aria-expanded]="isExpanded(group.productId)" [attr.aria-controls]="'stock-sizes-' + group.productId" (click)="toggleProduct(group.productId)">
+          <span class="stock-group__image"><img *ngIf="group.imageUrl" [src]="group.imageUrl" alt="" /><span *ngIf="!group.imageUrl" aria-hidden="true">{{ group.name.charAt(0) }}</span></span>
+          <span class="stock-group__copy"><small>{{ group.category }}</small><strong>{{ group.name }}</strong><span>{{ group.items.length }} {{ group.items.length === 1 ? 'size' : 'sizes' }}<span *ngIf="group.low" class="stock-group__warning"> · {{ group.low }} low stock</span><span *ngIf="group.out" class="stock-group__danger"> · {{ group.out }} out of stock</span><span *ngIf="group.setup" class="stock-group__warning"> · {{ group.setup }} need setup</span></span></span>
+          <span class="stock-group__units"><strong>{{ group.units | number }}</strong><small>Units shown</small></span>
+          <span class="stock-group__expand"><span>{{ isExpanded(group.productId) ? 'Hide sizes' : 'View sizes' }}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></span>
+        </button>
+        <div class="table-wrap" [id]="'stock-sizes-' + group.productId" [hidden]="!isExpanded(group.productId)">
+          <table><caption class="stock-sr-only">Size inventory for {{ group.name }}</caption><thead><tr><th scope="col">Size</th><th scope="col">Current stock</th><th scope="col">Threshold</th><th scope="col">Remaining</th><th scope="col">Status</th><th scope="col">Last updated</th><th scope="col">Actions</th></tr></thead>
+            <tbody><tr *ngFor="let item of group.items" [class.low]="item.status === 'LOW_STOCK'" [class.out]="item.status === 'OUT_OF_STOCK'" [class.needs-setup]="item.status === 'SETUP_REQUIRED'">
+              <th scope="row">{{ item.size }}</th><td>{{ item.configured ? item.currentStock : '—' }}</td><td>{{ item.configured ? item.threshold : '—' }}</td><td>{{ item.remainingPercent === null ? '—' : (item.remainingPercent + '%') }}</td>
+              <td><span class="badge" [attr.data-status]="item.status">{{ statusLabel(item.status) }}</span></td><td>{{ item.updatedAt | date:'mediumDate' }}</td>
+              <td><div class="actions"><button type="button" (click)="openAdjust(item)" [disabled]="!item.configured">Adjust</button><button type="button" (click)="viewHistory(item)">History</button></div></td>
+            </tr></tbody>
+          </table>
+        </div>
+      </article>
+      <div class="empty" *ngIf="!productGroups.length">No products match these filters.</div>
+    </ng-container>
+    <footer class="stock-groups__footer" *ngIf="data"><span>{{ data.pagination.total }} products</span><div><button type="button" (click)="page(-1)" [disabled]="loading || filters.page <= 1">Previous</button><b>Page {{ filters.page }} of {{ data.pagination.pages }}</b><button type="button" (click)="page(1)" [disabled]="loading || filters.page >= data.pagination.pages">Next</button></div></footer>
   </section>
 </main>
 

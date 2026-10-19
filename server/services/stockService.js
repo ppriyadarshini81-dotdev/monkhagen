@@ -25,6 +25,7 @@ function row(record) {
 
 async function list(query = {}, database = pool) {
   const page = Number(query.page || 1); const limit = Number(query.limit || 25);
+  const grouped = query.groupBy === 'product';
   if (!Number.isSafeInteger(page) || page < 1 || ![25, 50, 100].includes(limit)) throw fault(400, 'Invalid stock pagination.');
   const conditions = ['p.is_active = TRUE', 'psd.is_active = TRUE']; const values = [];
   const add = value => { values.push(value); return `$${values.length}`; };
@@ -44,19 +45,26 @@ async function list(query = {}, database = pool) {
   }[query.sort || 'lowest'];
   if (!order) throw fault(400, 'Invalid stock sort.');
   const where = conditions.join(' AND ');
-  const count = await database.query(`SELECT COUNT(*)::int AS count FROM product_size_details psd
+  const count = await database.query(`SELECT COUNT(${grouped ? 'DISTINCT p.id' : '*'})::int AS count FROM product_size_details psd
     JOIN products p ON p.id = psd.product_id JOIN categories c ON c.id = p.category_id
     JOIN sizes s ON s.id = psd.size_id WHERE ${where}`, values);
   const offset = (page - 1) * limit; const dataValues = [...values, limit, offset];
-  const result = await database.query(`SELECT psd.id AS inventory_id, psd.product_id, p.name AS product_name,
+  const select = `SELECT psd.id AS inventory_id, psd.product_id, p.name AS product_name,
     p.slug AS product_slug, p.category_id, c.name AS category_name, psd.size_id, s.name AS size_name,
     psd.stock_quantity, psd.initial_stock_quantity, psd.low_stock_threshold_quantity,
     psd.inventory_configured, psd.updated_at, ${STATUS_SQL} AS stock_status,
-    image.image_url FROM product_size_details psd JOIN products p ON p.id = psd.product_id
+    image.image_url${grouped ? `, ROW_NUMBER() OVER (ORDER BY ${order}, p.id, psd.id) AS stock_rank` : ''} FROM product_size_details psd JOIN products p ON p.id = psd.product_id
     JOIN categories c ON c.id = p.category_id JOIN sizes s ON s.id = psd.size_id
     LEFT JOIN LATERAL (SELECT image_url FROM product_images WHERE product_id = p.id
       ORDER BY is_primary DESC, display_order, created_at LIMIT 1) image ON TRUE
-    WHERE ${where} ORDER BY ${order} LIMIT $${dataValues.length - 1} OFFSET $${dataValues.length}`, dataValues);
+    WHERE ${where}`;
+  const result = await database.query(grouped
+    ? `WITH matching AS (${select}), selected_products AS (
+        SELECT product_id, MIN(stock_rank) AS product_rank FROM matching GROUP BY product_id
+        ORDER BY product_rank LIMIT $${dataValues.length - 1} OFFSET $${dataValues.length})
+      SELECT matching.* FROM matching JOIN selected_products USING (product_id)
+      ORDER BY selected_products.product_rank, matching.stock_rank`
+    : `${select} ORDER BY ${order} LIMIT $${dataValues.length - 1} OFFSET $${dataValues.length}`, dataValues);
   const summaryResult = await database.query(`SELECT COUNT(DISTINCT p.id)::int AS total_products,
     COALESCE(SUM(CASE WHEN psd.inventory_configured THEN psd.stock_quantity ELSE 0 END),0)::int AS total_units,
     COUNT(*) FILTER (WHERE psd.inventory_configured AND psd.stock_quantity > 0 AND psd.stock_quantity <= psd.low_stock_threshold_quantity)::int AS low_stock_sizes,

@@ -29,6 +29,32 @@ describe('AdminStockComponent', () => {
     expect(component.data?.items[0].size).toBe('M');
   });
 
+  it('groups interleaved sizes by product, sorts sizes and totals their stock issues', () => {
+    stock.list.and.returnValue(of({ ...response, items: [
+      { ...item, size: 'XL', currentStock: 8, status: 'IN_STOCK' },
+      { ...item, productId: 'product-2', productName: 'Other Tee', status: 'OUT_OF_STOCK', currentStock: 0 },
+      { ...item, size: 'S' },
+      { ...item, size: 'L', configured: false, currentStock: 100, status: 'SETUP_REQUIRED' }
+    ] }));
+    component.load();
+    expect(component.productGroups.length).toBe(2);
+    const group = component.productGroups[0];
+    expect(group.items.map(size => size.size)).toEqual(['S', 'L', 'XL']);
+    expect(group.units).toBe(10);
+    expect(group.low).toBe(1);
+    expect(group.setup).toBe(1);
+    expect(component.isExpanded(group.productId)).toBeFalse();
+    component.toggleProduct(group.productId);
+    expect(component.isExpanded(group.productId)).toBeTrue();
+    expect(component.isExpanded('product-2')).toBeFalse();
+    component.load();
+    expect(component.isExpanded(group.productId)).toBeTrue();
+    component.openAdjust(group.items[0]);
+    expect(component.selected?.size).toBe('S');
+    component.toggleProduct(group.productId);
+    expect(component.isExpanded(group.productId)).toBeFalse();
+  });
+
   it('debounces product search and resets pagination', fakeAsync(() => {
     component.ngOnInit();
     component.filters.page = 3;

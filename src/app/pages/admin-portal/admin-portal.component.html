@@ -1,6 +1,6 @@
 <section class="admin-portal">
   <nav class="admin-portal__nav" aria-label="Admin portal">
-    <div class="admin-portal__brand"><span class="admin-portal__brand-icon" aria-hidden="true">&#9638;</span><strong>Monk Hagen Admin</strong></div>
+    <div class="admin-portal__brand"><span class="admin-portal__brand-icon" aria-hidden="true">&#9638;</span><span class="admin-portal__brand-copy"><strong>Monk Hagen Admin</strong><small>Store management</small></span></div>
     <div class="admin-portal__primary">
       <a routerLink="ledger" routerLinkActive="active"><span aria-hidden="true">&#9783;</span>Ledger</a><a routerLink="stock" routerLinkActive="active"><span aria-hidden="true">&#9671;</span>Stock</a><a routerLink="orders" routerLinkActive="active"><span aria-hidden="true">&#9634;</span>Orders</a><a routerLink="returns" routerLinkActive="active"><span aria-hidden="true">&#8635;</span>Returns &amp; Replacements</a><a routerLink="products" routerLinkActive="active"><span aria-hidden="true">&#9838;</span>Products</a><a routerLink="reviews" routerLinkActive="active"><span aria-hidden="true">&#9734;</span>Reviews</a>
     </div>
@@ -8,5 +8,5 @@
       <span>Inside Products</span><div><a routerLink="products" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}">Products</a><a routerLink="products/categories" routerLinkActive="active">Categories</a><a routerLink="products/badges" routerLinkActive="active">Badges</a><a routerLink="products/sizes" routerLinkActive="active">Sizes</a><a routerLink="products/colors" routerLinkActive="active">Colors</a><a routerLink="products/content" routerLinkActive="active">Product Page Content</a></div>
     </div>
   </nav>
-  <router-outlet></router-outlet>
+  <div class="admin-portal__workspace"><router-outlet></router-outlet></div>
 </section>
