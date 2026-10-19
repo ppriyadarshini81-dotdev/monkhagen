@@ -147,6 +147,9 @@
   </div>
 </section>
 
+<app-product-explore *ngIf="product && !loading && !notFound && (exploreLoading || exploreProducts.length || exploreError)"
+  [products]="exploreProducts" [loading]="exploreLoading" [failed]="exploreError" />
+
 <section class="mh-reviews mh-container" id="customer-reviews" *ngIf="product && !loading" aria-labelledby="reviews-title">
   <header class="mh-reviews__head">
     <div><span class="mh-eyebrow">Community feedback</span><h2 id="reviews-title">Ratings &amp; Customer Reviews</h2></div>

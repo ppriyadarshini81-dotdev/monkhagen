@@ -13,11 +13,13 @@ import { cachedMediaUrl } from '../../utils/media-url';
 import { AuthService } from '../../services/auth.service';
 import { ReviewService, ReviewSort } from '../../services/review.service';
 import { ProductReview, ReviewEligibility, ReviewSummary } from '../../models/review.model';
+import { EMPTY, Subscription, expand, reduce } from 'rxjs';
+import { ProductExploreComponent } from '../../components/product-explore/product-explore.component';
 
 @Component({
   selector: 'app-product-details',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, ProductExploreComponent],
   templateUrl: './product-details.component.html',
   styleUrl: './product-details.component.css'
 })
@@ -26,6 +28,12 @@ export class ProductDetailsComponent implements OnInit, OnDestroy {
   product?: Product;
   loading = true;
   notFound = false;
+  exploreProducts: Product[] = [];
+  exploreLoading = false;
+  exploreError = false;
+  private exploreRequest?: Subscription;
+  private productRequest?: Subscription;
+  private routeSubscription?: Subscription;
 
   activeImage = 0;
   selectedSize: string | null = null;
@@ -311,7 +319,12 @@ export class ProductDetailsComponent implements OnInit, OnDestroy {
   @HostListener('window:resize')
   viewerResized(): void { if (this.imageViewerOpen) this.constrainViewerPan(); }
 
-  ngOnDestroy(): void { this.resetViewerInteraction(); }
+  ngOnDestroy(): void {
+    this.resetViewerInteraction();
+    this.exploreRequest?.unsubscribe();
+    this.productRequest?.unsubscribe();
+    this.routeSubscription?.unsubscribe();
+  }
 
   private scrollViewerTo(index: number, smooth = true): void {
     const stage = this.productImageStage?.nativeElement;
@@ -402,14 +415,18 @@ export class ProductDetailsComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.loadPageContent();
-    this.route.paramMap.subscribe((params) => {
+    this.routeSubscription = this.route.paramMap.subscribe((params) => {
       const slug = params.get('slug');
       if (!slug) {
         return;
       }
       this.loading = true;
       this.notFound = false;
-      this.productService.getProduct(slug).subscribe({
+      this.productRequest?.unsubscribe();
+      this.exploreRequest?.unsubscribe();
+      this.exploreProducts = [];
+      this.exploreError = false;
+      this.productRequest = this.productService.getProduct(slug).subscribe({
         next: (product) => {
           this.product = {
             ...product,
@@ -423,12 +440,31 @@ export class ProductDetailsComponent implements OnInit, OnDestroy {
           this.loading = false;
           this.analytics.track('PRODUCT_VIEWED', this.router.url, product.id);
           this.loadReviewData();
+          this.loadExploreProducts(product);
         },
         error: () => {
           this.notFound = true;
           this.loading = false;
         }
       });
+    });
+  }
+
+  private loadExploreProducts(current: Product): void {
+    this.exploreLoading = true;
+    this.exploreRequest = this.productService.getProducts({ limit: 100, offset: 0 }).pipe(
+      expand((page, index) => page.length === 100
+        ? this.productService.getProducts({ limit: 100, offset: (index + 1) * 100 }) : EMPTY),
+      reduce((products, page) => [...products, ...page], [] as Product[])
+    ).subscribe({
+      next: products => {
+        const unique = new Map(products.map(product => [product.id, product]));
+        this.exploreProducts = [...unique.values()]
+          .filter(product => product.id !== current.id && product.isActive !== false)
+          .sort((a, b) => Number(b.category === current.category) - Number(a.category === current.category));
+        this.exploreLoading = false;
+      },
+      error: () => { this.exploreLoading = false; this.exploreError = true; }
     });
   }
 

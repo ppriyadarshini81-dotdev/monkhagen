@@ -41,6 +41,8 @@ export class ProductService {
     category?: string;
     search?: string;
     featured?: boolean;
+    limit?: number;
+    offset?: number;
   }): Observable<Product[]> {
     const params: Record<string, string> = {};
     if (filters?.category && filters.category !== 'All') {
@@ -52,6 +54,8 @@ export class ProductService {
     if (filters?.featured) {
       params['featured'] = 'true';
     }
+    if (filters?.limit !== undefined) params['limit'] = String(filters.limit);
+    if (filters?.offset !== undefined) params['offset'] = String(filters.offset);
     return this.http.get<Product[]>(this.api, { params });
   }
 

@@ -1,0 +1,24 @@
+<section class="mh-explore mh-container" aria-labelledby="explore-title"
+  (pointerenter)="pointerEntered($event)" (pointerleave)="pointerLeft($event)"
+  (touchstart)="touch(true)" (touchend)="touch(false)" (touchcancel)="touch(false)"
+  (focusin)="focusEntered()" (focusout)="focusLeft($event)">
+  <header class="mh-explore__head">
+    <div><span class="mh-eyebrow">Discover the collection</span><h2 id="explore-title">More styles to explore</h2><p>Find your next favourite from the Monk Hagen collection.</p></div>
+    <div class="mh-explore__controls" *ngIf="items.length > 1">
+      <button type="button" [attr.aria-label]="autoplay ? 'Pause automatic sliding' : 'Start automatic sliding'" [attr.aria-pressed]="!autoplay" (click)="toggleAutoplay()">{{ autoplay ? 'Ⅱ' : '▶' }}</button>
+      <button type="button" aria-label="Previous products" aria-controls="explore-products" [disabled]="animating" (click)="advance(-1)">&#8592;</button>
+      <button type="button" aria-label="Next products" aria-controls="explore-products" [disabled]="animating" (click)="advance(1)">&#8594;</button>
+    </div>
+  </header>
+  <p role="status" *ngIf="loading">Loading more styles...</p>
+  <p *ngIf="failed">More styles are available in <a routerLink="/products">the collection</a>.</p>
+  <div #viewport class="mh-explore__viewport" *ngIf="items.length" [style.--visible-count]="visibleCount">
+    <div id="explore-products" class="mh-explore__rail" role="list" aria-label="Other products to explore"
+      [class.is-moving]="transitioning" [style.transform]="'translateX(' + offset + 'px)'" (transitionend)="transitionEnded($event)">
+      <div class="mh-explore__item" data-primary role="listitem" *ngFor="let item of items; let i = index; trackBy: trackProduct" [attr.inert]="i >= visibleCount ? '' : null">
+        <app-product-card [product]="item" [cycleImages]="true" />
+      </div>
+      <div class="mh-explore__item" *ngIf="items.length > 1" aria-hidden="true" inert><app-product-card [product]="items[0]" /></div>
+    </div>
+  </div>
+</section>
