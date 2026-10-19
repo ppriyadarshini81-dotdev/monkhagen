@@ -22,6 +22,15 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
   loading = true;
   page = 0; readonly pageSize = 10; hasNextPage = false;
   statusFilter = '';
+  private expandedRequests = new Map<string, boolean>();
+
+  isExpanded(request: ReturnRequest): boolean {
+    return this.expandedRequests.get(request.id) ?? !['cancelled', 'rejected'].includes(request.status);
+  }
+
+  toggleExpanded(request: ReturnRequest): void {
+    this.expandedRequests.set(request.id, !this.isExpanded(request));
+  }
   orderId = '';
   loadError = '';
   private routeSubscription?: Subscription;
@@ -123,7 +132,8 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
       requested: 'Return requested', return_created: 'Awaiting return initiation', shiprocket_failed: 'Return creation delayed',
       pickup_scheduled: 'Pickup scheduled', picked_up: 'Picked up', in_transit: 'In transit',
       received: 'Received', approved: 'Approved', refund_initiated: 'Refund processing', refunded: 'Refund completed',
-      pickup_failed: 'Pickup needs attention', manual_required: 'Manual refund required'
+      pickup_failed: 'Pickup needs attention', manual_required: 'Manual refund required',
+      cancelled: 'Cancelled', rejected: 'Rejected'
     };
     return labels[status] || status.replace(/_/g, ' ');
   }
