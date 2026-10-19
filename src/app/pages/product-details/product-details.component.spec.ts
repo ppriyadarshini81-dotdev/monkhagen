@@ -33,10 +33,11 @@ describe('Product details shared content', () => {
   };
 
   beforeEach(async () => {
-    productService = jasmine.createSpyObj('ProductService', ['getProduct']);
+    productService = jasmine.createSpyObj('ProductService', ['getProduct', 'getProducts']);
     contentService = jasmine.createSpyObj('ProductPageContentService', ['getContent']);
     reviewService = jasmine.createSpyObj('ReviewService', ['summary', 'list', 'eligibility', 'create', 'update', 'helpful']);
     productService.getProduct.and.returnValue(of({ ...product }));
+    productService.getProducts.and.returnValue(of([]));
     contentService.getContent.and.returnValue(of({ ...content }));
     reviewService.summary.and.returnValue(of({ average: 0, total: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } }));
     reviewService.list.and.returnValue(of({ reviews: [], total: 0, limit: 10, offset: 0, customerPhotos: [] }));
@@ -70,6 +71,34 @@ describe('Product details shared content', () => {
     expect(root.querySelector('.mh-pd__size-chart')).toBeNull();
     expect(contentService.getContent).toHaveBeenCalledTimes(1);
     expect(root.querySelector('.mh-reviews__empty')?.textContent).toContain('No reviews yet');
+  });
+
+  it('shows other active products, puts similar categories first and excludes the current product', () => {
+    const other = { ...product, id: 'other', slug: 'other', name: 'Another shirt' };
+    const different = { ...product, id: 'different', slug: 'different', category: 'Hoodies' };
+    productService.getProducts.and.returnValue(of([different, product, other, { ...product, id: 'hidden', isActive: false }]));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.exploreProducts.map(item => item.id)).toEqual(['other', 'different']);
+    expect(fixture.nativeElement.querySelector('#explore-title')?.textContent).toBe('More styles to explore');
+    expect(fixture.nativeElement.querySelectorAll('.mh-explore [data-primary] app-product-card').length).toBe(2);
+    expect(fixture.nativeElement.querySelector('.mh-explore a')?.getAttribute('href')).toBe('/product/other');
+  });
+
+  it('includes products beyond the first catalog page without affecting the main product on failure', () => {
+    const page = Array.from({ length: 100 }, (_, index) => ({ ...product, id: `other-${index}`, slug: `other-${index}` }));
+    productService.getProducts.and.returnValues(of(page), of([{ ...product, id: 'last', slug: 'last' }]));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.exploreProducts.length).toBe(101);
+    expect(productService.getProducts).toHaveBeenCalledWith({ limit: 100, offset: 100 });
+    expect(fixture.componentInstance.exploreProducts[100].id).toBe('last');
+  });
+
+  it('keeps the main product available when recommendations cannot load', () => {
+    productService.getProducts.and.returnValue(throwError(() => new Error('offline')));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.product?.id).toBe(product.id);
+    expect(fixture.componentInstance.notFound).toBeFalse();
+    expect(fixture.componentInstance.exploreError).toBeTrue();
   });
 
   it('renders real review summary data without fake zero-star labels', () => {
