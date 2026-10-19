@@ -1,8 +1,8 @@
 import { CommonModule } from '@angular/common';
-import { Component, HostListener, OnInit } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { forkJoin, finalize } from 'rxjs';
+import { Subscription, finalize } from 'rxjs';
 import {
   AnalyticsOverview, CartAnalyticsReport, FunnelReport, MetricValue,
   PaymentAnalyticsReport, ProductAnalytics, ProductAnalyticsReport,
@@ -22,7 +22,8 @@ interface KpiGroup { title: string; description: string; items: KpiDefinition[];
   templateUrl: './admin-analytics.component.html',
   styleUrl: './admin-analytics.component.css'
 })
-export class AdminAnalyticsComponent implements OnInit {
+export class AdminAnalyticsComponent implements OnInit, OnDestroy {
+  private dashboardRequest?: Subscription;
   range = '7d';
   customStart = '';
   customEnd = '';
@@ -99,23 +100,19 @@ export class AdminAnalyticsComponent implements OnInit {
 
   constructor(private analytics: AdminAnalyticsService) {}
   ngOnInit(): void { this.refresh(); }
+  ngOnDestroy(): void { this.dashboardRequest?.unsubscribe(); }
 
   refresh(): void {
     if (this.range === 'custom' && (!this.customStart || !this.customEnd || this.customStart > this.customEnd)) {
       this.error = 'Choose a valid custom start and end date.';
       return;
     }
+    this.dashboardRequest?.unsubscribe();
     this.loading = true;
     this.error = '';
     const filter = this.filter();
-    forkJoin({
-      overview: this.analytics.overview(filter), revenue: this.analytics.revenue(filter),
-      funnel: this.analytics.funnel(filter),
-      products: this.analytics.products(filter, this.productSort, this.productDirection),
-      carts: this.analytics.carts(filter), payments: this.analytics.payments(filter),
-      visitors: this.analytics.visitors(filter), trend: this.analytics.trend(filter),
-      logins: this.analytics.logins(filter), returns: this.analytics.returns(filter), errors: this.analytics.errors(filter)
-    }).pipe(finalize(() => (this.loading = false))).subscribe({
+    this.dashboardRequest = this.analytics.dashboard(filter, this.productSort, this.productDirection)
+      .pipe(finalize(() => (this.loading = false))).subscribe({
       next: data => {
         Object.assign(this, data);
         this.refreshedAt = new Date();

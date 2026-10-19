@@ -81,3 +81,29 @@ test('analytics reporting is unavailable anonymously and to customers but availa
   assert.equal(response.status, 200);
   assert.equal((await response.json()).metrics.visitors.value, 1);
 });
+
+test('dashboard combines reports in one protected request and retains the admin rate limit', async () => {
+  const names = ['overview', 'revenue', 'funnel', 'products', 'carts', 'payments', 'visitors', 'trend', 'logins', 'returns', 'errors'];
+  const originals = Object.fromEntries(names.map(name => [name, reports[name]]));
+  const calls = [];
+  for (const name of names) reports[name] = async query => { calls.push({ name, query }); return { report: name }; };
+  const headers = { Authorization: `Bearer ${signToken(account('admin'), { provider: 'google.com' })}` };
+  try {
+    const url = `${base}/api/admin/analytics/dashboard?range=custom&start=2026-10-01&end=2026-10-19&sort=views&direction=asc`;
+    assert.equal((await fetch(url)).status, 401);
+    assert.equal((await fetch(url, { headers: { Authorization: `Bearer ${signToken(account('customer'))}` } })).status, 403);
+    assert.equal(calls.length, 0);
+    // The preceding overview request consumed one of the 120 admin requests.
+    // Each dashboard visit must consume just one, while returning all reports.
+    for (let visit = 0; visit < 119; visit++) {
+      const response = await fetch(url, { headers });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.deepEqual(Object.keys(await response.json()), names);
+    }
+    assert.equal(calls.length, 119 * names.length);
+    assert.deepEqual(calls[0].query, { range: 'custom', start: '2026-10-01', end: '2026-10-19', sort: 'views', direction: 'asc' });
+    assert.equal((await fetch(url, { headers })).status, 429);
+    assert.equal(calls.length, 119 * names.length);
+  } finally { Object.assign(reports, originals); }
+});

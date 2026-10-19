@@ -1,5 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { of } from 'rxjs';
+import { HeaderComponent } from './components/header/header.component';
+import { CartService } from './services/cart.service';
 import { AdminComponent } from './pages/admin/admin.component';
 import { AdminPortalComponent } from './pages/admin-portal/admin-portal.component';
 import { AdminStockComponent } from './pages/admin-stock/admin-stock.component';
@@ -25,9 +28,11 @@ describe('Admin responsive layout in browser viewports', () => {
     spyOn(AdminComponent.prototype, 'ngOnInit');
     spyOn(AdminStockComponent.prototype, 'ngOnInit');
     spyOn(AdminLedgerComponent.prototype, 'ngOnInit');
-    await TestBed.configureTestingModule({ imports: [AdminComponent, AdminPortalComponent, AdminStockComponent, AdminLedgerComponent],
-      providers: [provideRouter([]), ...[ProductService, CategoryService, BadgeService, VariantOptionService, OrderService,
-        UploadService, ShippingService, ReviewService, AuthService, AdminStockService, AdminLedgerService].map(provide => ({ provide, useValue: {} }))]
+    await TestBed.configureTestingModule({ imports: [AdminComponent, AdminPortalComponent, AdminStockComponent, AdminLedgerComponent, HeaderComponent],
+      providers: [provideRouter([]), { provide: AuthService, useValue: { user$: of({ name: 'Akshay Rana' }), isAdmin: true } },
+        { provide: CartService, useValue: { count: 2, previewOpen$: of(false) } },
+        ...[ProductService, CategoryService, BadgeService, VariantOptionService, OrderService,
+        UploadService, ShippingService, ReviewService, AdminStockService, AdminLedgerService].map(provide => ({ provide, useValue: {} }))]
     }).compileComponents();
   });
   afterEach(() => { frames.splice(0).forEach(frame => frame.remove()); fixtures.splice(0).forEach(fixture => fixture.destroy()); });
@@ -37,7 +42,7 @@ describe('Admin responsive layout in browser viewports', () => {
     fixtures.push(fixture);
     return fixture;
   }
-  async function viewport(shell: HTMLElement, content: HTMLElement, width: number, height = 900): Promise<Document> {
+  async function viewport(shell: HTMLElement, content: HTMLElement, width: number, height = 900, siteHeader?: HTMLElement): Promise<Document> {
     const frame = document.createElement('iframe'); frames.push(frame);
     frame.style.cssText = `position:absolute;left:-10000px;top:0;width:${width}px;height:${height}px;border:0`;
     document.body.append(frame);
@@ -61,6 +66,7 @@ describe('Admin responsive layout in browser viewports', () => {
     copy.querySelector('.admin-portal__workspace')!.append(content.cloneNode(true));
     const header = doc.createElement('header');
     header.style.cssText = 'height:var(--mh-header-h);position:relative';
+    if (siteHeader) header.append(siteHeader.cloneNode(true));
     const footer = doc.createElement('app-footer');
     footer.style.height = '300px';
     doc.body.append(header, copy, footer);
@@ -129,7 +135,7 @@ describe('Admin responsive layout in browser viewports', () => {
       const doc = await viewport(shell.nativeElement,content.nativeElement,width,height);
       const nav = doc.querySelector<HTMLElement>('.admin-portal__nav')!;
       const win = doc.defaultView!;
-      expect(win.getComputedStyle(doc.documentElement).overflow).withContext(`admin viewport scroll lock at ${width}px`).toBe('clip');
+      expect(win.getComputedStyle(doc.documentElement).overflow).withContext(`admin viewport scroll lock at ${width}px`).toBe('hidden');
       const before = nav.getBoundingClientRect();
       const workspace = doc.querySelector<HTMLElement>('.admin-portal__workspace')!;
       expect(before.top).toBeGreaterThanOrEqual(parseFloat(win.getComputedStyle(doc.documentElement).getPropertyValue('--mh-header-h')));
@@ -151,6 +157,38 @@ describe('Admin responsive layout in browser viewports', () => {
         expect(menu.scrollLeft).withContext(`swipeable menu at ${width}px`).toBeGreaterThan(0);
       }
       expect(doc.documentElement.scrollWidth).toBeLessThanOrEqual(width+1);
+    }
+  });
+
+  it('keeps the site logo and menu aligned when switching between a scrolling dashboard and admin', async () => {
+    const shell = create<AdminPortalComponent>(AdminPortalComponent); shell.detectChanges();
+    const content = create<AdminComponent>(AdminComponent); content.detectChanges();
+    const header = create<HeaderComponent>(HeaderComponent); header.detectChanges();
+    for (const width of [1920,1280,1024,768,390,320]) {
+      const doc = await viewport(shell.nativeElement, content.nativeElement, width, 900, header.nativeElement);
+      const portal = doc.querySelector('app-admin-portal')!;
+      portal.remove();
+      const dashboard = doc.createElement('main');
+      dashboard.style.height = '2200px';
+      doc.body.append(dashboard);
+      const settle = () => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      await settle();
+      expect(doc.defaultView!.getComputedStyle(doc.documentElement).scrollbarGutter).toBe('stable');
+      const selectors = ['.mh-header','.mh-logo','.mh-nav','.mh-header__actions','.mh-cart','.mh-burger'];
+      const positions = selectors.map(selector => doc.querySelector(selector)!.getBoundingClientRect());
+      for (const adminActive of [true,false,true,false]) {
+        if (adminActive) dashboard.replaceWith(portal);
+        else { portal.replaceWith(dashboard); doc.defaultView!.scrollTo({ top: 200, behavior: 'instant' }); }
+        await settle();
+        selectors.forEach((selector,index) => {
+          const rect = doc.querySelector(selector)!.getBoundingClientRect();
+          for (const edge of ['left','right','top','bottom'] as const) {
+            expect(Math.abs(rect[edge] - positions[index][edge]))
+              .withContext(`${selector} ${edge} at ${width}px on ${adminActive ? 'admin' : 'dashboard'}`).toBeLessThan(1);
+          }
+        });
+        expect(doc.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+      }
     }
   });
 });

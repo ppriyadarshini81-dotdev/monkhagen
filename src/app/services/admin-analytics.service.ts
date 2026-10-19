@@ -9,11 +9,23 @@ import {
 } from '../models/analytics.model';
 
 export interface AnalyticsFilter { range: string; start?: string; end?: string; }
+export interface AnalyticsDashboard {
+  overview: AnalyticsOverview; revenue: RevenueReport; funnel: FunnelReport;
+  products: ProductAnalyticsReport; carts: CartAnalyticsReport; payments: PaymentAnalyticsReport;
+  visitors: VisitorAnalyticsReport; trend: TrendReport; logins: LoginAnalyticsReport;
+  returns: ReturnAnalyticsReport; errors: ErrorAnalyticsReport;
+}
 
 @Injectable({ providedIn: 'root' })
 export class AdminAnalyticsService {
   private readonly api = '/api/admin/analytics';
   constructor(private http: HttpClient) {}
+
+  dashboard(filter: AnalyticsFilter, sort = 'revenue', direction = 'desc'): Observable<AnalyticsDashboard> {
+    return this.http.get<AnalyticsDashboard>(`${this.api}/dashboard`, {
+      params: this.params(filter).set('sort', sort).set('direction', direction)
+    });
+  }
 
   overview(filter: AnalyticsFilter): Observable<AnalyticsOverview> {
     return this.http.get<AnalyticsOverview>(`${this.api}/overview`, { params: this.params(filter) });
