@@ -24,7 +24,7 @@ function configureSecurity(app, environment = process.env) {
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
     contentSecurityPolicy: { reportOnly: !production, useDefaults: true, directives: {
       'default-src': ["'self'"],
-      'script-src': ["'self'", 'https://checkout.razorpay.com', 'https://apis.google.com', 'https://www.gstatic.com'],
+      'script-src': ["'self'", 'https://checkout.razorpay.com', 'https://apis.google.com', 'https://www.gstatic.com', 'https://connect.facebook.net'],
       'script-src-attr': ["'none'"],
       'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       'font-src': ["'self'", 'https://fonts.gstatic.com', 'data:'],
@@ -32,7 +32,8 @@ function configureSecurity(app, environment = process.env) {
       'media-src': ["'self'", 'https:', 'blob:'],
       'connect-src': ["'self'", 'https://identitytoolkit.googleapis.com', 'https://securetoken.googleapis.com',
         'https://firebaseinstallations.googleapis.com', 'https://accounts.google.com', 'https://api.razorpay.com',
-        'https://checkout.razorpay.com', 'https://lumberjack.razorpay.com', ...authOrigins],
+        'https://checkout.razorpay.com', 'https://lumberjack.razorpay.com',
+        'https://www.facebook.com', 'https://connect.facebook.net', ...authOrigins],
       'frame-src': ['https://checkout.razorpay.com', 'https://api.razorpay.com', 'https://accounts.google.com', ...authOrigins],
       'object-src': ["'none'"], 'base-uri': ["'self'"], 'frame-ancestors': ["'none'"],
       'form-action': ["'self'", 'https://api.razorpay.com', 'https://checkout.razorpay.com'],
