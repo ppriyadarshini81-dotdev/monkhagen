@@ -21,6 +21,7 @@ import { AdminReview } from '../../models/review.model';
 import { fieldsFromImagePairs, imagePairsFromFields, moveImagePair, ProductImagePair, removeImagePair } from '../../utils/product-image-pairs';
 import { sortSizes } from '../../utils/size-order';
 import { newOrderNeedsAction, newRequestWindow, newReturnNeedsAction } from '../../utils/admin-action-highlights';
+import { returnMilestoneStage, returnPickupExceptionMessage } from '../../utils/return-pickup-progress';
 
 interface SizeStockForm { stock: number | null; threshold: number | null; configured: boolean; }
 
@@ -417,17 +418,15 @@ export class AdminComponent implements OnInit, DoCheck {
     if (request.defectPhotoReviewPending) return 'Awaiting photo review';
     if (request.replacementShipmentPending) return 'Outbound shipment needs review';
     if (request.shiprocketOutboundOrderId) return 'Outbound shipment ' + (request.outboundStatus || 'created').toLowerCase();
+    if (this.pickupExceptionMessage(request)) return 'Pickup reschedule pending';
     return this.returnStatusLabel(request.status);
   }
 
   returnStage(status: string): number {
-    if (['approved', 'refund_initiated', 'refunded'].includes(status)) return 5;
-    if (status === 'received') return 4;
-    if (status === 'in_transit') return 3;
-    if (status === 'picked_up') return 2;
-    if (status === 'pickup_scheduled') return 1;
-    return 0;
+    return returnMilestoneStage(status);
   }
+
+  pickupExceptionMessage(request: AdminReturn): string { return returnPickupExceptionMessage(request, 'admin'); }
 
   itemTrackingStage(request: AdminReturn, item: AdminReturn['items'][number]): number {
     const stage = this.returnStage(request.status);
@@ -446,7 +445,7 @@ export class AdminComponent implements OnInit, DoCheck {
 
   itemJourneyTitle(request: AdminReturn, item: AdminReturn['items'][number]): string {
     if (request.defectPhotoReviewPending) return 'Awaiting admin photo review';
-    if (this.returnStage(request.status) < 4) return this.returnStatusLabel(request.status);
+    if (this.returnStage(request.status) < 4) return this.requestStatusLabel(request);
     if (!item.inspectionStatus || item.inspectionStatus === 'pending') return 'Awaiting inspection';
     return item.inspectionStatus === 'approved' ? (request.requestType === 'replacement' ? 'Replacement approved' : 'Return approved')
       : (request.requestType === 'replacement' ? 'Replacement rejected' : 'Return rejected');
