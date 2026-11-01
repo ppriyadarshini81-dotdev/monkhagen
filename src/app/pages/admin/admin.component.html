@@ -444,6 +444,7 @@
         </section>
         <p class="mh-return-notice" *ngIf="r.pickupDelayed">Return creation needs attention. Check the request details before retrying.</p>
         <p class="mh-return-notice" role="status" *ngIf="r.trackingSyncUnavailable">Live tracking is temporarily unavailable. Showing the last saved status.</p>
+        <p class="mh-return-notice" role="status" *ngIf="pickupExceptionMessage(r) as message">{{ message }}</p>
         <p class="mh-return-notice" *ngIf="r.cancellationPending">Cancellation is being confirmed with Shiprocket.</p>
         <footer class="mh-customer-return__foot">
           <span *ngIf="r.requestType !== 'replacement'"><small>Refund after shipping</small><strong>&#8377;{{ r.refundAmount | number:'1.2-2' }}</strong><em>{{ r.refundAmount ? returnStatusLabel(r.refundStatus) : 'No refund payable' }}</em></span>
@@ -664,6 +665,7 @@
 <dialog #returnDetailsDialog class="mh-return-dialog" aria-labelledby="return-details-title" (close)="clearReturnDetails()"><ng-container *ngIf="selectedReturn as r">
   <header class="mh-return-dialog__head"><div><span class="mh-eyebrow">Return details</span><h2 id="return-details-title">#{{ r.returnNumber }}</h2><p>Order #{{ r.orderNumber || r.orderId }} &middot; Requested {{ r.requestedAt | date:'medium' }}</p></div><button type="button" aria-label="Close return details" (click)="closeReturnDetails()">&times;</button></header>
   <div class="mh-return-dialog__body">
+    <p class="mh-return-notice" role="status" *ngIf="pickupExceptionMessage(r) as message">{{ message }}</p>
     <section class="mh-return-dialog__section">
       <header><h3>Products in this request</h3><span>{{ r.items.length }} {{ r.items.length === 1 ? 'product' : 'products' }}</span></header>
       <article class="mh-return-dialog__product" *ngFor="let item of r.items">

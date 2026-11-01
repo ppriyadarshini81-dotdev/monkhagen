@@ -6,6 +6,7 @@ import { Subscription } from 'rxjs';
 import { AccountService } from '../../../services/account.service';
 import { ReturnRequest } from '../../../models/account.model';
 import { FEATURE_FLAGS } from '../../../config/feature-flags';
+import { returnMilestoneStage, returnPickupExceptionMessage } from '../../../utils/return-pickup-progress';
 
 @Component({
   selector: 'app-account-returns',
@@ -122,7 +123,7 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
       requested: 'orange', return_created: 'orange', shiprocket_failed: 'orange',
       pickup_scheduled: 'orange', picked_up: 'blue', in_transit: 'blue', received: 'blue',
       approved: 'blue', refund_initiated: 'orange', refunded: 'green',
-      pickup_failed: 'red', rejected: 'red', cancelled: 'red'
+      pickup_failed: 'orange', rejected: 'red', cancelled: 'red'
     };
     return m[s] || 'grey';
   }
@@ -140,24 +141,22 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
 
   progress(status: string): number {
     const order = ['requested','return_created','pickup_scheduled','picked_up','in_transit','received','approved','refund_initiated','refunded'];
-    return Math.max(0, order.indexOf(status));
+    return Math.max(0, order.indexOf(status === 'pickup_failed' ? 'pickup_scheduled' : status));
   }
 
   requestStatusLabel(request: ReturnRequest): string {
     if (request.defectPhotoReviewPending) return 'Awaiting photo review';
     if (request.replacementShipmentPending) return 'Outbound shipment needs review';
     if (request.shiprocketOutboundOrderId) return 'Outbound shipment ' + (request.outboundStatus || 'created').toLowerCase();
+    if (this.pickupExceptionMessage(request)) return 'Pickup reschedule pending';
     return this.statusLabel(request.status);
   }
 
   returnStage(status: string): number {
-    if (['approved', 'refund_initiated', 'refunded'].includes(status)) return 5;
-    if (status === 'received') return 4;
-    if (status === 'in_transit') return 3;
-    if (status === 'picked_up') return 2;
-    if (status === 'pickup_scheduled') return 1;
-    return 0;
+    return returnMilestoneStage(status);
   }
+
+  pickupExceptionMessage(request: ReturnRequest): string { return returnPickupExceptionMessage(request); }
 
   itemTrackingStage(request: ReturnRequest, item: ReturnRequest['items'][number]): number {
     const stage = this.returnStage(request.status);
@@ -176,7 +175,7 @@ export class AccountReturnsComponent implements OnInit, OnDestroy {
 
   itemJourneyTitle(request: ReturnRequest, item: ReturnRequest['items'][number]): string {
     if (request.defectPhotoReviewPending) return 'Awaiting admin photo review';
-    if (this.returnStage(request.status) < 4) return this.statusLabel(request.status);
+    if (this.returnStage(request.status) < 4) return this.requestStatusLabel(request);
     if (!item.inspectionStatus || item.inspectionStatus === 'pending') return 'Awaiting inspection';
     return item.inspectionStatus === 'approved' ? (request.requestType === 'replacement' ? 'Replacement approved' : 'Return approved')
       : (request.requestType === 'replacement' ? 'Replacement rejected' : 'Return rejected');

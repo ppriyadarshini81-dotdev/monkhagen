@@ -6,6 +6,43 @@ import { ReturnRequest } from '../../../models/account.model';
 import { AccountReturnsComponent } from './returns.component';
 
 describe('AccountReturnsComponent order filter', () => {
+  it('keeps Scheduled highlighted and explains rescheduling in the card and details until pickup resumes', async () => {
+    const request = { id:'return-exception', returnNumber:'R-1', orderId:'order-1', orderNumber:'MH-1',
+      requestType:'return', status:'pickup_scheduled', pickupStatus:'RETURN PICKUP SCHEDULED',
+      returnAwb:'19041970002831', refundAmount:1641, returnShippingDeduction:150, refundStatus:'pending',
+      paymentMethod:'razorpay', requestedAt:'2026-10-18T16:47:25Z',
+      items:[{id:'item-1',productName:'Cream T-shirt',quantity:1,size:'XL',color:'Cream',inspectionStatus:'pending'}]
+    } as ReturnRequest;
+    const account = jasmine.createSpyObj<AccountService>('AccountService',['getReturns','cancelReturn']);
+    account.getReturns.and.returnValue(of([request]));
+    await TestBed.configureTestingModule({imports:[AccountReturnsComponent],providers:[
+      {provide:AccountService,useValue:account},provideRouter([])
+    ]}).compileComponents();
+    const fixture = TestBed.createComponent(AccountReturnsComponent);
+    fixture.detectChanges(); await fixture.whenStable();
+    fixture.componentInstance.openReturnDetails(request);
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    const dialog = root.querySelector<HTMLDialogElement>('.mh-return-dialog')!;
+    expect(dialog.querySelectorAll('.mh-return-progress .done').length).toBe(2);
+    request.status = 'pickup_failed'; request.pickupStatus = 'RETURN PICKUP EXCEPTION'; fixture.detectChanges();
+    expect(dialog.querySelectorAll('.mh-return-progress .done').length).toBe(2);
+    expect(Array.from(dialog.querySelectorAll('.mh-return-progress .done small')).map(step => step.textContent))
+      .toEqual(['Requested','Scheduled']);
+    expect(root.querySelector('.mh-return-state')!.textContent).toContain('Pickup reschedule pending');
+    expect(dialog.querySelector('.mh-product-journey strong')!.textContent).toBe('Pickup reschedule pending');
+    expect(dialog.querySelector('.mh-return-notice')!.textContent).toContain('Your return is still active');
+    expect(root.querySelector('#return-body-return-exception .mh-return-notice')!.textContent).toContain('awaiting courier confirmation');
+    expect(dialog.textContent).toContain('19041970002831');
+    expect(account.cancelReturn).not.toHaveBeenCalled();
+    expect(request.status).toBe('pickup_failed');
+    request.status = 'picked_up'; fixture.detectChanges();
+    expect(dialog.querySelectorAll('.mh-return-progress .done').length).toBe(3);
+    expect(root.querySelectorAll('.mh-return-notice').length).toBe(0);
+    expect(root.querySelector('.mh-return-state')!.textContent).toContain('Picked up');
+    fixture.destroy();
+  });
+
   it('collapses cancelled and rejected requests by default and allows each card to be toggled', async () => {
     const requests = ['cancelled', 'rejected', 'return_created'].map((status, index) => ({
       id: `return-${index}`, returnNumber: `R-${index}`, status, requestType: 'return',

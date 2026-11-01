@@ -10,6 +10,20 @@ describe('Admin return inspection', () => {
       {} as never, {} as never, {} as never, {} as never);
   }
 
+  it('keeps the scheduled milestone during a pickup exception and tells admins how to follow up', () => {
+    const instance = component({} as OrderService);
+    const delayed = { ...request, status:'pickup_failed', pickupStatus:'RETURN PICKUP EXCEPTION' };
+    expect(instance.itemTrackingStage(delayed,delayed.items[0])).toBe(1);
+    expect(instance.requestStatusLabel(delayed)).toBe('Pickup reschedule pending');
+    expect(instance.itemJourneyTitle(delayed,delayed.items[0])).toBe('Pickup reschedule pending');
+    expect(instance.pickupExceptionMessage(delayed)).toContain('Confirm or reschedule the next pickup with Shiprocket');
+    expect(instance.canInspectReplacementItem(delayed,delayed.items[0])).toBeFalse();
+    expect(delayed.status).toBe('pickup_failed');
+    const recovered = { ...delayed, status:'picked_up' };
+    expect(instance.itemTrackingStage(recovered,recovered.items[0])).toBe(2);
+    expect(instance.pickupExceptionMessage(recovered)).toBe('');
+  });
+
   it('enables return inspection only after receipt and submits each decision with its reason', () => {
     const orders = jasmine.createSpyObj<OrderService>('OrderService', ['submitReplacementInspection']);
     orders.submitReplacementInspection.and.returnValue(new Subject());
