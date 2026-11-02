@@ -7,7 +7,7 @@
 
   <!-- Category image blocks -->
   <div class="mh-catblocks" *ngIf="categories.length">
-    <button
+    <button data-meta-action="setCategory"
       class="mh-catblock"
       [class.active]="activeCategory === 'All'"
       (click)="setCategory('All')"
@@ -16,7 +16,7 @@
       <span class="mh-catblock__name">All</span>
     </button>
 
-    <button
+    <button data-meta-action="setCategory"
       *ngFor="let cat of categories"
       class="mh-catblock"
       [class.active]="activeCategory === cat.name"
@@ -34,7 +34,7 @@
 
   <div class="mh-toolbar">
     <div class="mh-chips">
-      <button
+      <button data-meta-action="setCategory"
         *ngFor="let cat of categoryNames"
         class="mh-chip"
         [class.active]="activeCategory === cat"
@@ -52,7 +52,7 @@
         [(ngModel)]="search"
         (keyup.enter)="load()"
       />
-      <select class="mh-select mh-sort" [(ngModel)]="sort" (change)="onSortChange()">
+      <select data-meta-action="onSortChange" class="mh-select mh-sort" [(ngModel)]="sort" (change)="onSortChange()">
         <option value="featured">Featured</option>
         <option value="price-asc">Price: Low to High</option>
         <option value="price-desc">Price: High to Low</option>

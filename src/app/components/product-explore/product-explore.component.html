@@ -5,9 +5,9 @@
   <header class="mh-explore__head">
     <div><span class="mh-eyebrow">Discover the collection</span><h2 id="explore-title">More styles to explore</h2><p>Find your next favourite from the Monk Hagen collection.</p></div>
     <div class="mh-explore__controls" *ngIf="items.length > 1">
-      <button type="button" [attr.aria-label]="autoplay ? 'Pause automatic sliding' : 'Start automatic sliding'" [attr.aria-pressed]="!autoplay" (click)="toggleAutoplay()">{{ autoplay ? 'Ⅱ' : '▶' }}</button>
-      <button *ngIf="!mobile" type="button" aria-label="Previous products" aria-controls="explore-products" [disabled]="animating" (click)="advance(-1)">&#8592;</button>
-      <button *ngIf="!mobile" type="button" aria-label="Next products" aria-controls="explore-products" [disabled]="animating" (click)="advance(1)">&#8594;</button>
+      <button data-meta-action="toggleAutoplay" type="button" [attr.aria-label]="autoplay ? 'Pause automatic sliding' : 'Start automatic sliding'" [attr.aria-pressed]="!autoplay" (click)="toggleAutoplay()">{{ autoplay ? 'Ⅱ' : '▶' }}</button>
+      <button data-meta-action="advance" *ngIf="!mobile" type="button" aria-label="Previous products" aria-controls="explore-products" [disabled]="animating" (click)="advance(-1)">&#8592;</button>
+      <button data-meta-action="advance" *ngIf="!mobile" type="button" aria-label="Next products" aria-controls="explore-products" [disabled]="animating" (click)="advance(1)">&#8594;</button>
     </div>
   </header>
   <p role="status" *ngIf="loading">Loading more styles...</p>

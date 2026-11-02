@@ -5,7 +5,7 @@
         <span>Added to your bag</span>
         <h2 id="cart-preview-title">Cart &bull; {{ cart.count }} {{ cart.count === 1 ? 'item' : 'items' }}</h2>
       </div>
-      <button #cartClose type="button" class="mh-cart-preview__close" (click)="close()" aria-label="Close cart preview">&times;</button>
+      <button data-meta-action="close" #cartClose type="button" class="mh-cart-preview__close" (click)="close()" aria-label="Close cart preview">&times;</button>
     </header>
 
     <div class="mh-cart-preview__offer" *ngIf="cart.prepaidOffer.eligible">
@@ -16,25 +16,25 @@
 
     <div class="mh-cart-preview__items" *ngIf="cart.items.length; else emptyCart">
       <article class="mh-cart-preview__item" *ngFor="let item of cart.items">
-        <a class="mh-cart-preview__image" [routerLink]="['/product', item.productSlug || item.productId]" (click)="close()">
+        <a data-meta-action="close" class="mh-cart-preview__image" [routerLink]="['/product', item.productSlug || item.productId]" (click)="close()">
           <img *ngIf="item.imageUrl" [src]="cachedMediaUrl(item.imageUrl)" [alt]="item.productName || 'Product image'" loading="lazy" />
           <span *ngIf="!item.imageUrl" aria-hidden="true">MH</span>
         </a>
         <div class="mh-cart-preview__details">
           <div class="mh-cart-preview__item-head">
-            <a [routerLink]="['/product', item.productSlug || item.productId]" (click)="close()">{{ item.productName }}</a>
-            <button type="button" (click)="remove(item)" [disabled]="isUpdating(item)" [attr.aria-label]="'Remove ' + item.productName">&times;</button>
+            <a data-meta-action="close" [routerLink]="['/product', item.productSlug || item.productId]" (click)="close()">{{ item.productName }}</a>
+            <button data-meta-action="remove" type="button" (click)="remove(item)" [disabled]="isUpdating(item)" [attr.aria-label]="'Remove ' + item.productName">&times;</button>
           </div>
           <p><span *ngIf="item.size">Size: {{ item.size }}</span><span *ngIf="item.color">Color: {{ item.color }}</span></p>
           <div class="mh-cart-preview__line">
             <div class="mh-cart-preview__qty" [class.mh-cart-preview__qty--remove]="item.quantity === 1" aria-label="Quantity controls">
-              <button type="button" (click)="decreaseOrRemove(item)" [disabled]="isUpdating(item)"
+              <button data-meta-action="decreaseOrRemove" type="button" (click)="decreaseOrRemove(item)" [disabled]="isUpdating(item)"
                 [attr.aria-label]="item.quantity === 1 ? 'Remove ' + item.productName : 'Decrease quantity'">
                 <ng-container *ngIf="item.quantity === 1; else decreaseSymbol">Remove</ng-container>
                 <ng-template #decreaseSymbol>&minus;</ng-template>
               </button>
               <span>{{ item.quantity }}</span>
-              <button type="button" (click)="changeQuantity(item, 1)" [disabled]="isUpdating(item) || (item.stock !== null && item.quantity >= item.stock)" aria-label="Increase quantity">+</button>
+              <button data-meta-action="changeQuantity" type="button" (click)="changeQuantity(item, 1)" [disabled]="isUpdating(item) || (item.stock !== null && item.quantity >= item.stock)" aria-label="Increase quantity">+</button>
             </div>
             <strong>&#8377;{{ (item.price || 0) * item.quantity | number: '1.2-2' }}</strong>
           </div>
@@ -57,8 +57,8 @@
         <span>Subtotal <small *ngIf="cart.prepaidOffer.eligible">after Welcome Offer</small></span>
         <strong>&#8377;{{ prepaidTotal | number: '1.2-2' }}</strong>
       </div>
-      <a class="mh-cart-preview__checkout" routerLink="/cart" (click)="close()">View cart &amp; checkout</a>
-      <button type="button" class="mh-cart-preview__continue" (click)="close()">Continue shopping</button>
+      <a data-meta-action="close" class="mh-cart-preview__checkout" routerLink="/cart" (click)="close()">View cart &amp; checkout</a>
+      <button data-meta-action="close" type="button" class="mh-cart-preview__continue" (click)="close()">Continue shopping</button>
     </footer>
   </aside>
 </div>

@@ -5,6 +5,7 @@ import { Cart, CartItem, PrepaidOffer } from '../models/cart.model';
 import { Product } from '../models/product.model';
 import { AuthService } from './auth.service';
 import { AnalyticsService } from './analytics.service';
+import { MetaPixelService } from './meta-pixel.service';
 
 const EMPTY_OFFER: PrepaidOffer = {
   code: 'MONKHAGEN10', discountPercent: 10, eligible: false, eligibilityVerified: false,
@@ -28,7 +29,8 @@ export class CartService {
   constructor(
     private http: HttpClient,
     private auth: AuthService,
-    @Optional() private analytics?: AnalyticsService
+    @Optional() private analytics?: AnalyticsService,
+    @Optional() private meta?: MetaPixelService
   ) {
     // Remove the obsolete cart shape. Guest carts use a versioned, variant-based shape.
     localStorage.removeItem('mh_cart');
@@ -142,6 +144,7 @@ export class CartService {
       this.analytics?.track('ADD_TO_CART', location.pathname, product.id, {
         quantity: safeQuantity, estimatedValue: (variant.price ?? product.price) * safeQuantity
       });
+      this.meta?.cartChange({ productId: product.id, price: variant.price ?? product.price }, safeQuantity, true);
       return of(cart);
     }
 
@@ -149,7 +152,11 @@ export class CartService {
       productId: product.id,
       variantId: variant.id,
       quantity: safeQuantity
-    }).pipe(tap((cart) => this.apply(cart)));
+    }).pipe(tap((cart) => {
+      this.apply(cart);
+      const added = cart.items.find(item => item.variantId === variant.id);
+      if (added) this.meta?.cartChange(added, safeQuantity, true);
+    }));
   }
 
   updateQuantity(itemId: string, quantity: number): Observable<Cart> {
@@ -168,11 +175,19 @@ export class CartService {
         location.pathname, items[index].productId, {
           quantity: Math.abs(difference), estimatedValue: (items[index].price || 0) * Math.abs(difference)
         });
-      return of(this.persistGuestItems(items));
+      const cart = this.persistGuestItems(items);
+      if (difference) this.meta?.cartChange(items[index], Math.abs(difference), difference > 0);
+      return of(cart);
     }
+    const previous = this.items.find(item => item.id === itemId);
     return this.http.put<Cart>(`${this.api}/items/${itemId}`, {
       quantity: Math.max(1, Math.trunc(quantity))
-    }).pipe(tap((cart) => this.apply(cart)));
+    }).pipe(tap((cart) => {
+      this.apply(cart);
+      const updated = cart.items.find(item => item.id === itemId);
+      const difference = updated && previous ? updated.quantity - previous.quantity : 0;
+      if (updated && difference) this.meta?.cartChange(updated, Math.abs(difference), difference > 0);
+    }));
   }
 
   remove(itemId: string): Observable<Cart> {
@@ -183,24 +198,34 @@ export class CartService {
       if (removed) this.analytics?.track('REMOVE_FROM_CART', location.pathname, removed.productId, {
         quantity: removed.quantity, estimatedValue: (removed.price || 0) * removed.quantity
       });
+      if (removed) this.meta?.cartChange(removed, removed.quantity, false);
       return of(cart);
     }
+    const removed = this.items.find(item => item.id === itemId);
     return this.http.delete<Cart>(`${this.api}/items/${itemId}`).pipe(
-      tap((cart) => this.apply(cart))
+      tap((cart) => {
+        this.apply(cart);
+        if (removed) this.meta?.cartChange(removed, removed.quantity, false);
+      })
     );
   }
 
   clear(): Observable<{ message: string }> {
+    const removed = [...this.items];
     if (!this.auth.isLoggedIn) {
       for (const item of this.readGuestItems()) this.analytics?.track('REMOVE_FROM_CART', location.pathname, item.productId, {
         quantity: item.quantity, estimatedValue: (item.price || 0) * item.quantity
       });
       localStorage.removeItem(GUEST_CART_KEY);
       this.apply(EMPTY_CART);
+      for (const item of removed) this.meta?.cartChange(item, item.quantity, false);
       return of({ message: 'Cart cleared.' });
     }
     return this.http.delete<{ message: string }>(this.api).pipe(
-      tap(() => this.reset())
+      tap(() => {
+        this.reset();
+        for (const item of removed) this.meta?.cartChange(item, item.quantity, false);
+      })
     );
   }
 

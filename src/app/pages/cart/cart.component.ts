@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, OnInit, Optional, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { combineLatest, filter, take } from 'rxjs';
@@ -13,6 +13,7 @@ import { AnalyticsService } from '../../services/analytics.service';
 import { OrderService } from '../../services/order.service';
 import { canonicalLocation, stateFor } from '../../utils/india-locations';
 import { FEATURE_FLAGS } from '../../config/feature-flags';
+import { MetaPixelService } from '../../services/meta-pixel.service';
 
 type CheckoutStep = 'address' | 'payment';
 type PaymentMethod = 'razorpay' | 'cod';
@@ -59,11 +60,13 @@ export class CartComponent implements OnInit, AfterViewInit {
     private analytics: AnalyticsService,
     private orders: OrderService,
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    @Optional() private meta?: MetaPixelService
   ) {}
 
   ngOnInit(): void {
     this.analytics.track('CART_VIEWED');
+    this.meta?.custom('ViewCart');
     if (this.auth.isLoggedIn) this.loadAddressLocations();
   }
 
@@ -112,6 +115,7 @@ export class CartComponent implements OnInit, AfterViewInit {
     this.checkoutToken ||= this.newCheckoutToken();
     this.addressDialog.nativeElement.showModal();
     this.analytics.track('CHECKOUT_STARTED');
+    this.meta?.initiateCheckout(this.cart.items, this.grandTotal, this.checkoutToken);
     this.loadAddresses();
   }
 
@@ -216,6 +220,8 @@ export class CartComponent implements OnInit, AfterViewInit {
       this.orders.checkout(this.selectedAddressId, this.checkoutToken).subscribe({
         next: (order) => {
           this.orderId = order.orderNumber || order.id;
+          // COD acceptance is an order placement, not a captured payment.
+          this.meta?.custom('OrderPlaced', { payment_method: 'cod', currency: 'INR', value: order.totalAmount ?? order.total });
           this.cart.reset();
           this.checkoutToken = '';
           this.placing = false;
@@ -424,43 +430,55 @@ export class CartComponent implements OnInit, AfterViewInit {
     this.checkoutStep = 'payment';
     this.placing = false;
     this.analytics.track('ADDRESS_SELECTED');
+    this.meta?.custom('CheckoutAddressSelected');
   }
 
   private startPayment(addressId: string): void {
     this.payments.createOrder(addressId, this.checkoutToken).subscribe({
       next: (order) => this.openRazorpay(order),
-      error: (err) => this.fail(err?.error?.message || 'Could not prepare the payment.')
+      error: (err) => {
+        this.meta?.custom('PaymentFailed', { stage: 'preparation' });
+        this.fail(err?.error?.message || 'Could not prepare the payment.');
+      }
     });
   }
 
   private async openRazorpay(order: PaymentOrder): Promise<void> {
+    const purchasedItems = this.cart.items.map(item => ({ ...item }));
     this.addressDialog.nativeElement.close();
     try {
+      this.meta?.paymentStarted(order, purchasedItems);
       const result = await this.payments.openCheckout(order, {
         name: this.shipping.name,
         email: this.shipping.email || undefined,
         contact: this.shipping.phone
       });
-      this.verifyPayment(order, result);
+      this.meta?.paymentInfoAdded(order, purchasedItems);
+      this.verifyPayment(order, result, purchasedItems);
     } catch (error) {
       if (error instanceof Error && error.message.includes('closed')) {
         this.analytics.track('PAYMENT_WINDOW_CLOSED');
+        this.meta?.custom('PaymentCancelled');
+      } else {
+        this.meta?.custom('PaymentFailed', { stage: 'provider' });
       }
       this.fail(error instanceof Error ? error.message : 'Payment was not completed.');
     }
   }
 
-  private verifyPayment(order: PaymentOrder, result: RazorpaySuccess): void {
+  private verifyPayment(order: PaymentOrder, result: RazorpaySuccess, purchasedItems: CartItem[]): void {
     this.payments.verify(order.localOrderId, result).subscribe({
       next: (verified) => {
+        this.meta?.purchase(order, verified, purchasedItems);
         this.orderId = verified.orderNumber;
         this.cart.reset();
         this.checkoutToken = '';
         this.placing = false;
       },
-      error: (err) => this.fail(
-        err?.error?.message || 'Payment could not be verified. Your cart has not been cleared.'
-      )
+      error: (err) => {
+        this.meta?.custom('PaymentFailed', { stage: 'verification' });
+        this.fail(err?.error?.message || 'Payment could not be verified. Your cart has not been cleared.');
+      }
     });
   }
 

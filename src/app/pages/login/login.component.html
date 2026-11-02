@@ -69,15 +69,15 @@
         {{ loading ? 'Verifying...' : 'Verify & sign in' }}
       </button>
       <div class="mh-otp__actions">
-        <button type="button" (click)="resendOtp()" [disabled]="loading || resendRemaining > 0">
+        <button data-meta-action="resendOtp" type="button" (click)="resendOtp()" [disabled]="loading || resendRemaining > 0">
           {{ resendRemaining > 0 ? 'Resend in ' + resendRemaining + 's' : 'Resend OTP' }}
         </button>
-        <button type="button" (click)="changePhone()" [disabled]="loading">Change mobile number</button>
+        <button data-meta-action="changePhone" type="button" (click)="changePhone()" [disabled]="loading">Change mobile number</button>
       </div>
     </form>
 
     <div class="mh-auth__divider"><span>or</span></div>
-    <button
+    <button data-meta-action="continueWithGoogle"
       class="mh-btn mh-btn--google mh-btn--block"
       type="button"
       [disabled]="loading"

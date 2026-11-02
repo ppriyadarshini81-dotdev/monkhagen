@@ -1,7 +1,7 @@
 <section class="mh-acct-section">
   <div class="mh-acct-section__head">
     <div><span class="mh-eyebrow">Your account</span><h2>My profile</h2><p class="mh-profile__intro">A little about you. Keep your details up to date.</p></div>
-    <button *ngIf="!editing" type="button" class="mh-btn mh-btn--gold" (click)="startEdit()">Edit profile</button>
+    <button data-meta-action="startEdit" *ngIf="!editing" type="button" class="mh-btn mh-btn--gold" (click)="startEdit()">Edit profile</button>
   </div>
 
   <p class="mh-success" role="status" *ngIf="message && !editing">{{ message }}</p>
@@ -37,7 +37,7 @@
   <div *ngIf="!editing && !user?.emailVerified" class="mh-profile__email-prompt">
     <strong>Have an existing account?</strong>
     <p>Verify its Google email to restore your saved addresses, orders, cart and profile details.</p>
-    <button class="mh-btn mh-btn--ghost" type="button" (click)="startEdit()">Add and verify email</button>
+    <button data-meta-action="startEdit" class="mh-btn mh-btn--ghost" type="button" (click)="startEdit()">Add and verify email</button>
   </div>
 
   <form *ngIf="editing" (ngSubmit)="save()" class="mh-profile__form">
@@ -77,12 +77,12 @@
         Verify the same Google email used for your existing Monk Hagen account to restore its saved
         name, addresses, orders, cart and other account details.
       </p>
-      <button class="mh-btn mh-btn--ghost" type="button" (click)="verifyEmail()" [disabled]="verifyingEmail">
+      <button data-meta-action="verifyEmail" class="mh-btn mh-btn--ghost" type="button" (click)="verifyEmail()" [disabled]="verifyingEmail">
         {{ verifyingEmail ? 'Verifying…' : 'Verify email with Google' }}
       </button>
       <p class="mh-email-or">or verify with a code sent to this email</p>
-      <button class="mh-btn mh-btn--ghost" type="button" (click)="sendEmailOtp()" [disabled]="emailOtpLoading">{{ emailOtpLoading && !emailOtpSent ? 'Sending…' : 'Send email OTP' }}</button>
-      <div class="mh-email-otp" *ngIf="emailOtpSent"><label class="mh-label" for="email-otp">6-digit email code</label><input id="email-otp" class="mh-input" [(ngModel)]="emailOtp" name="emailOtp" inputmode="numeric" maxlength="6" placeholder="Enter code" /><button class="mh-btn mh-btn--gold" type="button" (click)="verifyEmailOtp()" [disabled]="emailOtpLoading">{{ emailOtpLoading ? 'Verifying…' : 'Verify code' }}</button></div>
+      <button data-meta-action="sendEmailOtp" class="mh-btn mh-btn--ghost" type="button" (click)="sendEmailOtp()" [disabled]="emailOtpLoading">{{ emailOtpLoading && !emailOtpSent ? 'Sending…' : 'Send email OTP' }}</button>
+      <div class="mh-email-otp" *ngIf="emailOtpSent"><label class="mh-label" for="email-otp">6-digit email code</label><input id="email-otp" class="mh-input" [(ngModel)]="emailOtp" name="emailOtp" inputmode="numeric" maxlength="6" placeholder="Enter code" /><button data-meta-action="verifyEmailOtp" class="mh-btn mh-btn--gold" type="button" (click)="verifyEmailOtp()" [disabled]="emailOtpLoading">{{ emailOtpLoading ? 'Verifying…' : 'Verify code' }}</button></div>
     </div>
 
     <p class="mh-error" role="alert" *ngIf="error">{{ error }}</p>
@@ -90,7 +90,7 @@
       <button class="mh-btn mh-btn--gold" type="submit" [disabled]="saving || verifyingEmail">
         {{ saving ? 'Saving…' : 'Save' }}
       </button>
-      <button class="mh-btn mh-btn--ghost" type="button" (click)="cancelEdit()" [disabled]="verifyingEmail">Cancel</button>
+      <button data-meta-action="cancelEdit" class="mh-btn mh-btn--ghost" type="button" (click)="cancelEdit()" [disabled]="verifyingEmail">Cancel</button>
     </div>
   </form>
 </section>

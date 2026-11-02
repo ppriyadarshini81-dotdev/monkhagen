@@ -1,32 +1,32 @@
 <header class="mh-header">
   <div class="mh-container mh-header__inner">
-    <a class="mh-logo" routerLink="/" (click)="closeMenu()">
+    <a data-meta-action="closeMenu" class="mh-logo" routerLink="/" (click)="closeMenu()">
       <img src="https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Logo/MONK_HAGEN_20260825_114655_0000_upscaled.png" alt="Monk Hagen" class="mh-logo__img" />
     </a>
 
-    <button *ngIf="menuOpen" class="mh-nav-backdrop" type="button" (click)="closeMenu(true)" aria-label="Close menu"></button>
+    <button data-meta-action="closeMenu" *ngIf="menuOpen" class="mh-nav-backdrop" type="button" (click)="closeMenu(true)" aria-label="Close menu"></button>
 
     <nav #menuPanel id="customer-navigation" class="mh-nav" [class.open]="menuOpen" aria-label="Main navigation">
-      <a routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Home</a>
-      <a routerLink="/products" routerLinkActive="active" (click)="closeMenu()">Products</a>
-      <a routerLink="/about" routerLinkActive="active" (click)="closeMenu()">About Us</a>
+      <a data-meta-action="closeMenu" routerLink="/" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" (click)="closeMenu()">Home</a>
+      <a data-meta-action="closeMenu" routerLink="/products" routerLinkActive="active" (click)="closeMenu()">Products</a>
+      <a data-meta-action="closeMenu" routerLink="/about" routerLinkActive="active" (click)="closeMenu()">About Us</a>
 
       <ng-container *ngIf="isAdmin">
-        <a routerLink="/dashboard" routerLinkActive="active" (click)="closeMenu()">Dashboard</a>
-        <a routerLink="/admin" routerLinkActive="active" (click)="closeMenu()">Admin</a>
+        <a data-meta-action="closeMenu" routerLink="/dashboard" routerLinkActive="active" (click)="closeMenu()">Dashboard</a>
+        <a data-meta-action="closeMenu" routerLink="/admin" routerLinkActive="active" (click)="closeMenu()">Admin</a>
       </ng-container>
 
       <div class="mh-nav__mobileonly">
         <ng-container *ngIf="user$ | async as user; else mobileLogin">
           <span class="mh-nav__hi">Hi, {{ user.name }}</span>
-          <a routerLink="/account/profile" (click)="closeMenu()">Profile</a>
-          <a routerLink="/account/addresses" (click)="closeMenu()">Addresses</a>
-          <a routerLink="/account/orders" (click)="closeMenu()">My Orders</a>
-          <a routerLink="/account/returns" (click)="closeMenu()">Returns/Replacement</a>
-          <button type="button" class="mh-nav__logout" (click)="logout()">Logout</button>
+          <a data-meta-action="closeMenu" routerLink="/account/profile" (click)="closeMenu()">Profile</a>
+          <a data-meta-action="closeMenu" routerLink="/account/addresses" (click)="closeMenu()">Addresses</a>
+          <a data-meta-action="closeMenu" routerLink="/account/orders" (click)="closeMenu()">My Orders</a>
+          <a data-meta-action="closeMenu" routerLink="/account/returns" (click)="closeMenu()">Returns/Replacement</a>
+          <button data-meta-action="logout" type="button" class="mh-nav__logout" (click)="logout()">Logout</button>
         </ng-container>
         <ng-template #mobileLogin>
-          <a routerLink="/login" (click)="closeMenu()">Login</a>
+          <a data-meta-action="closeMenu" routerLink="/login" (click)="closeMenu()">Login</a>
         </ng-template>
       </div>
     </nav>
@@ -35,16 +35,16 @@
       <ng-container *ngIf="user$ | async as user; else loginLink">
         <div class="mh-user">
           <div class="mh-user__profile">
-            <a class="mh-user__name"
+            <a data-meta-action="dismissProfileHint" class="mh-user__name"
                [class.mh-user__name--highlight]="showProfileHint"
                routerLink="/account/profile"
                (click)="dismissProfileHint()">{{ user.name }}</a>
-            <a class="mh-user__hint"
+            <a data-meta-action="dismissProfileHint" class="mh-user__hint"
                *ngIf="showProfileHint"
                routerLink="/account/profile"
                (click)="dismissProfileHint()">You can edit profile here</a>
           </div>
-          <button class="mh-linkbtn" (click)="logout()">Logout</button>
+          <button data-meta-action="logout" class="mh-linkbtn" (click)="logout()">Logout</button>
         </div>
       </ng-container>
       <ng-template #loginLink>
@@ -66,7 +66,7 @@
         <span class="mh-cart__badge" *ngIf="cart.count > 0">{{ cart.count > 99 ? '99+' : cart.count }}</span>
       </a>
 
-      <button #menuButton class="mh-burger" (click)="toggleMenu()"
+      <button data-meta-action="toggleMenu" #menuButton class="mh-burger" (click)="toggleMenu()"
         [attr.aria-label]="menuOpen ? 'Close menu' : 'Open menu'"
         [attr.aria-expanded]="menuOpen" aria-controls="customer-navigation">
         <span></span><span></span><span></span>
