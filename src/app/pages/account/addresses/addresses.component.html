@@ -5,7 +5,7 @@
       <h2>Address book</h2>
       <p class="mh-addr-intro">Delivery details, all in one place. Ready for your next order.</p>
     </div>
-    <button class="mh-btn mh-btn--gold" type="button" (click)="openAdd()" *ngIf="!showForm">+ Add address</button>
+    <button data-meta-action="openAdd" class="mh-btn mh-btn--gold" type="button" (click)="openAdd()" *ngIf="!showForm">+ Add address</button>
   </div>
 
   <!-- Address form -->
@@ -59,14 +59,14 @@
       <div class="mh-addr-form__actions">
         <button class="mh-btn mh-btn--gold" type="submit" [disabled]="saving">
           {{ saving ? 'Saving…' : 'Save Address' }}</button>
-        <button class="mh-btn mh-btn--ghost" type="button" (click)="cancel()" [disabled]="saving">Cancel</button>
+        <button data-meta-action="cancel" class="mh-btn mh-btn--ghost" type="button" (click)="cancel()" [disabled]="saving">Cancel</button>
       </div>
     </form>
   </div>
 
   <!-- Address cards -->
   <div class="mh-addr-list" *ngIf="!showForm">
-    <div *ngIf="addresses.length === 0" class="mh-empty"><h3>A place for your next delivery</h3><p>Add an address and its contact details for a quicker checkout.</p><button class="mh-btn mh-btn--ghost" type="button" (click)="openAdd()">Add your first address</button></div>
+    <div *ngIf="addresses.length === 0" class="mh-empty"><h3>A place for your next delivery</h3><p>Add an address and its contact details for a quicker checkout.</p><button data-meta-action="openAdd" class="mh-btn mh-btn--ghost" type="button" (click)="openAdd()">Add your first address</button></div>
     <details class="mh-addr-card mh-card" *ngFor="let a of addresses" [open]="a.isDefault" [class.mh-addr-card--default]="a.isDefault">
       <summary class="mh-addr-card__summary">
         <span class="mh-addr-card__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
@@ -90,9 +90,9 @@
         </dl>
       </div>
       <div class="mh-addr-card__actions">
-        <button type="button" class="mh-link-btn" (click)="openEdit(a)" [attr.aria-label]="'Edit ' + a.addressType + ' address'">Edit address</button>
-        <button type="button" class="mh-link-btn" *ngIf="!a.isDefault" (click)="setDefault(a.id)">Make default</button>
-        <button type="button" class="mh-link-btn mh-link-btn--danger" (click)="delete(a.id)" [attr.aria-label]="'Delete ' + a.addressType + ' address'">Delete</button>
+        <button data-meta-action="openEdit" type="button" class="mh-link-btn" (click)="openEdit(a)" [attr.aria-label]="'Edit ' + a.addressType + ' address'">Edit address</button>
+        <button data-meta-action="setDefault" type="button" class="mh-link-btn" *ngIf="!a.isDefault" (click)="setDefault(a.id)">Make default</button>
+        <button data-meta-action="delete" type="button" class="mh-link-btn mh-link-btn--danger" (click)="delete(a.id)" [attr.aria-label]="'Delete ' + a.addressType + ' address'">Delete</button>
       </div>
       </div>
     </details>

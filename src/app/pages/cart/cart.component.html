@@ -43,11 +43,11 @@
           </div>
           <div class="mh-cart__controls">
             <div class="mh-qty">
-              <button (click)="updateQuantity(item, item.quantity - 1)" [disabled]="item.quantity <= 1">−</button>
+              <button data-meta-action="updateQuantity" (click)="updateQuantity(item, item.quantity - 1)" [disabled]="item.quantity <= 1">−</button>
               <span>{{ item.quantity }}</span>
-              <button (click)="updateQuantity(item, item.quantity + 1)">+</button>
+              <button data-meta-action="updateQuantity" (click)="updateQuantity(item, item.quantity + 1)">+</button>
             </div>
-            <button class="mh-cart__remove" (click)="remove(item)">Remove</button>
+            <button data-meta-action="remove" class="mh-cart__remove" (click)="remove(item)">Remove</button>
           </div>
           <div class="mh-cart__line">₹{{ (item.price ?? 0) * item.quantity | number }}</div>
         </article>
@@ -72,7 +72,7 @@
         </div>
 
         <p class="mh-error" *ngIf="error">{{ error }}</p>
-          <button class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing || cart.loading" (click)="checkout()">
+          <button data-meta-action="checkout" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing || cart.loading" (click)="checkout()">
             {{ cart.loading ? 'Syncing cart...' : (placing ? 'Processing...' : 'Checkout') }}
         </button>
       </aside>
@@ -97,7 +97,7 @@
 <dialog #addressDialog class="mh-address-dialog" aria-labelledby="address-title" (cancel)="placing && $event.preventDefault()">
   <div class="mh-address-dialog__head">
     <div><span class="mh-eyebrow">MONK HAGEN / SECURE CHECKOUT</span><h2 id="address-title">{{ checkoutStep === 'address' ? 'Choose your delivery address' : 'Choose how you would like to pay' }}</h2><p class="mh-address-intro">{{ checkoutStep === 'address' ? 'Select a saved address or add a new one to continue.' : (codEnabled ? 'Pay securely online or when your order arrives.' : 'Pay securely online with Razorpay.') }}</p></div>
-    <button type="button" class="mh-address-close" aria-label="Close checkout" [disabled]="placing" (click)="closeAddressDialog()">&#215;</button>
+    <button data-meta-action="closeAddressDialog" type="button" class="mh-address-close" aria-label="Close checkout" [disabled]="placing" (click)="closeAddressDialog()">&#215;</button>
   </div>
   <ol class="mh-checkout-steps" aria-label="Checkout progress"><li class="is-complete"><span>&#10003;</span> Bag</li><li [class.is-complete]="checkoutStep === 'payment'" [attr.aria-current]="checkoutStep === 'address' ? 'step' : null"><span><ng-container *ngIf="checkoutStep === 'payment'; else addressStepNumber">&#10003;</ng-container><ng-template #addressStepNumber>02</ng-template></span> Address</li><li [attr.aria-current]="checkoutStep === 'payment' ? 'step' : null"><span>03</span> Payment</li></ol>
   <p class="mh-address-loading" *ngIf="checkoutStep === 'address' && loadingAddresses" role="status">Loading your addresses...</p>
@@ -113,13 +113,13 @@
             <span class="mh-address-phone">{{ address.phone }}</span>
           </span>
         </label>
-        <button type="button" class="mh-address-edit" (click)="editAddress(address)">Edit address</button>
+        <button data-meta-action="editAddress" type="button" class="mh-address-edit" (click)="editAddress(address)">Edit address</button>
       </div>
-      <button type="button" class="mh-address-add" *ngIf="!addingAddress" (click)="newAddress()"><span aria-hidden="true">+</span> Add delivery address</button>
+      <button data-meta-action="newAddress" type="button" class="mh-address-add" *ngIf="!addingAddress" (click)="newAddress()"><span aria-hidden="true">+</span> Add delivery address</button>
       <div class="mh-cart__ship" *ngIf="addingAddress">
         <div class="mh-address-form-head">
           <div><h3>{{ editingAddressId ? 'Edit delivery address' : 'Add a delivery address' }}</h3><p class="mh-cart__hint">Enter the recipient's details. This address will be saved for future orders.</p></div>
-          <button type="button" class="mh-address-cancel" *ngIf="addresses.length" (click)="cancelNewAddress()">Use saved address</button>
+          <button data-meta-action="cancelNewAddress" type="button" class="mh-address-cancel" *ngIf="addresses.length" (click)="cancelNewAddress()">Use saved address</button>
         </div>
         <label class="mh-address-field">Full name *
           <input #fullNameControl="ngModel" placeholder="Your full name" class="mh-input" [class.mh-input--invalid]="(fullNameControl.touched || addressAttempted) && addressFieldError('name')" name="fullName" autocomplete="name" [(ngModel)]="shipping.name" required minlength="2" maxlength="100" />
@@ -185,10 +185,10 @@
       </div>
     </fieldset>
     <p class="mh-error mh-checkout-error" role="alert" *ngIf="checkoutError">{{ checkoutError }}</p>
-    <button type="button" class="mh-btn mh-btn--ghost" *ngIf="checkoutStep === 'address' && checkoutError && !placing && !addingAddress && addresses.length === 0" (click)="loadAddresses()">Reload addresses</button>
+    <button data-meta-action="loadAddresses" type="button" class="mh-btn mh-btn--ghost" *ngIf="checkoutStep === 'address' && checkoutError && !placing && !addingAddress && addresses.length === 0" (click)="loadAddresses()">Reload addresses</button>
     <footer class="mh-address-footer"><div class="mh-address-total"><span>ORDER TOTAL <small *ngIf="checkoutDiscount">{{ cart.prepaidOffer.code }} Welcome Offer: &minus;&#8377;{{ checkoutDiscount | number: '1.2-2' }}</small><small *ngIf="codFee">COD charge: +&#8377;{{ codFee | number: '1.2-2' }}</small><small *ngIf="!checkoutDiscount && !codFee">Complimentary delivery</small></span><strong>&#8377;{{ grandTotal | number: '1.2-2' }}</strong></div>
     <div class="mh-payment-actions" *ngIf="checkoutStep === 'payment'">
-      <button type="button" class="mh-btn mh-btn--ghost" [disabled]="placing" (click)="backToAddress()">&#8592; Back</button>
+      <button data-meta-action="backToAddress" type="button" class="mh-btn mh-btn--ghost" [disabled]="placing" (click)="backToAddress()">&#8592; Back</button>
       <button type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing">{{ placing ? 'Placing order...' : (codEnabled && paymentMethod === 'cod' ? 'Place COD order' : 'Pay securely') }} <span aria-hidden="true">&#8594;</span></button>
     </div>
     <button *ngIf="checkoutStep === 'address'" type="submit" class="mh-btn mh-btn--gold mh-btn--block" [disabled]="placing || loadingAddresses || (!selectedAddressId && !addingAddress)">{{ placing ? 'Saving address...' : 'Continue to payment' }} <span aria-hidden="true">&#8594;</span></button>

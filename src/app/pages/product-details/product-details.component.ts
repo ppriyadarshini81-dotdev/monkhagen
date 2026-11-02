@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild } from '@angular/core';
+import { Component, ElementRef, HostListener, OnDestroy, OnInit, Optional, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Product } from '../../models/product.model';
@@ -15,6 +15,7 @@ import { ReviewService, ReviewSort } from '../../services/review.service';
 import { ProductReview, ReviewEligibility, ReviewSummary } from '../../models/review.model';
 import { EMPTY, Subscription, expand, reduce } from 'rxjs';
 import { ProductExploreComponent } from '../../components/product-explore/product-explore.component';
+import { MetaPixelService } from '../../services/meta-pixel.service';
 
 @Component({
   selector: 'app-product-details',
@@ -410,7 +411,8 @@ export class ProductDetailsComponent implements OnInit, OnDestroy {
     private contentService: ProductPageContentService,
     private analytics: AnalyticsService,
     public auth: AuthService,
-    private reviewService: ReviewService
+    private reviewService: ReviewService,
+    @Optional() private meta?: MetaPixelService
   ) {}
 
   ngOnInit(): void {
@@ -439,6 +441,7 @@ export class ProductDetailsComponent implements OnInit, OnDestroy {
           this.quantity = 1;
           this.loading = false;
           this.analytics.track('PRODUCT_VIEWED', this.router.url, product.id);
+          this.meta?.viewProduct(product);
           this.loadReviewData();
           this.loadExploreProducts(product);
         },

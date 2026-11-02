@@ -20,7 +20,7 @@
   </div>
 
   <div class="mh-hero__dots">
-    <button
+    <button data-meta-action="selectSlide"
       type="button"
       *ngFor="let slide of posters; let i = index"
       [class.active]="i === currentSlide"
@@ -117,7 +117,7 @@
 <!-- ====== INSTAGRAM FEED ====== -->
 <section class="mh-insta">
   <div class="mh-insta__track">
-    <button class="mh-insta__arrow mh-insta__arrow--prev" type="button" (click)="instaPrev()" aria-label="Previous Instagram posts">&#8592;</button>
+    <button data-meta-action="instaPrev" class="mh-insta__arrow mh-insta__arrow--prev" type="button" (click)="instaPrev()" aria-label="Previous Instagram posts">&#8592;</button>
 
     <a *ngFor="let post of instaSlice"
        [href]="post.url" target="_blank" rel="noopener"
@@ -130,7 +130,7 @@
       </div>
     </a>
 
-    <button class="mh-insta__arrow mh-insta__arrow--next" type="button" (click)="instaNext()" aria-label="Next Instagram posts">&#8594;</button>
+    <button data-meta-action="instaNext" class="mh-insta__arrow mh-insta__arrow--next" type="button" (click)="instaNext()" aria-label="Next Instagram posts">&#8594;</button>
   </div>
 
   <div class="mh-insta__cta">

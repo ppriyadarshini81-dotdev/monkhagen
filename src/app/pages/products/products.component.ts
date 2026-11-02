@@ -8,6 +8,7 @@ import { CategoryService } from '../../services/category.service';
 import { ProductCardComponent } from '../../components/product-card/product-card.component';
 import { cachedMediaUrl } from '../../utils/media-url';
 import { ProductScrollRestorationService } from '../../services/product-scroll-restoration.service';
+import { MetaPixelService } from '../../services/meta-pixel.service';
 
 @Component({
   selector: 'app-products',
@@ -29,7 +30,8 @@ export class ProductsComponent implements OnInit {
   constructor(
     private productService: ProductService,
     private categoryService: CategoryService,
-    @Optional() private productScroll?: ProductScrollRestorationService
+    @Optional() private productScroll?: ProductScrollRestorationService,
+    @Optional() private meta?: MetaPixelService
   ) {}
 
   ngOnInit(): void {
@@ -50,6 +52,7 @@ export class ProductsComponent implements OnInit {
 
   load(): void {
     this.loading = true;
+    const search = this.search;
     this.productService
       .getProducts({ category: this.activeCategory, search: this.search })
       .subscribe({
@@ -57,6 +60,7 @@ export class ProductsComponent implements OnInit {
           this.products = this.applySort(products);
           this.loading = false;
           this.productScroll?.restoreAfterProductsRender();
+          this.meta?.search(search, products.length);
         },
         error: () => (this.loading = false)
       });
@@ -78,10 +82,12 @@ export class ProductsComponent implements OnInit {
 
   setCategory(cat: string): void {
     this.activeCategory = cat;
+    this.meta?.custom('CategorySelected', { content_category: cat });
     this.load();
   }
 
   onSortChange(): void {
     this.products = this.applySort(this.products);
+    this.meta?.custom('SortChanged', { sort: this.sort });
   }
 }

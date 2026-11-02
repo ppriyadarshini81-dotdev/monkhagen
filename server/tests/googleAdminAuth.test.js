@@ -72,6 +72,29 @@ const login = (body = { idToken: 'mock-token' }, endpoint = 'firebase') => fetch
 });
 const protectedRequest = token => fetch(`${base}/protected`, { headers: { Authorization: `Bearer ${token}` } });
 
+test('customer registration flag is true only for a newly created Firebase account', async () => {
+  decoded.email = 'new-customer@example.com';
+  let response = await login();
+  assert.equal(response.status, 200);
+  let result = await response.json();
+  assert.equal(result.user.role, 'customer');
+  assert.equal(result.isNewUser, true);
+  response = await login();
+  assert.equal(response.status, 200);
+  result = await response.json();
+  assert.equal(result.isNewUser, false);
+  assert.deepEqual(mutations, ['create', 'update']);
+});
+
+test('linking an existing customer identity is not a new registration', async () => {
+  decoded.email = 'existing-customer@example.com';
+  stored = user({ email: decoded.email, role: 'customer', firebaseUid: null });
+  const response = await login();
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).isNewUser, false);
+  assert.deepEqual(mutations, ['link']);
+});
+
 test('designated Google identity gets admin access with server-verified provider and UID', async () => {
   const response = await login({ idToken: 'mock-token', role: 'super_admin', email: 'ignored@example.com' });
   assert.equal(response.status, 200);

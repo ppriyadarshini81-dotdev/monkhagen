@@ -97,7 +97,8 @@ exports.firebaseLogin = asyncHandler(async (req, res) => {
     userId: user.id,
     dedupeKey: `auth:${created ? 'signup' : 'login'}:${uid}:${decoded.auth_time || Date.now()}`
   });
-  res.json({ token: signToken(user, { provider, firebaseAuthTime: decoded.auth_time || Math.floor(Date.now() / 1000) }), user: user.toJSON() });
+  res.json({ token: signToken(user, { provider, firebaseAuthTime: decoded.auth_time || Math.floor(Date.now() / 1000) }),
+    user: user.toJSON(), isNewUser: created });
 });
 
 // POST /api/auth/link-google

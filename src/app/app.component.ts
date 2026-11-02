@@ -4,6 +4,7 @@ import { HeaderComponent } from './components/header/header.component';
 import { FooterComponent } from './components/footer/footer.component';
 import { AnalyticsService } from './services/analytics.service';
 import { CartPreviewComponent } from './components/cart-preview/cart-preview.component';
+import { MetaPixelService } from './services/meta-pixel.service';
 
 @Component({
   selector: 'app-root',
@@ -14,5 +15,5 @@ import { CartPreviewComponent } from './components/cart-preview/cart-preview.com
 })
 export class AppComponent {
   title = 'Monk Hagen';
-  constructor(_analytics: AnalyticsService) {}
+  constructor(_analytics: AnalyticsService, _meta: MetaPixelService) {}
 }
