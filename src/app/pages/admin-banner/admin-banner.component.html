@@ -1,0 +1,16 @@
+<section class="banner-settings">
+  <header><span class="eyebrow">Storefront</span><h1>Announcement Banner</h1><p>Manage the scrolling messages displayed above your website navigation.</p></header>
+  <p *ngIf="busy" role="status">{{ content ? 'Saving or reloading banner…' : 'Loading banner…' }}</p>
+  <p *ngIf="error" class="error" role="alert">{{ error }}</p>
+  <p *ngIf="notice" class="success" role="status">{{ notice }}</p>
+  <form *ngIf="content" (ngSubmit)="save()">
+    <label for="banner-messages">Banner messages</label>
+    <p id="banner-help">Enter one message per line, in the order you want them to appear. Use 1–12 messages, up to 120 characters each. Blank lines are ignored.</p>
+    <textarea id="banner-messages" name="messages" [(ngModel)]="text" (ngModelChange)="notice = ''" [disabled]="busy" rows="8" maxlength="1600" aria-describedby="banner-help banner-validation" required></textarea>
+    <p id="banner-validation" [class.error]="!valid">{{ messages.length }} / 12 messages{{ valid ? '' : ' — check the message count and length.' }}</p>
+    <h2>Preview</h2>
+    <div class="banner-preview" aria-label="Banner text preview"><span *ngFor="let message of messages">{{ message }}</span></div>
+    <footer><button type="button" (click)="load()" [disabled]="busy">Reload saved text</button><button class="primary" type="submit" [disabled]="busy || !valid">Save banner</button></footer>
+  </form>
+  <button *ngIf="!content && !busy" type="button" (click)="load()">Retry</button>
+</section>

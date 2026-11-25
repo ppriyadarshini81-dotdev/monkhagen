@@ -1,0 +1,92 @@
+<section class="homepage-media">
+  <header class="homepage-media__head">
+    <div><span class="eyebrow">Storefront</span><h1>Homepage Media</h1>
+      <p>Manage the three media sections on your homepage.</p></div>
+    <div class="homepage-media__actions">
+      <a href="/" target="_blank" rel="noopener">View homepage ↗</a>
+      <button type="button" (click)="load()" [disabled]="busy">Reload saved</button>
+      <button class="primary" type="button" (click)="save()" [disabled]="busy || !dirty">{{ saving ? 'Saving…' : 'Save changes' }}</button>
+    </div>
+  </header>
+  <p *ngIf="loading" role="status">Loading homepage media…</p>
+  <p class="notice" *ngIf="uploading" role="status">Uploading media. Please keep this page open.</p>
+  <p class="notice notice--success" *ngIf="message" role="status">{{ message }}</p>
+  <p class="notice notice--error" *ngIf="error" role="alert">{{ error }}</p>
+  <ng-container *ngIf="content as c">
+    <div class="homepage-media__status"><span [class.unsaved]="dirty">{{ dirty ? 'Unsaved changes' : 'All changes saved' }}</span>
+      <small *ngIf="c.updatedAt">Last saved {{ c.updatedAt | date:'medium' }}</small></div>
+    <fieldset [disabled]="busy" (input)="message = ''">
+      <legend class="visually-hidden">Homepage media settings</legend>
+      <div class="media-columns">
+        <section class="media-column" aria-labelledby="hero-heading">
+          <header><span class="section-number">01</span><div><h2 id="hero-heading">Home header pictures</h2>
+            <p>The large image carousel at the top of your homepage. Keep at least one image.</p></div></header>
+          <div class="upload-box">
+            <label>Upload header pictures<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple (change)="upload($event, 'hero', 'image')" /></label>
+            <small>Up to 8 images per upload · 10 MB each · 20 pictures maximum</small>
+            <button type="button" (click)="addImage('hero')" [disabled]="c.heroImages.length >= 20">Add image by URL</button>
+          </div>
+          <article class="media-item" *ngFor="let image of c.heroImages; let i = index">
+            <div class="media-item__top"><strong>Header picture {{ i + 1 }}</strong><div class="item-actions">
+              <button type="button" (click)="move(c.heroImages, i, -1)" [disabled]="i === 0" [attr.aria-label]="'Move header picture ' + (i + 1) + ' up'">↑</button>
+              <button type="button" (click)="move(c.heroImages, i, 1)" [disabled]="i === c.heroImages.length - 1" [attr.aria-label]="'Move header picture ' + (i + 1) + ' down'">↓</button>
+              <button type="button" class="remove" (click)="remove(c.heroImages, i)" [disabled]="c.heroImages.length === 1" [attr.aria-label]="'Remove header picture ' + (i + 1)">Remove</button>
+            </div></div>
+            <img class="preview preview--banner" *ngIf="image.src" [src]="image.src" [alt]="image.alt || 'Header picture preview'" loading="lazy" />
+            <label>Image URL<input type="url" [(ngModel)]="image.src" maxlength="2048" placeholder="https://…" /></label>
+            <label>Image description<input type="text" [(ngModel)]="image.alt" maxlength="200" placeholder="Describe this picture for accessibility" /></label>
+            <label class="replace-upload">Replace picture<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" (change)="upload($event, 'hero', 'image', i)" /></label>
+          </article>
+        </section>
+
+        <section class="media-column" aria-labelledby="video-heading">
+          <header><span class="section-number">02</span><div><h2 id="video-heading">Ad video</h2>
+            <p>The wide video below New Arrivals. Leave its URL empty to hide this section.</p></div></header>
+          <div class="upload-box">
+            <label>Upload or replace ad video<input type="file" accept="video/mp4" (change)="upload($event, 'adVideo', 'video')" /></label>
+            <small>MP4 · up to 200 MB</small>
+          </div>
+          <div class="media-item">
+            <video *ngIf="c.adVideoUrl" class="preview preview--banner" [src]="c.adVideoUrl" [poster]="c.adVideoPosterUrl" controls playsinline preload="metadata" aria-label="Ad video preview"></video>
+            <div *ngIf="!c.adVideoUrl" class="empty-preview">No ad video selected</div>
+            <label>Video URL<input type="url" [(ngModel)]="c.adVideoUrl" maxlength="2048" placeholder="https://…/video.mp4" /></label>
+            <label>Preview image URL <small>(optional)</small><input type="url" [(ngModel)]="c.adVideoPosterUrl" maxlength="2048" placeholder="https://…" /></label>
+            <label class="replace-upload">Upload preview image<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" (change)="upload($event, 'adPoster', 'image')" /></label>
+            <button type="button" class="remove" *ngIf="c.adVideoUrl" (click)="c.adVideoUrl = ''; c.adVideoPosterUrl = ''; message = ''">Remove ad video from homepage</button>
+          </div>
+        </section>
+
+        <section class="media-column" aria-labelledby="instagram-heading">
+          <header><span class="section-number">03</span><div><h2 id="instagram-heading">Instagram pictures</h2>
+            <p>Pictures and clips in the Instagram carousel. Arrange them in the order visitors should see.</p></div></header>
+          <label class="profile-url">Instagram profile URL<input type="url" [(ngModel)]="c.instagramProfileUrl" maxlength="2048" placeholder="https://www.instagram.com/your-profile" /></label>
+          <div class="upload-box">
+            <label>Upload Instagram pictures<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple (change)="upload($event, 'instagram', 'image')" /></label>
+            <label>Upload Instagram video<input type="file" accept="video/mp4" (change)="upload($event, 'instagram', 'video')" /></label>
+            <small>Images up to 10 MB · MP4 up to 200 MB · 20 items maximum</small>
+            <button type="button" (click)="addImage('instagram')" [disabled]="c.instagramPosts.length >= 20">Add item by URL</button>
+          </div>
+          <p class="empty-copy" *ngIf="!c.instagramPosts.length">No Instagram items. This section will be hidden until you add one.</p>
+          <article class="media-item" *ngFor="let post of c.instagramPosts; let i = index">
+            <div class="media-item__top"><strong>Instagram item {{ i + 1 }}</strong><div class="item-actions">
+              <button type="button" (click)="move(c.instagramPosts, i, -1)" [disabled]="i === 0" [attr.aria-label]="'Move Instagram item ' + (i + 1) + ' up'">↑</button>
+              <button type="button" (click)="move(c.instagramPosts, i, 1)" [disabled]="i === c.instagramPosts.length - 1" [attr.aria-label]="'Move Instagram item ' + (i + 1) + ' down'">↓</button>
+              <button type="button" class="remove" (click)="remove(c.instagramPosts, i)" [attr.aria-label]="'Remove Instagram item ' + (i + 1)">Remove</button>
+            </div></div>
+            <ng-container *ngIf="post.src">
+              <img *ngIf="post.type === 'image'" class="preview preview--square" [src]="post.src" [alt]="post.alt || 'Instagram picture preview'" loading="lazy" />
+              <video *ngIf="post.type === 'video'" class="preview preview--square" [src]="post.src" controls playsinline preload="metadata" aria-label="Instagram video preview"></video>
+            </ng-container>
+            <label>Media type<select [(ngModel)]="post.type"><option value="image">Picture</option><option value="video">Video</option></select></label>
+            <label>Media URL<input type="url" [(ngModel)]="post.src" maxlength="2048" placeholder="https://…" /></label>
+            <label>Image description<input type="text" [(ngModel)]="post.alt" maxlength="200" placeholder="Describe this picture or clip" /></label>
+            <label>Instagram link<input type="url" [(ngModel)]="post.url" maxlength="2048" placeholder="https://www.instagram.com/…" /></label>
+            <label class="replace-upload">Replace {{ post.type === 'image' ? 'picture' : 'video' }}<input type="file" [accept]="post.type === 'image' ? 'image/jpeg,image/png,image/webp,image/avif' : 'video/mp4'" (change)="upload($event, 'instagram', post.type, i)" /></label>
+          </article>
+        </section>
+      </div>
+    </fieldset>
+    <footer class="homepage-media__foot"><p>Uploads and edits are saved to your draft first. Save changes to update all three sections together.</p>
+      <button class="primary" type="button" (click)="save()" [disabled]="busy || !dirty">{{ saving ? 'Saving…' : 'Save changes' }}</button></footer>
+  </ng-container>
+</section>

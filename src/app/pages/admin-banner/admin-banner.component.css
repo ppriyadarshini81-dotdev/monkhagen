@@ -1,0 +1,13 @@
+:host{display:block;min-width:0;color:#172544}
+.banner-settings{max-width:960px;padding:28px;background:#f5f7fc;border-radius:20px}
+.eyebrow{font-size:.875rem;text-transform:uppercase;letter-spacing:.12em;color:#2447eb}
+h1{font-size:2rem;margin:8px 0}h2{font-size:1rem;margin:24px 0 12px}
+p{line-height:1.6;color:#68758a}label{display:block;font-weight:600;margin-top:28px}
+textarea{box-sizing:border-box;width:100%;padding:14px;border:1px solid #c8d0e2;border-radius:10px;resize:vertical;font:inherit;line-height:1.8;background:white;color:#172544}
+.banner-preview{display:flex;gap:56px;overflow-x:auto;background:#000;color:#fff;padding:18px 24px;text-transform:uppercase;font-size:.875rem;letter-spacing:.04em}
+.banner-preview span{flex-shrink:0;white-space:nowrap}
+footer{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:12px;margin-top:24px}
+button{min-height:44px;border:1px solid #c8d0e2;border-radius:8px;background:white;color:#233654;padding:10px 16px;font:inherit;font-size:.875rem;font-weight:600}
+button.primary{background:#2447eb;border-color:#2447eb;color:white}button:disabled{opacity:.5;cursor:not-allowed}
+.error{color:#a32230}.success{color:#256342;background:#edf8f1;padding:12px;border-radius:8px}
+@media(max-width:600px){.banner-settings{padding:18px 12px}footer button{flex:1}}

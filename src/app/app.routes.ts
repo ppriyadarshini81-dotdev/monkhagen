@@ -53,6 +53,7 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/admin-portal/admin-portal.component').then((m) => m.AdminPortalComponent),
     children: [
       { path: '', redirectTo: 'orders', pathMatch: 'full' },
+      { path: 'banner', loadComponent: () => import('./pages/admin-banner/admin-banner.component').then((m) => m.AdminBannerComponent), title: 'Announcement Banner — Monk Hagen' },
       { path: 'dashboard', redirectTo: '/dashboard', pathMatch: 'full' },
       { path: 'ledger', loadComponent: () => import('./pages/admin-ledger/admin-ledger.component').then((m) => m.AdminLedgerComponent), title: 'Ledger — Monk Hagen' },
       { path: 'stock', loadComponent: () => import('./pages/admin-stock/admin-stock.component').then((m) => m.AdminStockComponent), title: 'Stock — Monk Hagen' },
@@ -60,6 +61,7 @@ export const routes: Routes = [
       { path: 'returns', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'returns' } },
       { path: 'reviews', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'reviews' } },
       { path: 'products', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'products' } },
+      { path: 'homepage-media', loadComponent: () => import('./pages/admin-homepage-media/admin-homepage-media.component').then((m) => m.AdminHomepageMediaComponent), title: 'Homepage Media — Monk Hagen' },
       { path: 'products/categories', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'categories' } },
       { path: 'products/badges', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'badges' } },
       { path: 'products/sizes', loadComponent: () => import('./pages/admin/admin.component').then((m) => m.AdminComponent), data: { tab: 'sizes' } },

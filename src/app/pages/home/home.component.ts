@@ -10,6 +10,9 @@ import { ProductCardComponent } from '../../components/product-card/product-card
 import { MEDIA } from '../../config/media-assets';
 import { ProductScrollRestorationService } from '../../services/product-scroll-restoration.service';
 import { NewsletterService } from '../../services/newsletter.service';
+import { HomepageMediaService } from '../../services/homepage-media.service';
+import { DEFAULT_HOMEPAGE_MEDIA, HomepageMedia } from '../../models/homepage-media.model';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-home',
@@ -28,13 +31,17 @@ export class HomeComponent implements AfterViewInit, OnInit, OnDestroy {
   newsletterError = '';
   newsletterSubmitting = false;
 
-  readonly posters = MEDIA.hero.posters;
+  posters = [...MEDIA.hero.posters];
+  heroImages = DEFAULT_HOMEPAGE_MEDIA.heroImages;
   // Repeat the first banner once so the final-to-first transition slides forward.
-  readonly heroSlides = this.posters.length ? [...this.posters, this.posters[0]] : [];
+  heroSlides = this.posters.length ? [...this.posters, this.posters[0]] : [];
   readonly media   = MEDIA;
 
-  readonly instaFeed  = MEDIA.instagram.posts;
-  readonly instaUrl   = MEDIA.instagram.profileUrl;
+  instaFeed = DEFAULT_HOMEPAGE_MEDIA.instagramPosts;
+  instaUrl = MEDIA.instagram.profileUrl;
+  adVideoUrl = DEFAULT_HOMEPAGE_MEDIA.adVideoUrl;
+  adVideoPosterUrl = '';
+  private mediaRequest?: Subscription;
   instaOffset = 0;
   readonly instaVisible = 5;
 
@@ -98,7 +105,8 @@ export class HomeComponent implements AfterViewInit, OnInit, OnDestroy {
     private productService: ProductService,
     private categoryService: CategoryService,
     private newsletter: NewsletterService,
-    @Optional() private productScroll?: ProductScrollRestorationService
+    @Optional() private productScroll?: ProductScrollRestorationService,
+    @Optional() private homepageMedia?: HomepageMediaService
   ) {}
 
   subscribeToNewsletter(): void {
@@ -124,6 +132,11 @@ export class HomeComponent implements AfterViewInit, OnInit, OnDestroy {
   }
 
   ngOnInit(): void {
+    this.mediaRequest = this.homepageMedia?.getContent().subscribe({
+      next: content => this.applyHomepageMedia(content),
+      // Keep the current storefront media if settings are temporarily unavailable.
+      error: () => {}
+    });
     this.productService.getProducts({ featured: true }).subscribe({
       next: (products) => {
         this.featured = products.slice(0, 4);
@@ -151,6 +164,21 @@ export class HomeComponent implements AfterViewInit, OnInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.startTestimonialTimer();
+  }
+
+  private applyHomepageMedia(content: HomepageMedia): void {
+    this.heroImages = content.heroImages;
+    this.posters = content.heroImages.map(image => image.src);
+    this.heroSlides = this.posters.length > 1 ? [...this.posters, this.posters[0]] : [...this.posters];
+    this.heroPosition = 0;
+    this.heroAnimating = false;
+    this.instaFeed = content.instagramPosts;
+    this.instaUrl = content.instagramProfileUrl;
+    this.instaOffset = 0;
+    this.adVideoUrl = content.adVideoUrl;
+    this.adVideoPosterUrl = content.adVideoPosterUrl;
+    this.startHeroTimer();
+    this.startInstagramTimer();
   }
 
   selectSlide(index: number): void {
@@ -193,6 +221,8 @@ export class HomeComponent implements AfterViewInit, OnInit, OnDestroy {
     if (this.instagramTimer) {
       clearInterval(this.instagramTimer);
     }
+    this.instagramTimer = undefined;
+    if (this.instaFeed.length <= this.instaVisible) return;
     this.instagramTimer = setInterval(() => this.advanceInstagram(1), 2000);
   }
 
@@ -219,6 +249,7 @@ export class HomeComponent implements AfterViewInit, OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.mediaRequest?.unsubscribe();
     if (this.heroTimer) {
       clearInterval(this.heroTimer);
     }

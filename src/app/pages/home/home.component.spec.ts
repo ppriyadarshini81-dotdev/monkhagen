@@ -1,9 +1,11 @@
 import { ElementRef } from '@angular/core';
 import { fakeAsync, tick } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { CategoryService } from '../../services/category.service';
 import { ProductService } from '../../services/product.service';
 import { HomeComponent } from './home.component';
+import { HomepageMediaService } from '../../services/homepage-media.service';
+import { DEFAULT_HOMEPAGE_MEDIA, HomepageMedia } from '../../models/homepage-media.model';
 
 describe('HomeComponent banner carousel', () => {
   function createHome(): HomeComponent {
@@ -61,6 +63,46 @@ describe('HomeComponent banner carousel', () => {
     home.ngOnDestroy();
     tick(12000);
     expect(home.heroPosition).toBe(0);
+  }));
+
+  it('loads saved media, resets carousel positions, and supports one banner or hidden sections', fakeAsync(() => {
+    const products = jasmine.createSpyObj<ProductService>('ProductService', ['getProducts']);
+    const categories = jasmine.createSpyObj<CategoryService>('CategoryService', ['getCategories']);
+    products.getProducts.and.returnValue(of([])); categories.getCategories.and.returnValue(of([]));
+    const settings = new Subject<HomepageMedia>();
+    const api = jasmine.createSpyObj<HomepageMediaService>('HomepageMediaService', ['getContent']);
+    api.getContent.and.returnValue(settings);
+    const home = new HomeComponent(products, categories, {} as never, undefined, api);
+    home.ngOnInit(); tick(4000);
+    expect(home.heroPosition).toBe(2);
+    settings.next({ ...DEFAULT_HOMEPAGE_MEDIA,
+      heroImages: [{ src: 'https://media.example/new.webp', alt: 'New campaign' }],
+      adVideoUrl: 'https://media.example/ad.mp4', adVideoPosterUrl: 'https://media.example/poster.webp',
+      instagramPosts: [], revision: 1 });
+    expect(home.posters).toEqual(['https://media.example/new.webp']);
+    expect(home.heroImages[0].alt).toBe('New campaign');
+    expect(home.heroSlides.length).toBe(1);
+    expect(home.heroPosition).toBe(0);
+    expect(home.adVideoUrl).toBe('https://media.example/ad.mp4');
+    expect(home.adVideoPosterUrl).toBe('https://media.example/poster.webp');
+    expect(home.instaSlice).toEqual([]);
+    tick(6000); expect(home.heroPosition).toBe(0);
+    home.ngOnDestroy();
+    expect(settings.observed).toBeFalse();
+  }));
+
+  it('keeps the existing storefront media when settings are unavailable', fakeAsync(() => {
+    const products = jasmine.createSpyObj<ProductService>('ProductService', ['getProducts']);
+    const categories = jasmine.createSpyObj<CategoryService>('CategoryService', ['getCategories']);
+    products.getProducts.and.returnValue(of([])); categories.getCategories.and.returnValue(of([]));
+    const api = jasmine.createSpyObj<HomepageMediaService>('HomepageMediaService', ['getContent']);
+    api.getContent.and.returnValue(throwError(() => ({ status: 503 })));
+    const home = new HomeComponent(products, categories, {} as never, undefined, api);
+    home.ngOnInit();
+    expect(home.posters.length).toBe(5);
+    expect(home.instaFeed.length).toBe(9);
+    expect(home.adVideoUrl).toContain('insta3.mp4');
+    home.ngOnDestroy();
   }));
 
   it('auto-scrolls founder quotes every two seconds on mobile and tablet', fakeAsync(() => {

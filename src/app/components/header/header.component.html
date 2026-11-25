@@ -1,4 +1,23 @@
 <header class="mh-header">
+  <section class="mh-announcement" aria-label="Store announcements">
+    <div class="mh-announcement__viewport">
+      <div class="mh-announcement__track" [class.is-paused]="announcementsPaused">
+        <div class="mh-announcement__group">
+          <span *ngFor="let message of announcements">{{ message }}</span>
+        </div>
+        <div class="mh-announcement__group" aria-hidden="true">
+          <span *ngFor="let message of announcements">{{ message }}</span>
+        </div>
+      </div>
+    </div>
+    <button class="mh-announcement__toggle" type="button"
+      (click)="announcementsPaused = !announcementsPaused"
+      [attr.aria-label]="announcementsPaused ? 'Play announcements' : 'Pause announcements'"
+      [attr.aria-pressed]="announcementsPaused">
+      <svg *ngIf="!announcementsPaused" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 4v8M11 4v8" fill="none" stroke="currentColor" stroke-width="2" /></svg>
+      <svg *ngIf="announcementsPaused" viewBox="0 0 16 16" aria-hidden="true"><path d="m5 3 8 5-8 5z" fill="currentColor" /></svg>
+    </button>
+  </section>
   <div class="mh-container mh-header__inner">
     <a data-meta-action="closeMenu" class="mh-logo" routerLink="/" (click)="closeMenu()">
       <img src="https://pub-72df2dffccc643c59aebafe55e835d7b.r2.dev/Logo/MONK_HAGEN_20260825_114655_0000_upscaled.png" alt="Monk Hagen" class="mh-logo__img" />

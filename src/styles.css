@@ -13,7 +13,9 @@
   --mh-danger: #c0392b;
   --mh-radius: 10px;
   --mh-maxw: 1240px;
-  --mh-header-h: 68px;
+  --mh-nav-h: 68px;
+  --mh-announcement-h: 36px;
+  --mh-header-h: calc(var(--mh-nav-h) + var(--mh-announcement-h));
   --mh-font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --mh-font-serif: 'Cormorant Garamond', Georgia, serif;
 }
@@ -338,7 +340,7 @@ app-admin-analytics .refresh:active:not(:disabled) { transform: translateY(0); }
 }
 
 @media (max-width: 767px) {
-  :root { --mh-header-h: 64px; }
+  :root { --mh-nav-h: 64px; }
   .mh-container { padding-inline: 16px; }
   .mh-section { padding-block: 42px; }
   .mh-input, .mh-select, .mh-textarea { min-height: 46px; font-size: 16px; }

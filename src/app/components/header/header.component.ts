@@ -5,6 +5,7 @@ import { AuthService } from '../../services/auth.service';
 import { CartService } from '../../services/cart.service';
 import { filter, Observable, Subscription } from 'rxjs';
 import { User } from '../../models/user.model';
+import { BannerSettingsService, DEFAULT_BANNER_MESSAGES } from '../../services/banner-settings.service';
 
 @Component({
   selector: 'app-header',
@@ -18,6 +19,8 @@ export class HeaderComponent implements OnDestroy {
   @ViewChild('menuPanel') private menuPanel?: ElementRef<HTMLElement>;
   user$: Observable<User | null>;
   menuOpen = false;
+  announcementsPaused = false;
+  announcements = DEFAULT_BANNER_MESSAGES;
   showProfileHint = false;
   private readonly subscriptions = new Subscription();
   private profileHintTimer?: ReturnType<typeof setTimeout>;
@@ -25,9 +28,12 @@ export class HeaderComponent implements OnDestroy {
   constructor(
     public cart: CartService,
     private auth: AuthService,
-    private router: Router
+    private router: Router,
+    private bannerSettings: BannerSettingsService
   ) {
     this.user$ = this.auth.user$;
+    this.subscriptions.add(this.bannerSettings.messages$.subscribe(messages => this.announcements = messages));
+    this.subscriptions.add(this.bannerSettings.get().subscribe({ error: () => {} }));
     this.subscriptions.add(this.user$.subscribe((user) => {
       if (user && sessionStorage.getItem('mh_show_profile_hint') === '1') {
         this.showProfileHint = true;
