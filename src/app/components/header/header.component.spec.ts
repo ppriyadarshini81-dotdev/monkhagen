@@ -1,5 +1,5 @@
 import { NavigationStart } from '@angular/router';
-import { BehaviorSubject, Subject } from 'rxjs';
+import { BehaviorSubject, Subject, of } from 'rxjs';
 import { HeaderComponent } from './header.component';
 
 describe('HeaderComponent responsive navigation', () => {
@@ -20,7 +20,9 @@ describe('HeaderComponent responsive navigation', () => {
     cart = { previewOpen$: cartOpen$.asObservable(), closePreview: jasmine.createSpy('closePreview'), count: 0 };
     auth = { user$: user$.asObservable(), isAdmin: false, logout: jasmine.createSpy('logout') };
     router = { events: routerEvents.asObservable(), navigate: jasmine.createSpy('navigate') };
-    component = new HeaderComponent(cart, auth, router);
+    component = new HeaderComponent(cart, auth, router, {
+      messages$: new BehaviorSubject(['Test announcement']), get: () => of({ messages: ['Test announcement'], revision: 0 })
+    } as any);
   });
 
   afterEach(() => component.ngOnDestroy());

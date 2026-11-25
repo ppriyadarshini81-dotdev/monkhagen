@@ -851,6 +851,8 @@ async function applyReturnEligibilityPolicyMigration(database = pool) { await da
 async function applyReturnItemReplacementSizesMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '025_return_item_replacement_sizes.sql'), 'utf8')); }
 async function applyReturnItemInspectionMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '026_return_item_inspection_and_replacement_shipping.sql'), 'utf8')); }
 async function applyAfterSalesOrdersSchemaMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '027_after_sales_orders_schema.sql'), 'utf8')); }
+async function applyHomepageMediaMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '028_homepage_media.sql'), 'utf8')); }
+async function applyBannerSettingsMigration(database = pool) { await database.query(readFileSync(path.join(__dirname, '..', 'migrations', '029_banner_settings.sql'), 'utf8')); }
 
 async function runMigration(name, migrate, databasePool = pool) {
   const client = await databasePool.connect();
@@ -923,10 +925,12 @@ async function connectDB({ migrate = process.env.NODE_ENV !== 'production' } = {
     const returnItemReplacementSizesApplied = await runMigration('025_return_item_replacement_sizes', applyReturnItemReplacementSizesMigration);
     const returnItemInspectionApplied = await runMigration('026_return_item_inspection_and_replacement_shipping', applyReturnItemInspectionMigration);
     const afterSalesOrdersSchemaApplied = await runMigration('027_after_sales_orders_schema', applyAfterSalesOrdersSchemaMigration);
+    const homepageMediaApplied = await runMigration('028_homepage_media', applyHomepageMediaMigration);
+    const bannerSettingsApplied = await runMigration('029_banner_settings', applyBannerSettingsMigration);
 
     console.log(
       baseApplied || shippingApplied || firebaseAuthApplied || productPageContentApplied || sizeChartCareApplied || googleAdminApplied || integrityApplied || sessionsApplied || analyticsApplied || returnsApplied || returnItemCommentsApplied || productReviewsApplied || transactionalEmailApplied || productZoomImagesApplied || transactionalSmsApplied || financialLedgerApplied || analyticsDashboardApplied || sizeInventoryApplied || codRefundDestinationApplied || financialEventActorApplied || addressEmailApplied
-      || orderCancellationsApplied || emailOtpApplied || newsletterSubscribersApplied || returnEligibilityPolicyApplied || returnItemReplacementSizesApplied || returnItemInspectionApplied || afterSalesOrdersSchemaApplied ? 'Database migrations applied successfully'
+      || orderCancellationsApplied || emailOtpApplied || newsletterSubscribersApplied || returnEligibilityPolicyApplied || returnItemReplacementSizesApplied || returnItemInspectionApplied || afterSalesOrdersSchemaApplied || homepageMediaApplied || bannerSettingsApplied ? 'Database migrations applied successfully'
         : 'Database schema is up to date'
     );
   } catch (err) {
@@ -962,5 +966,7 @@ module.exports = {
   applyReturnItemReplacementSizesMigration,
   applyReturnItemInspectionMigration,
   applyAfterSalesOrdersSchemaMigration,
+  applyHomepageMediaMigration,
+  applyBannerSettingsMigration,
   runMigration
 };

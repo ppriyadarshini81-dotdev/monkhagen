@@ -39,7 +39,9 @@ describe('Admin navigation', () => {
     const harness = await RouterTestingHarness.create('/admin');
     expect(TestBed.inject(Router).url).toBe('/admin/orders');
     const links = Array.from(harness.routeNativeElement!.querySelectorAll<HTMLAnchorElement>('.admin-portal__primary a'));
-    expect(links.length).toBe(6);
+    expect(links.length).toBe(8);
+    expect(links.find(link => link.textContent?.includes('Banner Text'))?.pathname).toBe('/admin/banner');
+    expect(links.find(link => link.textContent?.includes('Homepage Media'))?.pathname).toBe('/admin/homepage-media');
     expect(links.some(link => link.textContent?.includes('Dashboard'))).toBeFalse();
     expect(links.find(link => link.textContent?.includes('Orders'))?.classList.contains('active')).toBeTrue();
   });
@@ -47,7 +49,7 @@ describe('Admin navigation', () => {
   it('keeps standalone dashboard and admin pages restricted to admins', async () => {
     auth.isAdmin = false;
     const harness = await RouterTestingHarness.create();
-    for (const url of ['/dashboard', '/admin/orders']) {
+    for (const url of ['/dashboard', '/admin/orders', '/admin/homepage-media']) {
       await harness.navigateByUrl(url);
       expect(TestBed.inject(Router).url).toBe('/login');
     }

@@ -24,7 +24,7 @@ function createApp() {
   app.use('/api/admin/returns', require('./routes/adminReturns'));
   app.use('/api/admin/reviews', require('./routes/adminReviews'));
   app.use('/api/products', require('./routes/productReviews'));
-  const routes = { products: 'products', 'product-page-content': 'productPageContent', categories: 'categories',
+  const routes = { 'banner-settings': 'bannerSettings', products: 'products', 'product-page-content': 'productPageContent', 'homepage-media': 'homepageMedia', categories: 'categories',
     badges: 'badges', sizes: 'sizes', colors: 'colors', auth: 'auth', orders: 'orders', cart: 'cart',
     upload: 'upload', account: 'account', contact: 'contact', media: 'media', payments: 'payments',
     shipping: 'shipping', maintenance: 'maintenance', analytics: 'analytics', newsletter: 'newsletter' };
